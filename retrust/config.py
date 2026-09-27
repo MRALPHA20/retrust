@@ -44,8 +44,19 @@ def load(path=None):
     except ValueError as error:
         raise SystemExit(f"{candidate} is not valid JSON: {error}")
 
-    weights = {k: float(v) for k, v in (document.get("weights") or {}).items()
-               if not k.startswith("_")}
+    raw = document.get("weights") or {}
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{candidate}: 'weights' must be an object of pillar -> number")
+
+    weights = {}
+    for key, value in raw.items():
+        if key.startswith("_"):
+            continue
+        try:
+            weights[key] = float(value)
+        except (TypeError, ValueError):
+            raise SystemExit(
+                f"{candidate}: weight for {key!r} is {value!r}, which is not a number")
     unknown = set(weights) - set(DEFAULT_WEIGHTS)
     if unknown:
         raise SystemExit(
@@ -59,6 +70,12 @@ def load(path=None):
     if weights and sum(weights.values()) <= 0:
         raise SystemExit(f"{candidate}: weights must not all be zero")
 
+    # A config naming only some pillars used to drop the rest silently, so
+    # {"exploitation": 1.0} quietly became a one-pillar score. Fill the gaps
+    # from the defaults instead, which is what a partial override means.
+    if weights:
+        weights = {**DEFAULT_WEIGHTS, **weights}
+
     return (weights or dict(DEFAULT_WEIGHTS),
             _bands_from(document.get("bands")),
             str(candidate))
@@ -68,8 +85,19 @@ def _bands_from(bands):
     """Band thresholds, highest first, matching score.BANDS' shape."""
     if not bands:
         return list(BANDS)
-    prefer = float(bands.get("prefer", BANDS[0][0]))
-    conditional = float(bands.get("conditional", BANDS[1][0]))
+    if not isinstance(bands, dict):
+        raise SystemExit("'bands' must be an object with 'prefer' and 'conditional'")
+    try:
+        prefer = float(bands.get("prefer", BANDS[0][0]))
+        conditional = float(bands.get("conditional", BANDS[1][0]))
+    except (TypeError, ValueError):
+        raise SystemExit("band thresholds must be numbers")
+    # A threshold at or below zero makes the band beneath it unreachable, since
+    # no score is negative: conditional=-5 would leave AVOID impossible to hit.
+    if conditional <= 0:
+        raise SystemExit(
+            f"conditional threshold ({conditional}) must be above 0, or AVOID "
+            "can never be reached -- no score is negative.")
     if conditional >= prefer:
         raise SystemExit(
             f"band thresholds are inverted: conditional ({conditional}) "

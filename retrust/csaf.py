@@ -162,11 +162,12 @@ def _parse(path):
         status = vulnerability.get("product_status") or {}
         affected = list(status.get("known_affected") or [])
 
-        cvss = None
-        for score in vulnerability.get("scores", []) or []:
-            for key in ("cvss_v4", "cvss_v3", "cvss_v2"):
-                if base := (score.get(key) or {}).get("baseScore"):
-                    cvss = max(cvss or 0.0, float(base))
+        # The vendor's highest score, preferring the newest CVSS version it gives.
+        scores = vulnerability.get("scores") or []
+        per_version = [[float(b) for s in scores
+                        if (b := (s.get(k) or {}).get("baseScore")) is not None]
+                       for k in ("cvss_v4", "cvss_v3", "cvss_v2")]
+        cvss = next((max(v) for v in per_version if v), None)
 
         # CSAF remediation categories, best first. "vendor_fix" means a patch
         # exists; "mitigation"/"workaround" mean you must live with it; and

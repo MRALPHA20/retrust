@@ -81,8 +81,17 @@ class Stability:
 
 
 def _random_weights(rng):
-    """A uniform point on the weight simplex."""
-    draws = [rng.random() for _ in PILLAR_KEYS]
+    """A uniform point on the weight simplex.
+
+    Normalising uniform draws does NOT sample the simplex uniformly -- it
+    clusters near the centroid and never visits the corners, so extreme
+    weightings go untested and every verdict looks steadier than it is. With
+    five pillars it put the chance of one pillar carrying over half the weight
+    at 4%, where the true figure is 31%.
+
+    Normalised exponentials give Dirichlet(1,...,1), which is uniform.
+    """
+    draws = [rng.expovariate(1.0) for _ in PILLAR_KEYS]
     total = sum(draws) or 1.0
     return {k: d / total for k, d in zip(PILLAR_KEYS, draws)}
 

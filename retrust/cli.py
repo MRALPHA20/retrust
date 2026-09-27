@@ -120,7 +120,13 @@ def cmd_ingest(args):
           f"{counts['cve_links']:,} CVE links")
 
     if args.kev or args.epss:
-        loaded = index.load_exploitation(connection, args.kev, args.epss)
+        try:
+            loaded = index.load_exploitation(connection, args.kev, args.epss)
+        except FileNotFoundError as missing:
+            sys.exit(f"Cannot read {missing.filename}. Without it the KEV and "
+                     "EPSS signals are absent and the exploitation gates cannot "
+                     "fire, so the ingest is stopped rather than left silently "
+                     "incomplete.")
         print(f"  KEV {loaded['kev']:,} entries, EPSS {loaded['epss']:,} scores")
 
     print(f"\nIndex written to {args.db}")
@@ -194,7 +200,7 @@ def cmd_score(args):
 
 def cmd_compare(args):
     connection = _open(args.db)
-    context = _context()
+    context = _context(config_path=args.config)
     blocks = []
     for raw in args.candidate:
         parts = [p.strip() for p in raw.split("|")]

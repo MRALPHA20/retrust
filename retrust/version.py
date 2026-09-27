@@ -116,12 +116,18 @@ def _normalize(range_text):
     # Some vendors emit a malformed VERS fragment mid-string (">=vers:/_V5.4").
     text = re.sub(r"vers:[a-z]*/", "", text, flags=re.I).strip("_ ")
 
-    if range_text.strip().lower().startswith("vers:"):
-        if text in ("*", ""):           # "vers:all/*" -- every version affected
-            return ("all", None)
-    elif text in ("*", "all"):
+    # "vers:all/*" and a bare "*" really do mean every version. A vers: string
+    # whose constraint part is missing ("vers:intdot/") is malformed, not
+    # universal -- reading it as "all" marks every version of the product
+    # vulnerable because a vendor left a field blank.
+    scheme = ""
+    if (raw := range_text.strip()).lower().startswith("vers:"):
+        scheme = raw[len("vers:"):].split("/", 1)[0].strip().lower()
+    if text == "*" or text == "all" or (text == "" and scheme == "all"):
         return ("all", None)
-    elif UNDECIDABLE.search(text):      # serial / revision / date scoped
+    if text == "":
+        return None                     # malformed: abstain rather than guess
+    if UNDECIDABLE.search(text):        # serial / revision / date scoped
         return None
 
     constraints = _constraints(text)

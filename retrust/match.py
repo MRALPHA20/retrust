@@ -79,6 +79,13 @@ def resolve(connection, vendor=None, product=None, order_number=None):
         rows = connection.execute(
             "SELECT p.* FROM product p JOIN order_number o ON o.product_rowid = p.rowid_"
             " WHERE o.number_key = ?", (key,)).fetchall()
+        # Order numbers are not globally unique: several in the corpus belong to
+        # two vendors. Trusting one blindly resolved to the wrong manufacturer
+        # at 0.98 confidence, and screening then ran against that wrong vendor.
+        # A mismatch falls through to rung 2 rather than being believed.
+        if rows and vendor:
+            wanted = normalize_vendor(vendor)
+            rows = [r for r in rows if r["vendor_key"] == wanted] or []
         if rows:
             result.matches = _rows_to_matches(rows, "order_number")
             result.method, result.confidence = "order_number", CONFIDENCE["order_number"]
@@ -92,7 +99,17 @@ def resolve(connection, vendor=None, product=None, order_number=None):
         )
         return result
 
-    vendor_key = normalize_vendor(vendor)
+    vendor_key, name_key = normalize_vendor(vendor), normalize_name(product)
+    # Punctuation-only input normalises to "", and an empty name_key turns the
+    # rung-2 LIKE into "match everything": --product "-" returned all 15,015
+    # Siemens products at 0.90 confidence. "-" is also the commonest spreadsheet
+    # placeholder, so this is reachable straight from the documented batch path.
+    if not (vendor_key and name_key):
+        result.abstained = True
+        result.reason = (f"{vendor!r} and {product!r} do not contain enough "
+                         "characters to identify a product")
+        return result
+
     if not connection.execute(
         "SELECT 1 FROM product WHERE vendor_key = ? LIMIT 1", (vendor_key,)).fetchone():
         result.abstained = True
@@ -103,7 +120,6 @@ def resolve(connection, vendor=None, product=None, order_number=None):
     # start with it. A buyer writing "SIMATIC S7-1500" means the family, so the
     # CPU 1518-4 variants belong in the answer too; returning only the literal
     # match would silently drop most of the affected models.
-    name_key = normalize_name(product)
     rows = connection.execute(
         "SELECT * FROM product WHERE vendor_key = ? AND (name_key = ? OR name_key LIKE ?)",
         (vendor_key, name_key, name_key + "%")).fetchall()

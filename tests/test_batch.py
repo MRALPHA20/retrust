@@ -290,3 +290,37 @@ def test_dumps_survives_findings_and_sets():
     detail = batch.to_detail(_assessment(), _resolution(), _findings())
     detail["advisories"] = {"ICSA-19-057-01"}
     assert json.loads(batch.dumps(batch.envelope([detail])))["results"][0]["cves"] == 10
+
+
+# --- JSON input is as forgiving as the CSV path ----------------------------
+
+def test_json_accepts_the_same_column_aliases(tmp_path):
+    """The JSON branch ignored COLUMN_ALIASES and returned all-None rows."""
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps([{"Manufacturer": "ABB", "Model": "AC 800M",
+                                 "Part Number": "X-1"}]))
+    assert batch.read_candidates(path) == [
+        {"vendor": "ABB", "product": "AC 800M", "version": None, "order_number": "X-1"}]
+
+
+def test_json_coerces_non_string_values(tmp_path):
+    """A spreadsheet exported to JSON yields bare numbers for model codes."""
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps([{"vendor": "ABB", "product": 123}]))
+    assert batch.read_candidates(path)[0]["product"] == "123"
+
+
+def test_json_drops_blank_and_non_dict_entries(tmp_path):
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps([{"vendor": "", "product": ""}, "nope", 42,
+                                {"vendor": "ABB", "product": "AC 800M"}]))
+    rows = batch.read_candidates(path)
+    assert len(rows) == 1 and rows[0]["vendor"] == "ABB"
+
+
+def test_malformed_json_fails_like_its_siblings(tmp_path):
+    """Every other input error is a clean SystemExit; this was a traceback."""
+    path = tmp_path / "c.json"
+    path.write_text("{ not json")
+    with pytest.raises(SystemExit, match="not valid JSON"):
+        batch.read_candidates(path)

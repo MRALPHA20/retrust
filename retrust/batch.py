@@ -65,11 +65,25 @@ def read_candidates(path):
     rows = []
 
     if source.suffix.lower() == ".json" or text.lstrip().startswith(("[", "{")):
-        document = json.loads(text)
+        try:
+            document = json.loads(text)
+        except ValueError as error:
+            raise SystemExit(f"{source} is not valid JSON: {error}")
+
         raw = document if isinstance(document, list) else document.get("candidates", [])
         for entry in raw:
-            rows.append({k: (entry.get(k) or "").strip() or None
-                         for k in COLUMN_ALIASES})
+            if not isinstance(entry, dict):
+                continue
+            # Accept the same column names the CSV path does, and coerce values
+            # rather than assuming strings -- a spreadsheet exported to JSON
+            # yields bare numbers for model codes.
+            row = {k: None for k in COLUMN_ALIASES}
+            for name, value in entry.items():
+                key = _canonical(name)
+                if key and value is not None and str(value).strip():
+                    row[key] = str(value).strip()
+            if any(row.values()):
+                rows.append(row)
     else:
         reader = csv.DictReader(text.splitlines())
         if not reader.fieldnames:

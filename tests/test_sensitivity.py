@@ -27,8 +27,48 @@ def test_custom_weights_are_read(tmp_path):
     path = tmp_path / "c.json"
     path.write_text(json.dumps({"weights": {"exploitation": 1.0, "severity": 1.0}}))
     weights, _, source = config.load(path)
-    assert weights == {"exploitation": 1.0, "severity": 1.0}
+    assert weights["exploitation"] == 1.0
+    assert weights["severity"] == 1.0
     assert str(path) in source
+
+
+def test_a_partial_weights_block_keeps_the_other_pillars(tmp_path):
+    """The bug this guards: naming one pillar silently dropped the other four.
+
+    {"weights": {"exploitation": 1.0}} quietly became a single-pillar score with
+    no warning, so a user nudging one weight lost certification, patchability
+    and the rest entirely.
+    """
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({"weights": {"exploitation": 1.0}}))
+    weights, _, _ = config.load(path)
+    assert set(weights) == set(score.DEFAULT_WEIGHTS)
+    assert weights["exploitation"] == 1.0                      # the override
+    assert weights["severity"] == score.DEFAULT_WEIGHTS["severity"]   # untouched
+
+
+def test_non_numeric_weight_is_rejected(tmp_path):
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({"weights": {"exploitation": "high"}}))
+    with pytest.raises(SystemExit, match="not a number"):
+        config.load(path)
+
+
+def test_malformed_weights_and_bands_are_rejected(tmp_path):
+    for document, pattern in [({"weights": "nope"}, "must be an object"),
+                              ({"bands": "nope"}, "must be an object")]:
+        path = tmp_path / "c.json"
+        path.write_text(json.dumps(document))
+        with pytest.raises(SystemExit, match=pattern):
+            config.load(path)
+
+
+def test_a_band_threshold_at_zero_is_rejected(tmp_path):
+    """A conditional threshold of 0 or below makes AVOID unreachable."""
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({"bands": {"prefer": 70, "conditional": -5}}))
+    with pytest.raises(SystemExit, match="above 0"):
+        config.load(path)
 
 
 def test_unknown_pillar_is_rejected(tmp_path):

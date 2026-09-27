@@ -110,8 +110,13 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     parts = [f'<h2>{_esc(assessment.product)}</h2>']
 
     if assessment.score is None:
-        # Not assessed: no score, and no CVE counts that could read as "clean".
-        summary = '<span class="s">no score</span><span class="n">not enough data</span>'
+        # Two very different states share "no score": a product we could not
+        # assess, and one a gate disqualified outright. Saying "not enough data"
+        # for the second is wrong -- the tool decided, and the reason is the
+        # gate shown below.
+        reason = ("disqualified below" if assessment.gates
+                  else "not enough data to assess")
+        summary = f'<span class="s">no score</span><span class="n">{reason}</span>'
     else:
         detail = f'{assessment.findings_count} CVE(s) in scope'
         if assessment.undecided_count:
@@ -141,7 +146,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                 f'<p class="meta">matched by {_esc(resolution.method)} '
                 f'&middot; confidence {resolution.confidence:.2f} '
                 f'&middot; {len(resolution.matches)} advisory product(s)</p>')
-        else:
+        elif not assessment.gates:
             parts.append(f'<div class="note"><b>Not assessed.</b> '
                          f'{_esc(resolution.reason)}</div>')
 
@@ -150,9 +155,23 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             f'<div class="gate"><b>Hard gate &mdash; {_esc(gate["gate"])}</b><br>'
             f'{_esc(gate["detail"])}<span class="src">Source: {_esc(gate["source"])}</span></div>')
 
-    parts.append('<div class="tw"><table><thead><tr><th>Pillar</th><th>Score</th>'
-                 '<th style="width:30%">&nbsp;</th><th>Weight</th><th>Coverage</th>'
-                 '<th>Evidence</th></tr></thead><tbody>')
+    if assessment.pillars:
+        parts.append(_pillar_table(assessment, weights))
+
+    for note in assessment.notes:
+        parts.append(f'<div class="note">{_esc(note)}</div>')
+
+    top = sorted(findings, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))[:10]
+    if top:
+        parts.append(_cve_table(top))
+
+    return "".join(parts)
+
+
+def _pillar_table(assessment, weights):
+    parts = ['<div class="tw"><table><thead><tr><th>Pillar</th><th>Score</th>'
+             '<th style="width:30%">&nbsp;</th><th>Weight</th><th>Coverage</th>'
+             '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
         evidence = "".join(f"<li>{_esc(e)}</li>" for e in pillar.evidence)
         share = _weight_share(pillar.name, weights)
@@ -170,25 +189,23 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             + f'<td class="n">{pillar.coverage * 100:.0f}%</td>'
             f'<td><ul class="ev">{evidence}</ul></td></tr>')
     parts.append('</tbody></table></div>')
+    return "".join(parts)
 
-    for note in assessment.notes:
-        parts.append(f'<div class="note">{_esc(note)}</div>')
 
-    top = sorted(findings, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))[:10]
-    if top:
-        parts.append('<div class="tw"><table><thead><tr><th>Most significant CVEs</th>'
-                     '<th>CVSS</th><th>EPSS</th><th>KEV</th><th>Advisory</th>'
-                     '</tr></thead><tbody>')
-        for f in top:
-            parts.append(
-                f'<tr><td><code>{_esc(f.cve)}</code>'
-                + ('' if f.decided else ' <span class="meta">needs review</span>')
-                + f'</td><td class="n">{"" if f.cvss is None else f"{f.cvss:.1f}"}</td>'
-                f'<td class="n">{"" if f.epss is None else f"{f.epss:.3f}"}</td>'
-                f'<td class="n">{"yes" if f.in_kev else ""}</td>'
-                f'<td><code>{_esc(f.advisory_id)}</code></td></tr>')
-        parts.append('</tbody></table></div>')
-
+def _cve_table(findings):
+    """The most significant CVEs, worst exploitation probability first."""
+    parts = ['<div class="tw"><table><thead><tr><th>Most significant CVEs</th>'
+             '<th>CVSS</th><th>EPSS</th><th>KEV</th><th>Advisory</th>'
+             '</tr></thead><tbody>']
+    for f in findings:
+        parts.append(
+            f'<tr><td><code>{_esc(f.cve)}</code>'
+            + ('' if f.decided else ' <span class="meta">needs review</span>')
+            + f'</td><td class="n">{"" if f.cvss is None else f"{f.cvss:.1f}"}</td>'
+            f'<td class="n">{"" if f.epss is None else f"{f.epss:.3f}"}</td>'
+            f'<td class="n">{"yes" if f.in_kev else ""}</td>'
+            f'<td><code>{_esc(f.advisory_id)}</code></td></tr>')
+    parts.append('</tbody></table></div>')
     return "".join(parts)
 
 

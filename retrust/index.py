@@ -98,6 +98,7 @@ def provenance(connection):
 
 def build(db_path, csaf_root, progress=None):
     """Ingest every CSAF advisory under `csaf_root` into a fresh index."""
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     Path(db_path).unlink(missing_ok=True)
     connection = connect(db_path)
     counts = {"advisories": 0, "products": 0, "cve_links": 0}
@@ -157,7 +158,7 @@ def load_exploitation(connection, kev_path=None, epss_path=None):
 
     loaded = {"kev": 0, "epss": 0}
     with connection:
-        if kev_path and Path(kev_path).exists():
+        if kev_path:
             catalog = json.loads(Path(kev_path).read_text())
             rows = [
                 (item["cveID"], 1,
@@ -171,7 +172,7 @@ def load_exploitation(connection, kev_path=None, epss_path=None):
             loaded["kev"] = len(rows)
             record_provenance(connection, "CISA KEV", f"{len(rows):,} entries")
 
-        if epss_path and Path(epss_path).exists():
+        if epss_path:
             # Only CVEs we actually reference, so the index stays small.
             wanted = {r[0] for r in connection.execute("SELECT DISTINCT cve FROM affected")}
             with open(epss_path, newline="") as handle:

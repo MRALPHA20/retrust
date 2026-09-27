@@ -256,3 +256,47 @@ def test_report_footer_cites_provenance(workspace):
         weights={"exploitation": 1.0}, config_source="built-in defaults")
     assert "How this was produced" in markup
     assert "CISA OT advisories" in markup
+
+
+# --- a gated product is not the same as an unassessable one ----------------
+
+def _blocked():
+    from retrust import score
+    from retrust.match import Resolution
+    assessment = score.blocked(
+        "Hikvision Camera",
+        [{"gate": "Named on a covered list", "detail": "x", "source": "https://fcc.gov"}],
+        "vendor not in corpus")
+    return assessment, Resolution(query="x", abstained=True,
+                                  reason="vendor not in corpus"), []
+
+
+def test_gated_product_is_not_labelled_missing_data():
+    """The bug this guards: a disqualified vendor reported as "not enough data".
+
+    The tool did decide -- a gate disqualified it. Saying the data was thin
+    invites the reader to go and find more, which would change nothing.
+    """
+    from retrust import report, score
+    markup = report.render([_blocked()], weights=score.DEFAULT_WEIGHTS)
+    assert "not enough data" not in markup
+    assert "disqualified below" in markup
+    assert "Not assessed." not in markup      # would contradict the gate
+    assert "Hard gate" in markup
+
+
+def test_unassessable_product_still_says_so():
+    from retrust import report, score
+    from retrust.match import Resolution
+    assessment = score.not_assessed("Unknown PLC", "vendor not in corpus")
+    resolution = Resolution(query="x", abstained=True, reason="vendor not in corpus")
+    markup = report.render([(assessment, resolution, [])],
+                           weights=score.DEFAULT_WEIGHTS)
+    assert "not enough data" in markup
+    assert "Not assessed." in markup
+
+
+def test_no_empty_pillar_table_is_rendered():
+    from retrust import report, score
+    markup = report.render([_blocked()], weights=score.DEFAULT_WEIGHTS)
+    assert "<th>Pillar</th>" not in markup
