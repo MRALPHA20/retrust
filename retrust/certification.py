@@ -21,8 +21,6 @@ Both lists are small and change slowly, so a snapshot is cached in data/ and
 refreshed on demand rather than fetched on every run.
 """
 
-from __future__ import annotations
-
 import csv
 import html
 import json

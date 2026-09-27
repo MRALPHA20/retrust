@@ -14,8 +14,6 @@ publish. Two things are measured, and they are deliberately kept apart:
               advisory back. This tests the matcher, not the parser.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
 

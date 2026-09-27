@@ -16,8 +16,6 @@ so this drops into CI or a procurement pipeline as a gate rather than something
 somebody has to read and interpret.
 """
 
-from __future__ import annotations
-
 import csv
 import json
 from dataclasses import asdict, is_dataclass

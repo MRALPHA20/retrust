@@ -17,8 +17,6 @@ Every command works offline against the index built by `ingest`, so results are
 reproducible and a demo never depends on the network.
 """
 
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path

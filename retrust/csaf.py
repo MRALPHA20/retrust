@@ -14,8 +14,6 @@ Across CISA's OT corpus only 0.1% of product entries carry a CPE at all, while
 the product name -- so order numbers are what we key on.
 """
 
-from __future__ import annotations
-
 import json
 import re
 from dataclasses import dataclass, field

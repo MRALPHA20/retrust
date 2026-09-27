@@ -6,8 +6,6 @@ Keeping it in SQLite means a scoring run needs no network, so results are
 reproducible and a demo never depends on conference wifi.
 """
 
-from __future__ import annotations
-
 import re
 import sqlite3
 from pathlib import Path

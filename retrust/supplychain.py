@@ -21,8 +21,6 @@ Two kinds of list:
                     with a citation on every entry.
 """
 
-from __future__ import annotations
-
 import csv
 import json
 import re
@@ -250,7 +248,10 @@ def gates_for(index, vendor):
         gates.append({
             "gate": label,
             "detail": f"{vendor} matches {hit['name']!r} on {hit['source']}"
-                      + (f" ({hit['programs']})" if hit.get("programs") else ""),
+                      + (f" ({hit['programs']})" if hit.get("programs") else "")
+                      + ". Confirm this is the same legal entity before acting: "
+                        "company names are not unique, and ReTrust matches on "
+                        "name alone.",
             "source": hit["url"] or hit["source"],
         })
     return gates

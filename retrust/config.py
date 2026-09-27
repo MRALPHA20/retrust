@@ -10,8 +10,6 @@ The format is JSON because it needs no dependencies and a procurement engineer
 can edit it without learning anything new.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 

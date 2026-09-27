@@ -11,8 +11,6 @@ and nothing else. Pillow, if installed, trims the blank tail off a full-page
 capture; without it the capture still works, just padded.
 """
 
-from __future__ import annotations
-
 import re
 import shutil
 import subprocess

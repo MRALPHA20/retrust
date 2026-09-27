@@ -14,13 +14,11 @@ rather than a weak guess: a wrong answer about whether a PLC is vulnerable is
 far more costly than "needs review".
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
 
 from .index import normalize_name, normalize_order_number, normalize_vendor
-from .version import affects, is_determinate
+from .version import affects
 
 MIN_CONFIDENCE = 0.55
 

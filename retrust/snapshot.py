@@ -16,8 +16,6 @@ The format is a zip holding the SQLite index and the cached auxiliary lists,
 plus a manifest recording what went in and when.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import shutil

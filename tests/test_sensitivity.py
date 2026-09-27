@@ -331,3 +331,57 @@ def test_screening_refresh_reports_a_network_failure_clearly(tmp_path, monkeypat
                         lambda *a, **k: (_ for _ in ()).throw(OSError("no route")))
     with pytest.raises(SystemExit, match="Could not fetch"):
         supplychain.refresh(tmp_path)
+
+
+# --- the pillar registry keeps its consumers in step ------------------------
+
+def test_one_registry_drives_every_consumer():
+    """The bug this guards: four lists that had to be edited together.
+
+    assess() previously paired a list of scorer calls against a parallel list of
+    weight keys by index. Inserting a pillar in the middle of one and not the
+    other would have silently attached every later weight to the wrong pillar --
+    no error, just wrong numbers.
+    """
+    from retrust import report, score, sensitivity
+
+    keys = [spec.key for spec in score.PILLARS]
+    assert list(score.DEFAULT_WEIGHTS) == keys
+    assert list(report.PILLAR_KEYS.values()) == keys
+    assert sensitivity.PILLAR_KEYS == keys
+    assert [spec.name for spec in score.PILLARS] == list(report.PILLAR_KEYS)
+
+
+def test_a_new_pillar_needs_only_one_entry(monkeypatch):
+    """Adding a pillar must not require touching report.py or sensitivity.py."""
+    from retrust import report, score
+
+    extra = score.PillarSpec(
+        "demo", "Demo pillar", 0.10,
+        lambda findings, advisories, certificates, vendor_key:
+            score.Pillar("Demo pillar", 40.0, 1.0, ["a new signal"]))
+    monkeypatch.setattr(score, "PILLARS", [*score.PILLARS, extra])
+    weights = {spec.key: spec.weight for spec in score.PILLARS}
+
+    assessment = score.assess("X", [_finding()], {"A"}, weights=weights)
+    assert "Demo pillar" in [p.name for p in assessment.pillars]
+
+    # The report resolves its weight without any edit to report.py.
+    monkeypatch.setitem(report.PILLAR_KEYS, "Demo pillar", "demo")
+    assert report._weight_share("Demo pillar", weights) == pytest.approx(
+        0.10 / sum(weights.values()))
+
+
+def test_every_pillar_spec_is_wired_correctly():
+    """Each spec's measure() must return a Pillar whose name matches the spec."""
+    from retrust import score
+
+    findings = [_finding()]
+    for spec in score.PILLARS:
+        pillar = spec.measure(findings, {"A"}, (), "siemens")
+        assert isinstance(pillar, score.Pillar)
+        assert pillar.name == spec.name, (
+            f"{spec.key} is labelled {spec.name!r} but produces {pillar.name!r}; "
+            "the report looks its weight up by name, so these must agree")
+        assert 0.0 <= pillar.score <= 100.0
+        assert 0.0 <= pillar.coverage <= 1.0

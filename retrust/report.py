@@ -5,10 +5,10 @@ number shows the evidence behind it and every abstention is stated plainly. No
 external assets, so it can be emailed or opened offline.
 """
 
-from __future__ import annotations
-
 import html
 from datetime import date
+
+from . import score
 
 CSS = """
 :root{--bg:#f4f6f8;--card:#fff;--sunk:#e9edf1;--rule:#ccd4dc;--ink:#16202a;
@@ -62,16 +62,9 @@ tr.unscored .bar i{background:var(--faint);opacity:.55}
 td.na{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
 """
 
-# Pillar display name -> the weights key it is scored under. The share shown in
-# the report is computed from the weights actually in force, because hardcoding
-# the defaults silently misreported every run that used a custom config.
-PILLAR_KEYS = {
-    "Exploitation": "exploitation",
-    "Severity": "severity",
-    "Patch availability": "patchability",
-    "Vendor practice": "vendor_practice",
-    "Certification": "certification",
-}
+# Derived from the one pillar registry, so a new pillar shows a weight here
+# without anyone remembering to update a second list.
+PILLAR_KEYS = {spec.name: spec.key for spec in score.PILLARS}
 
 
 def _weight_share(pillar_name, weights):

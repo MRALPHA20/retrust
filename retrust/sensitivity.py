@@ -17,8 +17,6 @@ actually has: *does A beat B robustly, or only under my particular weighting?*
 Sampling is seeded, so results are reproducible run to run.
 """
 
-from __future__ import annotations
-
 import random
 from dataclasses import dataclass, field
 

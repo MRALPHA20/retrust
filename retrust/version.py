@@ -15,8 +15,6 @@ Anything no parser understands returns None, meaning "needs review". None never
 means "not affected" -- treating an unparseable range as safe would hide risk.
 """
 
-from __future__ import annotations
-
 import re
 
 # Ranges pinned to a serial number or board revision cannot be decided from a

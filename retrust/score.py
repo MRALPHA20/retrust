@@ -18,23 +18,7 @@ Two rules keep this defensible:
     with a weight without having to distrust the whole result.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
-
-# Weights are deliberately editable; these are defaults, not truth.
-#
-# Evidence quality is deliberately absent. It measures how much we know, not how
-# risky the product is, so letting it into the weighted mean would mean "we have
-# good data about how bad this is" raises the score. It is reported alongside the
-# verdict as confidence instead.
-DEFAULT_WEIGHTS = {
-    "exploitation": 0.30,
-    "severity": 0.20,
-    "patchability": 0.20,
-    "vendor_practice": 0.15,
-    "certification": 0.15,
-}
 
 BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
 
@@ -282,6 +266,50 @@ def _certification(certificates):
     return Pillar("Certification", min(100.0, score), 1.0, evidence)
 
 
+@dataclass(frozen=True)
+class PillarSpec:
+    """One scored pillar: its config key, its label, its weight and how to measure it.
+
+    Everything about a pillar lives here, so adding one is a single entry rather
+    than edits to four lists that must stay in step. The previous shape paired a
+    list of scorer calls against a parallel list of weight keys by index, which
+    would have silently attached the wrong weight to the wrong pillar the first
+    time someone inserted one in the middle.
+    """
+
+    key: str            # the name used in the config file
+    name: str           # the label shown in reports
+    weight: float       # default weight, overridable per user
+    measure: object     # (findings, advisories, certificates, vendor_key) -> Pillar
+
+
+PILLARS = [
+    PillarSpec("exploitation", "Exploitation", 0.30,
+               lambda findings, advisories, certificates, vendor_key:
+                   _exploitation(findings)),
+    PillarSpec("severity", "Severity", 0.20,
+               lambda findings, advisories, certificates, vendor_key:
+                   _severity(findings)),
+    PillarSpec("patchability", "Patch availability", 0.20,
+               lambda findings, advisories, certificates, vendor_key:
+                   _patchability(findings)),
+    PillarSpec("vendor_practice", "Vendor practice", 0.15,
+               lambda findings, advisories, certificates, vendor_key:
+                   _vendor_practice(findings, advisories, vendor_key)),
+    PillarSpec("certification", "Certification", 0.15,
+               lambda findings, advisories, certificates, vendor_key:
+                   _certification(certificates)),
+]
+
+# Weights are deliberately editable; these are defaults, not truth.
+#
+# Evidence quality is deliberately absent. It measures how much we know, not how
+# risky the product is, so letting it into the weighted mean would mean "we have
+# good data about how bad this is" raises the score. It is reported alongside the
+# verdict as confidence instead.
+DEFAULT_WEIGHTS = {spec.key: spec.weight for spec in PILLARS}
+
+
 def check_gates(findings, vendor, screening_gates=()):
     """Facts that end the assessment regardless of everything else."""
     gates = list(screening_gates)
@@ -362,19 +390,14 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     weights = weights or DEFAULT_WEIGHTS
     undecided = [f for f in findings if not f.decided]
 
-    risk_pillars = [
-        _exploitation(findings),
-        _severity(findings),
-        _patchability(findings),
-        _vendor_practice(findings, advisories, vendor_key),
-        _certification(certificates),
-    ]
-    keys = ["exploitation", "severity", "patchability", "vendor_practice", "certification"]
+    scored = [(spec, spec.measure(findings, advisories, certificates, vendor_key))
+              for spec in PILLARS]
     confidence = _evidence_quality(findings)
-    pillars = risk_pillars + [confidence]
+    pillars = [pillar for _, pillar in scored] + [confidence]
 
-    total = sum(weights.get(k, 0) for k in keys) or 1.0
-    composite = sum(p.score * weights.get(k, 0) for p, k in zip(risk_pillars, keys)) / total
+    total = sum(weights.get(spec.key, 0) for spec in PILLARS) or 1.0
+    composite = sum(pillar.score * weights.get(spec.key, 0)
+                    for spec, pillar in scored) / total
 
     gates = check_gates(findings, product_label, screening_gates)
     verdict = "AVOID" if gates else next(b for t, b in (bands or BANDS)
