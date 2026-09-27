@@ -19,8 +19,9 @@ Alternative, if a shorter title is wanted:
 
 Every OT security tool analyses equipment you already own. Asset inventory
 platforms fingerprint what is on the wire; firmware tools like EMBA and FACT take
-apart images you already have. Nobody has built the layer above them: a defensible answer to *which of these candidate PLCs should go on
-the purchase order*, at the one moment when a security decision is still cheap.
+apart images you already have. Nobody has built the layer above them: a
+defensible answer to *which of these candidate PLCs should go on the purchase
+order*, at the one moment when a security decision is still cheap.
 
 ReTrust is that layer, and building it surfaced why nobody had. Measured across
 all 27,234 product entries in CISA's OT advisory corpus, exactly **26 carry a CPE
@@ -35,9 +36,9 @@ Covered List, the BIS Entity List, OFAC) sit outside the weighted composite,
 because a weighted disqualifier can be averaged away by good scores elsewhere.
 Raw CVE counts are never scored, since that would rank a diligent discloser below
 a silent one. A product that cannot be resolved gets no score at all, because
-every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags any
-verdict surviving fewer than 90% of random weightings as a judgement call, not a
-result.
+every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags
+any verdict surviving fewer than 90% of random weightings as a judgement call,
+not a result.
 
 `retrust eval` recomputes every accuracy figure from your own index: **93.1%** of
 26,958 version ranges decided deterministically, **99.9%** resolution precision
