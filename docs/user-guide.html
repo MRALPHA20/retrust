@@ -75,6 +75,16 @@ figcaption{font-size:8.5pt;color:var(--faint);margin-top:2mm}
 footer{margin-top:9mm;padding-top:3mm;border-top:1px solid var(--rule);
        font-size:8.5pt;color:var(--faint)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:0 6mm}
+.quick{border:1px solid var(--rule);border-top:3px solid var(--ink);
+       padding:5mm 6mm 4mm;background:var(--field)}
+ol.qs{margin:0;padding-left:6mm;counter-reset:qs}
+ol.qs li{margin:0 0 3mm;padding-left:1mm}
+ol.qs li::marker{font-family:var(--mono);font-size:9pt;color:var(--faint)}
+ol.qs pre{margin:1.5mm 0 0;font-size:8.2pt;padding:2.5mm 3mm}
+.qs-alt{margin:1mm 0 3mm;font-size:10pt;color:var(--soft)}
+.qs-legend{margin:0;font-size:8.6pt;table-layout:auto}
+.qs-legend td{border:0;border-top:1px solid var(--rule);padding:2mm 0 0;
+              text-align:center;color:var(--soft);white-space:nowrap}
 </style>
 
 <div class="plate">
@@ -87,6 +97,37 @@ footer{margin-top:9mm;padding-top:3mm;border-top:1px solid var(--rule);
   </dl>
 </div>
 
+
+<div class="quick">
+  <p class="legend">Quick start</p>
+  <ol class="qs">
+    <li><b>Install and build the database.</b> Python 3.10+ is the only
+        requirement. About 165 MB and two minutes.
+        <pre class="cmd">$ git clone https://github.com/&lt;you&gt;/retrust.git &amp;&amp; cd retrust
+$ python3 -m retrust.cli setup</pre></li>
+    <li><b>Find the product.</b> Advisories spell names their own way, so start
+        by looking yours up.
+        <pre class="cmd">$ retrust search "S7-1500"</pre></li>
+    <li><b>Score it, or compare a shortlist.</b> Add <code>--html decision.html</code>
+        for a report to attach to the requisition.
+        <pre class="cmd">$ retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
+$ retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</pre></li>
+  </ol>
+  <p class="qs-alt"><b>Would rather be asked than type flags?</b>
+     <code>retrust shell</code> gives you a menu covering everything here, prints
+     the equivalent command each time, and saves the result as HTML, JSON or CSV
+     when you are done.</p>
+  <table class="qs-legend">
+    <tr>
+      <td><span class="v-prefer">PREFER</span> &ge;70</td>
+      <td><span class="v-caution">CONDITIONAL</span> &ge;40</td>
+      <td><span class="v-avoid">AVOID</span> below, or gated</td>
+      <td><span class="v-inert">NOT ASSESSED</span> unresolved</td>
+    </tr>
+  </table>
+</div>
+
+<div class="page-break"></div>
 <h2>1 &nbsp; What it is for</h2>
 
 <p>Every other OT security tool analyses equipment you already own. Asset inventory
