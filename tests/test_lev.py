@@ -149,7 +149,7 @@ def test_the_expectation_is_labelled_as_one():
 def test_the_augment_not_replace_rule_is_printed():
     text = _flat(lev.format_report("P", [
         lev.estimate("CVE-1", _series(date(2021, 4, 14), 36, 0.05))]))
-    assert "augments KEV rather than replaces it" in text
+    assert "augments KEV rather than replacing it" in text
     assert "never as a finding that they were exploited" in text
 
 
@@ -160,3 +160,69 @@ def test_the_method_is_attributed():
 
 def test_an_empty_product_says_so():
     assert "No findings to estimate" in lev.format_report("P", [])
+
+
+# --- base rates: does the threshold discriminate? ---------------------------
+
+def _row(cve, value, observations=40):
+    return {"cve": cve, "lev": value, "observations": observations}
+
+
+def test_baseline_reports_the_share_over_the_threshold():
+    rows = [_row("A", 0.5), _row("B", 0.05), _row("C", 0.2), _row("D", 0.01)]
+    summary = lev.baseline(rows)
+    assert summary["cves"] == 4
+    assert summary["share"] == 0.5
+    assert summary["median"] == 0.125
+
+
+def test_baseline_splits_by_how_long_epss_watched():
+    """The confound worth surfacing: LEV accumulates with exposure."""
+    rows = ([_row(f"young{i}", 0.01, observations=6) for i in range(10)]
+            + [_row(f"old{i}", 0.9, observations=60) for i in range(10)])
+    bands = lev.baseline(rows)["bands"]
+    assert bands["under a year"]["share"] == 0.0
+    assert bands["three years or more"]["share"] == 1.0
+
+
+def test_an_empty_corpus_does_not_divide_by_zero():
+    summary = lev.baseline([])
+    assert summary["share"] == 0.0 and summary["median"] == 0.0
+    assert all(b["share"] == 0.0 for b in summary["bands"].values())
+
+
+def test_the_age_confound_is_stated_in_the_audit():
+    text = _flat(lev.format_baseline(lev.baseline([_row("A", 0.5)])))
+    assert "rises with exposure whatever the flaw is worth" in text
+    assert "expected case rather than a finding" in text
+
+
+def test_the_audit_shows_kev_separation_when_it_has_it():
+    text = _flat(lev.format_baseline(
+        lev.baseline([_row("A", 0.5)]),
+        listed={"in_kev": 113, "in_kev_median": 1.0, "not_in_kev_median": 0.162}))
+    assert "signal rather than a clock" in text
+    assert "1.000" in text
+
+
+def test_a_product_count_is_compared_with_the_corpus_not_just_reported():
+    """A count with no base rate reads as alarming whatever its value."""
+    estimates = [lev.estimate(f"CVE-{i}", _series(date(2021, 4, 14), 40, 0.05))
+                 for i in range(10)]
+    text = _flat(lev.format_report("P", estimates, corpus_share=0.57))
+    assert "Across the whole corpus 57% do" in text
+
+
+def test_a_product_at_the_base_rate_is_called_ordinary():
+    estimates = ([lev.estimate(f"CVE-hi{i}", _series(date(2021, 4, 14), 40, 0.05))
+                  for i in range(6)]
+                 + [lev.estimate(f"CVE-lo{i}", _series(date(2021, 4, 14), 2, 0.001))
+                    for i in range(4)])
+    text = _flat(lev.format_report("P", estimates, corpus_share=0.57))
+    assert "about what the corpus does" in text
+
+
+def test_without_a_base_rate_no_comparison_is_invented():
+    estimates = [lev.estimate("CVE-1", _series(date(2021, 4, 14), 40, 0.05))]
+    text = _flat(lev.format_report("P", estimates, corpus_share=None))
+    assert "Across the whole corpus" not in text

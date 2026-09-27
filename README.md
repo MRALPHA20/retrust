@@ -499,6 +499,36 @@ folding it into the composite would change every figure published above and
 invalidate the back-test that checks them. It is reported alongside, like
 evidence confidence, for a reader to weigh.
 
+**Check whether the threshold discriminates before leaning on it.** Run
+`retrust lev --audit`:
+
+```
+  median LEV                       0.167
+  share reaching 0.1                56.9%
+
+BY HOW LONG EPSS HAS SCORED THEM
+  band                      CVEs   median   >= 0.1
+  under a year             1,365    0.008     2.6%
+  one to three years       3,348    0.025    12.6%
+  three years or more      7,290    0.307    87.5%
+
+AGAINST KEV   (the paper's own check: LEV should score KEV high)
+  median LEV, in KEV       1.000   (113 CVEs)
+  median LEV, not in KEV   0.162
+```
+
+Two things fall out, and the tool prints both rather than only the flattering
+one. **LEV works**: CVEs in KEV have a median LEV of 1.000 against 0.162 for the
+rest, a 6× separation, which is the paper's own validation and means LEV is not
+merely measuring age. **But it is cumulative**, so exposure dominates: 2.6% of
+CVEs under a year old clear 0.1, against 87.5% of those over three. A high LEV on
+an old CVE is the expected case, not a finding.
+
+That is why a per-product count is printed with the corpus base rate beside it.
+The Modicon M340 above reads "18 of these (90%) ... across the whole corpus 57%
+do, so this is more than usual", and Siemens TeleControl Server Basic reads "8 of
+these (10%) ... fewer than usual". A count nobody can compare is not a finding.
+
 Three rules taken from the paper itself:
 
 - **The expected count is an expectation over a set**, not a claim about any one

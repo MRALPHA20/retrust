@@ -28,9 +28,12 @@ check() {
 }
 
 # contains <substring> <description> -- <command...>
+#
+# Output is wrapped to the terminal, so a phrase that spans a line break would
+# never match. Whitespace is collapsed to one line before looking.
 contains() {
   local want="$1" what="$2"; shift 3
-  local out; out=$("$@" 2>&1)
+  local out; out=$("$@" 2>&1 | tr -s '[:space:]' ' ')
   if echo "$out" | grep -qF -- "$want"; then
     printf '  ok    %-52s\n' "$what"
     pass=$((pass + 1))
@@ -90,6 +93,10 @@ contains "expectation over the set" "the expected count is labelled" \
   -- $RETRUST lev --vendor "Schneider Electric" --product "Modicon M340"
 check 2 "an unresolvable product cannot be estimated" -- $RETRUST lev --vendor Nobody --product Nothing
 check 0 "one CVE by name"                           -- $RETRUST lev --cve CVE-2015-7937
+check 0 "the audit prints corpus base rates"        -- $RETRUST lev --audit
+contains "Across the whole corpus" "a count is compared, not just reported" \
+  -- $RETRUST lev --vendor "Schneider Electric" --product "Modicon M340"
+contains "rises with exposure" "the age confound is surfaced" -- $RETRUST lev --audit
 
 echo
 echo "== ssvc =="

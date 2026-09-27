@@ -637,6 +637,25 @@ def cmd_search(args):
     return 0 if hits else 1
 
 
+_NO_HISTORY = (
+    "No EPSS history loaded, so LEV cannot be estimated.\n"
+    "LEV composes a CVE's EPSS scores across its whole life; today's\n"
+    "scores alone cannot produce it. Fetch the history first:\n\n"
+    "  retrust lev --update\n")
+
+
+def _store_lev(connection):
+    """Estimate and cache LEV for every corpus CVE with history."""
+    rows = list(connection.execute(
+        "SELECT DISTINCT a.cve, COALESCE(e.in_kev, 0) in_kev, e.epss"
+        "  FROM affected a LEFT JOIN exploitation e ON e.cve = a.cve"))
+    history = index.epss_history(connection, [r["cve"] for r in rows])
+    estimates = [lev.estimate(r["cve"], history[r["cve"]],
+                              in_kev=bool(r["in_kev"]), current_epss=r["epss"])
+                 for r in rows if history.get(r["cve"])]
+    return index.store_lev(connection, estimates)
+
+
 def cmd_lev(args):
     """Estimate how likely a product's flaws are to have been exploited already."""
     connection = _open(args.db)
@@ -652,13 +671,26 @@ def cmd_lev(args):
               f"{result['already_present']}, unavailable {result['unavailable']}")
         counts = index.load_epss_history(connection, bootstrap.history_files(args.data))
         print(f"  loaded {counts['scores']:,} scores across {counts['days']:,} days")
+        print("  estimating LEV for every CVE in the corpus ...")
+        print(f"  cached {_store_lev(connection):,} estimates")
+        return 0
+
+    if args.audit:
+        if not index.has_epss_history(connection):
+            print(_NO_HISTORY)
+            return 2
+        rows = index.lev_estimates(connection)
+        kev = {r["cve"] for r in connection.execute(
+            "SELECT cve FROM exploitation WHERE in_kev = 1")}
+        listed = [r["lev"] for r in rows if r["cve"] in kev]
+        unlisted = [r["lev"] for r in rows if r["cve"] not in kev]
+        print(lev.format_baseline(lev.baseline(rows), listed={
+            "in_kev": len(listed), "in_kev_median": lev._median(listed),
+            "not_in_kev_median": lev._median(unlisted)} if listed else None))
         return 0
 
     if not index.has_epss_history(connection):
-        print("No EPSS history loaded, so LEV cannot be estimated.\n"
-              "LEV composes a CVE's EPSS scores across its whole life; today's\n"
-              "scores alone cannot produce it. Fetch the history first:\n\n"
-              "  retrust lev --update\n")
+        print(_NO_HISTORY)
         return 2
 
     if args.cve:
@@ -677,6 +709,11 @@ def cmd_lev(args):
         cves = sorted({f.cve for f in findings})
         exploitation = {f.cve: {"epss": f.epss, "in_kev": f.in_kev} for f in findings}
 
+    # The corpus base rate, so a per-product count can be compared rather than
+    # merely reported. Cheap: it reads the cached estimates, not the history.
+    cached = index.lev_estimates(connection)
+    corpus_share = lev.baseline(cached)["share"] if cached else None
+
     history = index.epss_history(connection, cves)
     estimates = [
         lev.estimate(cve, history.get(cve, []),
@@ -684,7 +721,8 @@ def cmd_lev(args):
                      current_epss=(exploitation.get(cve) or {})["epss"])
         for cve in cves if cve in exploitation
     ]
-    print(lev.format_report(product, estimates, limit=args.limit))
+    print(lev.format_report(product, estimates, limit=args.limit,
+                            corpus_share=corpus_share))
 
     if args.json:
         written = _emit_json(args.json, batch.envelope(
@@ -914,6 +952,8 @@ def build_parser():
     p.add_argument("--cve", action="append", help="estimate one CVE instead")
     p.add_argument("--update", action="store_true",
                    help="fetch and load the EPSS history LEV needs")
+    p.add_argument("--audit", action="store_true",
+                   help="does the threshold discriminate? base rates by CVE age")
     p.add_argument("--data", default="data", help="data directory")
     p.add_argument("--limit", type=int, default=20, help="CVEs to list")
     p.add_argument("--json", metavar="FILE", help='write as JSON; "-" for stdout')

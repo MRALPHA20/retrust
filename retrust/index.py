@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS affected (
 CREATE TABLE IF NOT EXISTS epss_history (
     cve TEXT, day TEXT, score REAL, PRIMARY KEY (cve, day)) WITHOUT ROWID;
 
+-- LEV per CVE, computed once when the history is loaded. Storing it makes the
+-- corpus base rate a SQL aggregate, and a per-product report that cannot cite
+-- its base rate reports a count where it should report a comparison.
+CREATE TABLE IF NOT EXISTS lev_estimate (
+    cve TEXT PRIMARY KEY, lev REAL, observations INTEGER,
+    first_seen TEXT, last_seen TEXT, peak_epss REAL) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS exploitation (
     cve TEXT PRIMARY KEY, epss REAL, in_kev INTEGER DEFAULT 0, ransomware INTEGER DEFAULT 0);
 
@@ -207,6 +214,33 @@ def load_epss_history(connection, paths, progress=None):
         record_provenance(connection, "FIRST EPSS history",
                           f"{days:,} daily snapshots, {loaded:,} scores")
     return {"days": days, "scores": loaded}
+
+
+def store_lev(connection, estimates):
+    """Cache the LEV of every corpus CVE."""
+    with connection:
+        connection.executemany(
+            "INSERT INTO lev_estimate VALUES (?,?,?,?,?,?)"
+            " ON CONFLICT(cve) DO UPDATE SET lev=excluded.lev,"
+            " observations=excluded.observations, first_seen=excluded.first_seen,"
+            " last_seen=excluded.last_seen, peak_epss=excluded.peak_epss",
+            [(e.cve, e.lev, e.observations, e.first_seen, e.last_seen, e.peak_epss)
+             for e in estimates])
+    return len(estimates)
+
+
+def lev_estimates(connection, cves=None):
+    """Cached LEV rows, for the CVEs asked about or all of them."""
+    if cves is None:
+        return [dict(r) for r in connection.execute("SELECT * FROM lev_estimate")]
+    cves = sorted(set(cves))
+    found = []
+    for start in range(0, len(cves), 500):
+        chunk = cves[start:start + 500]
+        found += [dict(r) for r in connection.execute(
+            f"SELECT * FROM lev_estimate WHERE cve IN ({','.join('?' * len(chunk))})",
+            chunk)]
+    return found
 
 
 def epss_history(connection, cves):

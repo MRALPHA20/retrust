@@ -125,7 +125,7 @@ def sample_days(start=FIRST_EPSS_DAY, end=None, spacing=WINDOW):
     return days
 
 
-def format_report(product, estimates, limit=20):
+def format_report(product, estimates, limit=20, corpus_share=None):
     """The printed estimate, likeliest first."""
     if not estimates:
         return f"LIKELY EXPLOITED   {product}\n\nNo findings to estimate."
@@ -162,16 +162,30 @@ def format_report(product, estimates, limit=20):
             lines.append(f"\n{len(listed) - limit} further CVE(s) not listed.")
 
     if unlisted := [e for e in listed if e.unlisted]:
-        lines += ["", _wrap(
-            f"{len(unlisted)} of these reach a LEV of 0.1 or more and are not in"
-            " KEV. NIST's point is that LEV augments KEV rather than replaces"
-            " it, so treat these as worth going and looking at, never as a"
-            " finding that they were exploited.")]
+        share = len(unlisted) / len(listed)
+        note = (f"{len(unlisted)} of these ({share:.0%}) reach a LEV of"
+                f" {WORTH_LOOKING} or more and are not in KEV.")
+        if corpus_share is not None:
+            # A count with no base rate reads as alarming whatever it is. Across
+            # CISA's OT corpus 57% of CVEs clear this bar, so a product at 60%
+            # is ordinary and one at 5% is the interesting case.
+            verdict = ("about what the corpus does" if abs(share - corpus_share) < 0.1
+                       else "more than usual" if share > corpus_share
+                       else "fewer than usual")
+            note += (f" Across the whole corpus {corpus_share:.0%} do, so this is"
+                     f" {verdict}.")
+        lines += ["", _wrap(note + " LEV augments KEV rather than replacing it, so"
+                            " treat these as worth going to look at, never as a"
+                            " finding that they were exploited.")]
     if unscored:
         lines.append(_wrap(
             f"{unscored} finding(s) have no EPSS history at all and are not"
             " estimated. A CVE published since the last snapshot, or one EPSS"
             " has never scored, gets no LEV rather than a zero."))
+    lines.append(_wrap(
+        "LEV is cumulative, so it rises with the years a flaw has been watched."
+        " A high score on an old CVE is the expected case; read each one against"
+        " its own age. `retrust lev --audit` prints those base rates."))
     lines.append(_wrap(
         "Method: NIST CSWP 41, Likely Exploited Vulnerabilities. LEV is a lower"
         " bound derived from a model, so it never overrides KEV; the composite"
@@ -188,3 +202,72 @@ def _wrap(text, width=76):
         else:
             line = f"{line} {word}".strip()
     return "\n".join(out + [line])
+
+
+# LEV accumulates with exposure, so a CVE's score says as much about how long
+# EPSS has watched it as about the flaw. Bands are in 30-day observations.
+AGE_BANDS = ((1, 12, "under a year"), (13, 36, "one to three years"),
+             (37, 999, "three years or more"))
+
+# The threshold at which a CVE absent from KEV is worth a human going to look.
+WORTH_LOOKING = 0.1
+
+
+def baseline(rows, threshold=WORTH_LOOKING):
+    """How much of the corpus clears the threshold, overall and by age.
+
+    Printed beside any per-product count, because "18 of 20" means nothing
+    without knowing that 57% of every CVE in the corpus clears the same bar.
+    A count that cannot be compared is not a finding.
+    """
+    values = [r["lev"] for r in rows]
+    summary = {"cves": len(values),
+               "share": _share(values, threshold),
+               "median": _median(values), "bands": {}}
+    for low, high, label in AGE_BANDS:
+        band = [r["lev"] for r in rows if low <= (r["observations"] or 0) <= high]
+        summary["bands"][label] = {"cves": len(band), "share": _share(band, threshold),
+                                   "median": _median(band)}
+    return summary
+
+
+def _share(values, threshold):
+    return sum(1 for v in values if v >= threshold) / len(values) if values else 0.0
+
+
+def _median(values):
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    return (ordered[middle] if len(ordered) % 2
+            else (ordered[middle - 1] + ordered[middle]) / 2)
+
+
+def format_baseline(summary, listed=None):
+    """What `retrust lev --audit` prints: does the threshold discriminate?"""
+    lines = [f"LEV ACROSS THE WHOLE CORPUS   ({summary['cves']:,} CVEs with history)",
+             "",
+             f"  median LEV                       {summary['median']:.3f}",
+             f"  share reaching {WORTH_LOOKING}              "
+             f"{summary['share']:>7.1%}", ""]
+    lines += ["BY HOW LONG EPSS HAS SCORED THEM",
+              f"  {'band':<22} {'CVEs':>7} {'median':>8} {'>= ' + str(WORTH_LOOKING):>8}"]
+    for label, band in summary["bands"].items():
+        lines.append(f"  {label:<22} {band['cves']:>7,} {band['median']:>8.3f} "
+                     f"{band['share']:>8.1%}")
+    lines += ["", _wrap(
+        "LEV is cumulative, so it rises with exposure whatever the flaw is worth."
+        " That is the metric working as defined, not a defect, but it means a"
+        " high LEV on an old CVE is the expected case rather than a finding."
+        " Read any single score against its own age band.")]
+    if listed:
+        lines += ["", "AGAINST KEV   (the paper's own check: LEV should score KEV high)",
+                  f"  median LEV, in KEV       {listed['in_kev_median']:.3f}"
+                  f"   ({listed['in_kev']:,} CVEs)",
+                  f"  median LEV, not in KEV   {listed['not_in_kev_median']:.3f}",
+                  "",
+                  _wrap("LEV separating the two is what makes it a signal rather"
+                        " than a clock. If the medians matched, it would be"
+                        " measuring age alone.")]
+    return "\n".join(lines)
