@@ -292,6 +292,7 @@ retrust snapshot --restore retrust-snapshot.zip
 | `setup` | fetch every source and build the index |
 | `search QUERY` | find vendors, products or order numbers |
 | `vendor NAME` | what the index holds on one manufacturer |
+| `diff FILE` | re-score a stored result; what changed since |
 | `score` | assess one product |
 | `compare` | rank candidates for one decision |
 | `batch FILE` | score a whole bill of materials, with a CI exit code |
@@ -321,6 +322,48 @@ eval "$(retrust completion bash)"     # or: retrust completion zsh
 The script is generated from the live argument parser, so it cannot go on
 advertising a flag that was renamed. Add the line to `~/.bashrc` or `~/.zshrc`
 to keep it.
+
+## What changed since we approved this?
+
+A procurement decision is made once and lived with for years, but the advisories
+keep coming. `retrust diff` re-scores a stored result against today's index.
+
+```bash
+retrust batch bom.csv --json approved.json     # in January
+retrust diff approved.json                     # in April
+```
+
+```
+NEWLY GATED   a disqualifying fact has appeared
+  Siemens SIMATIC S7-1500 (firmware 3.1.6)      PREFER -> AVOID  (-45.9)  Known exploited vulnerability
+  Hikvision IP Camera                           CONDITIONAL -> AVOID  Named on a covered list
+
+WORSE         the verdict fell
+  Rockwell Automation ControlLogix              PREFER -> CONDITIONAL  (-14.6)
+
+SCORE MOVED   same verdict, different score
+  Moxa EDS-405A                                 CONDITIONAL  -5.5
+
+8 product(s) compared, 4 unchanged.
+```
+
+It exits non-zero when anything was newly gated or fell, so a quarterly
+re-review can run unattended and only raise a flag when there is something to
+read.
+
+Three details that stop it misleading you:
+
+- **Rows pair on the original query, not the printed label.** A stored result
+  records the four fields the buyer supplied, because the label is what we
+  *resolved to* and that can change upstream. Pairing on labels would report a
+  renamed product as one disappearing and an unrelated one arriving.
+- **A new gate outranks a fallen verdict.** A gate is categorical, a KEV listing
+  or a sanctions entry, and says what to do. A score that drifted down says only
+  to look again.
+- **Editing the weights between runs is reported before any finding.** Otherwise
+  a change you made to the config reads as evidence about the corpus. Losing the
+  ability to resolve a product is also kept apart from that product getting
+  worse: we have not learned it is riskier, only that we can no longer say.
 
 ## Automation
 

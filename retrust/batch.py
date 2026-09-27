@@ -106,9 +106,18 @@ def read_candidates(path):
     return rows
 
 
-def to_record(assessment, resolution, stability=None):
+QUERY_FIELDS = ("vendor", "product", "version", "order_number")
+
+
+def to_record(assessment, resolution, stability=None, query=None):
     """Flatten one assessment into a row a spreadsheet or pipeline can read."""
     record = {
+        # What was asked for, kept so a stored result can be re-run against a
+        # newer index months later. `retrust diff` reads exactly this back; the
+        # product label below is what we resolved to, which is not the same
+        # thing and cannot be re-queried.
+        "query": {field: (query or {}).get(field) or None
+                  for field in QUERY_FIELDS},
         "product": assessment.product,
         "verdict": assessment.verdict,
         "score": assessment.score,
@@ -130,7 +139,7 @@ def to_record(assessment, resolution, stability=None):
 
 
 def to_detail(assessment, resolution, findings=(), stability=None,
-              top_cves=10, top_matches=10):
+              top_cves=10, top_matches=10, query=None):
     """One assessment with its full evidence, for `score --json`.
 
     A superset of to_record: every field there appears here with the same name
@@ -139,7 +148,7 @@ def to_detail(assessment, resolution, findings=(), stability=None,
     evidence line behind each pillar, the citation behind each gate, and the
     most significant CVEs.
     """
-    record = to_record(assessment, resolution, stability)
+    record = to_record(assessment, resolution, stability, query)
 
     record["pillars"] = [
         {"name": p.name, "score": round(p.score, 1),

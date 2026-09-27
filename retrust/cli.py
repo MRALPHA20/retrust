@@ -3,6 +3,7 @@
     retrust setup                                     fetch everything, build the index
     retrust search  QUERY                             find vendors, products, order numbers
     retrust vendor  NAME                              what the index knows about a maker
+    retrust diff    previous.json                     what changed since that run
     retrust ingest  --csaf DIR [--kev F] [--epss F]   build the local index
     retrust stats                                     what is in the index
     retrust score   --vendor V --product P [--version X] [--order-number N]
@@ -27,8 +28,8 @@ from pathlib import Path
 
 from .index import normalize_vendor
 from . import (backtest, batch, bootstrap, certification, config, console,
-               dossier, evaluate, index, match, report, score, screenshot,
-               search, sensitivity, snapshot, supplychain)
+               diff, dossier, evaluate, index, match, report, score,
+               screenshot, search, sensitivity, snapshot, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -99,6 +100,11 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
     return assessment, resolution, findings
 
 
+def _query(args):
+    """The four fields a product was asked for by, for re-running it later."""
+    return {field: getattr(args, field, None) for field in batch.QUERY_FIELDS}
+
+
 def _emit_json(path, payload):
     """Write JSON to a file, or to stdout when the path is "-"."""
     text = batch.dumps(payload)
@@ -157,7 +163,8 @@ def cmd_score(args):
                                           bands=context["bands"])
 
     if args.json:
-        detail = batch.to_detail(assessment, resolution, findings, stability)
+        detail = batch.to_detail(assessment, resolution, findings, stability,
+                                 query=_query(args))
         written = _emit_json(args.json, batch.envelope([detail], {
             "weights": context["weights"], "config": context["config_source"],
             "provenance": index.provenance(connection)}))
@@ -167,7 +174,7 @@ def cmd_score(args):
         return batch.exit_code([detail], args.fail_on)
 
     exit_status = batch.exit_code(
-        [batch.to_record(assessment, resolution)], args.fail_on)
+        [batch.to_record(assessment, resolution, query=_query(args))], args.fail_on)
 
     # A screening gate decides the verdict even when the product never resolved,
     # so check the assessment rather than the resolution.
@@ -206,18 +213,21 @@ def cmd_score(args):
 def cmd_compare(args):
     connection = _open(args.db)
     context = _context(config_path=args.config)
-    blocks = []
+    # The query travels with its block: the ranking below reorders these, and a
+    # parallel list would quietly pair each result with somebody else's query.
+    scored = []
     for raw in args.candidate:
         parts = [p.strip() for p in raw.split("|")]
-        vendor, product = parts[0], parts[1] if len(parts) > 1 else None
-        version = parts[2] if len(parts) > 2 else None
-        order_number = parts[3] if len(parts) > 3 else None
-        blocks.append(_assess(connection, vendor, product, version, order_number,
-                              context=context))
+        query = dict(zip(batch.QUERY_FIELDS,
+                         [parts[0]] + [p or None for p in parts[1:4]]))
+        scored.append((_assess(connection, query["vendor"], query.get("product"),
+                               query.get("version"), query.get("order_number"),
+                               context=context), query))
 
     # NOT ASSESSED ranks below AVOID: an unknown is not a recommendation.
     rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
-    blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
+    scored.sort(key=lambda s: (rank.get(s[0][0].verdict, 4), -(s[0][0].score or 0)))
+    blocks = [block for block, _ in scored]
 
     stabilities = {}
     if not args.no_sensitivity:
@@ -262,8 +272,8 @@ def cmd_compare(args):
             stabilities=stabilities, provenance=index.provenance(connection),
             weights=context["weights"], config_source=context["config_source"]))
 
-    records = [batch.to_record(a, r, stabilities.get(a.product))
-               for a, r, _ in blocks]
+    records = [batch.to_record(a, r, stabilities.get(a.product), query)
+               for (a, r, _), query in scored]
     if args.json:
         written = _emit_json(args.json, batch.envelope(records, {
             "candidates": len(records), "weights": context["weights"],
@@ -374,7 +384,7 @@ def cmd_batch(args):
                                               bands=context["bands"])
             stabilities[assessment.product] = stability
         blocks.append(block)
-        records.append(batch.to_record(assessment, resolution, stability))
+        records.append(batch.to_record(assessment, resolution, stability, row))
 
     rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
     records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
@@ -623,6 +633,40 @@ def cmd_search(args):
     return 0 if hits else 1
 
 
+def cmd_diff(args):
+    """Re-score a stored result against today's index and report what moved."""
+    document, previous = diff.read(args.previous)
+    connection = _open(args.db)
+    context = _context(config_path=args.config)
+
+    print(f"Re-scoring {len(previous)} product(s) from {args.previous} ...\n")
+    current = []
+    for record in previous:
+        query = record.get("query") or {}
+        assessment, resolution, _ = _assess(
+            connection, query.get("vendor"), query.get("product"),
+            query.get("version"), query.get("order_number"), context=context)
+        current.append(batch.to_record(assessment, resolution, query=query))
+
+    changes = diff.compare(previous, current)
+    print(diff.format_report(changes, document, context["weights"]))
+
+    if args.json:
+        written = _emit_json(args.json, batch.envelope(
+            [{"product": c.product, "query": c.query, "change": c.kind,
+              "was": c.was, "now": c.now, "score_change": c.drift,
+              "new_gates": c.new_gates} for c in changes],
+            {"compared": len(changes), "source": str(args.previous),
+             "weights": context["weights"],
+             "provenance": index.provenance(connection)}))
+        if written:
+            print(f"\nJSON written to {written}")
+
+    # Non-zero when something got worse, so a scheduled re-review can raise a
+    # flag without anybody reading the output.
+    return 1 if any(c.kind in ("gated", "worse") for c in changes) else 0
+
+
 def cmd_vendor(args):
     """Everything the index knows about one manufacturer."""
     connection = _open(args.db)
@@ -735,6 +779,13 @@ def build_parser():
     p.add_argument("--vendor", help="restrict a product search to one vendor")
     p.add_argument("--limit", type=int, default=20, help="results to show")
     p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("diff", help="re-score a stored result against today's index")
+    p.add_argument("previous", help="JSON written by an earlier score/compare/batch")
+    p.add_argument("--json", metavar="FILE",
+                   help='write the changes as JSON; "-" for stdout')
+    p.add_argument("--config", help="scoring configuration file")
+    p.set_defaults(func=cmd_diff)
 
     p = sub.add_parser("vendor", help="what the index knows about a manufacturer")
     p.add_argument("vendor", nargs="+", help="manufacturer name")

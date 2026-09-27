@@ -83,6 +83,26 @@ check 1 "batch exits 1 on a disqualified part"    -- $RETRUST batch examples/can
 check 0 "batch exits 0 on a clean list"           -- $RETRUST batch examples/approved-bom.csv --no-sensitivity --fail-on never
 
 echo
+echo "== diff: what changed since a stored run =="
+$RETRUST batch examples/candidates.csv --json /tmp/retrust-smoke-before.json \
+  --no-sensitivity >/dev/null 2>&1
+check 0 "an unchanged index reports no change"     -- $RETRUST diff /tmp/retrust-smoke-before.json
+contains "unchanged" "it says how many held still" -- $RETRUST diff /tmp/retrust-smoke-before.json
+# Rewrite one verdict to stand for what January looked like, then diff.
+python3 - <<'EDIT'
+import json
+path = "/tmp/retrust-smoke-before.json"
+d = json.load(open(path))
+for r in d["results"]:
+    if "Hikvision" in r["product"]:
+        r.update(verdict="PREFER", score=88.0, gates=[])
+json.dump(d, open(path, "w"))
+EDIT
+check 1 "a newly gated product exits 1"            -- $RETRUST diff /tmp/retrust-smoke-before.json
+contains "NEWLY GATED" "and is called out as gated" -- $RETRUST diff /tmp/retrust-smoke-before.json
+check 1 "a result with no queries is refused"      -- $RETRUST diff examples/candidates.csv
+
+echo
 echo "== machine-readable output =="
 $RETRUST score --vendor ABB --product "AC 800M" --json - --no-sensitivity 2>/dev/null \
   | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['results'][0]['verdict']" \
