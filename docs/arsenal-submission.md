@@ -15,7 +15,7 @@ Alternative, if a shorter title is wanted:
 
 ---
 
-## Abstract (primary, ~390 words)
+## Abstract (primary, ~600 words)
 
 Every OT security tool on the market analyses equipment you already own. Asset
 inventory platforms fingerprint what is already on the wire; firmware tools like
@@ -51,6 +51,26 @@ vendor that is half the sample is dropped. The demo walks that confounder down
 live, because a scoring tool that cannot show you its own failure mode has not
 earned the verdict it prints.
 
+Two published standards are implemented on top of that, and made to disagree in
+public. `retrust ssvc` places every finding on CERT/CC's SSVC deployer tree,
+reproduced from their repository rather than rewritten, with three of its four
+decision points left for the buyer because they describe a plant this tool has
+never seen. `retrust lev` implements NIST CSWP 41, composing a CVE's EPSS scores
+across its whole life to estimate whether it has probably been exploited already.
+On one real product, Delta Electronics DIAEnergie, SSVC returns 72 findings all
+marked *scheduled* because none are in KEV, while LEV estimates that **23 of
+those same 72 have probably already been exploited**. The tool prints both and
+explains the disagreement instead of picking the flattering one.
+
+That demanded an audit rather than a claim, so `retrust lev --audit` measures
+whether the metric discriminates across all 12,003 corpus CVEs: KEV-listed flaws
+carry a median LEV of 1.000 against 0.162 for the rest, a 6× separation that is
+NIST's own validation check. It also shows the confound in the same table.
+LEV is cumulative, so 2.6% of CVEs under a year old clear the threshold against
+87.5% of those over three, which means a high score on an old CVE is the expected
+case and not a finding. Every per-product count is therefore printed against that
+base rate.
+
 Python 3.10+, no third-party runtime dependencies, Apache-2.0, fully offline
 against a local SQLite index. A clone and one command build the whole thing, so a
 visitor can have it running on their own laptop, against their own bill of
@@ -68,8 +88,12 @@ tooling fails on industrial equipment; declared order numbers are 316× more
 available. Hard gates for known-exploited vulnerabilities and supply-chain
 restrictions sit outside the weighted score. Accuracy (93.1% version-range
 coverage, 99.9% resolution) and a back-test that reports against the tool's own
-interest are both reproducible with one command. Search, vendor profiles and a
-CI-friendly batch mode make it usable on a real bill of materials.
+interest are both reproducible with one command. It also implements CERT/CC's
+SSVC deployer tree and NIST CSWP 41 (Likely Exploited Vulnerabilities), and shows
+where the two disagree: one real product returns 72 findings SSVC calls
+"scheduled" while LEV estimates 23 of them have probably been exploited already.
+Search, vendor profiles, bill-of-materials scoring and a CI exit code make it
+usable on a real purchase order.
 
 ---
 
@@ -102,7 +126,7 @@ Every beat is a command that already works, so nothing has to be staged. Beats 2
 and 3 put the visitor's own equipment on screen, which is what makes a station
 memorable rather than a demo they watched.
 
-1. **The gap, in one table** (3 min). `retrust eval`, whose first block is the
+1. **The gap, in one table** (2 min). `retrust eval`, whose first block is the
    CPE-versus-order-number coverage measured live off the corpus. This is the
    hook: visitors recognise immediately why their existing tooling is quiet about
    OT gear, and it is a command rather than a slide.
@@ -120,13 +144,19 @@ memorable rather than a demo they watched.
 5. **The decision** (6 min). `retrust compare` across six candidates, one gated
    on KEV and one on the FCC Covered List, to the HTML report a buyer attaches to
    the purchase order.
-6. **Attack the score** (6 min). `retrust sensitivity` on a candidate whose
+6. **Attack the score** (5 min). `retrust sensitivity` on a candidate whose
    verdict does *not* survive reweighting. Invite the visitor to disagree with
    the weights, then show `retrust config --init` and re-run under theirs.
-7. **The back-test** (8 min). Pooled +0.432, within-vendor +0.106, −0.187
-   leave-one-out. Walk the confounder down in three commands. This is the beat
-   that separates the tool from a scoring dashboard.
-8. **The gate** (3 min). `retrust batch bom.csv --fail-on unassessed` and its
+7. **Two standards disagreeing** (7 min). On one product, `retrust ssvc` returns
+   72 findings all marked *scheduled*, because nothing is in KEV; `retrust lev`
+   estimates 23 of the same 72 have probably been exploited already. Then
+   `retrust lev --audit` shows why the second number is credible (KEV median LEV
+   1.000 against 0.162) and where it is weak (2.6% of young CVEs clear the
+   threshold against 87.5% of old ones). This is the strongest beat in the set:
+   two published methods, one corpus, an honest account of the gap.
+8. **The back-test** (6 min). Pooled +0.432, within-vendor +0.106, −0.187
+   leave-one-out. Walk the confounder down in three commands.
+9. **The gate** (2 min). `retrust batch bom.csv --fail-on unassessed` and its
    exit code blocking a CI job.
 
 **Takeaway.** Two commands and they have it running: `git clone`, then
@@ -136,14 +166,16 @@ usually means never.
 
 **Fallback.** `retrust demo` runs the whole sequence end to end in one command,
 and `retrust snapshot --restore` pins the exact data, so a station with no
-network still gives the same numbers. `smoke.sh` exercises all 37 command paths
-if something needs checking the morning of.
+network still gives the same numbers. The snapshot is **7.3 MB** and already
+carries the LEV estimates and the EPSS history they were built from, so beat 7
+works offline without re-fetching anything. `smoke.sh` exercises all 63 command
+paths if something needs checking the morning of.
 
 ---
 
 ## Before you submit
 
-- [ ] **Publish the repository.** It is a local git repo with 17 commits and no
+- [ ] **Publish the repository.** It is a local git repo with 23 commits and no
       remote. Arsenal cannot accept a submission without a public code link, and
       this is the only hard blocker.
 - [ ] Replace the `<you>` placeholder in the README clone URL.
@@ -163,7 +195,16 @@ if something needs checking the morning of.
       confirms the README names every command, invents none, and shows no flag on
       a command that does not take it.
 - [ ] Confirm the corpus snapshot date cited in reports is current.
-- [ ] Rehearse beat 2 against a laptop with no network, using the snapshot.
+- [x] **LEV checked before being relied on.** `retrust lev --audit` over all
+      12,003 corpus CVEs with EPSS history: median LEV 1.000 for KEV-listed
+      against 0.162 for the rest (6× separation, NIST's own validation), and the
+      age confound measured at 2.6% / 12.6% / 87.5% clearing the threshold by
+      band. Per-product counts print against that base rate.
+- [ ] Rehearse beats 2 and 7 on a laptop with no network, from the snapshot
+      alone. Beat 2 takes a visitor's arbitrary query and beat 7 needs the LEV
+      tables, so these are the two that can fail in a way the others cannot.
+- [ ] Run `retrust lev --update` on the demo machine, or restore the snapshot,
+      well before the session. The fetch is 67 files and about four minutes.
 
 ---
 
@@ -180,5 +221,9 @@ if something needs checking the morning of.
   category to be the thing a reviewer remembers.
 - **A visitor can drive it.** Search, vendor profiles and a two-command install
   mean they look up their own equipment at the station, not a curated example.
+- **It implements two standards and audits one of them.** CERT/CC's SSVC tree is
+  reproduced from source with a test checking all 72 rows; NIST CSWP 41 is
+  implemented and then measured to see whether its threshold discriminates on OT
+  data at all. The answer is printed either way.
 - **The demo cannot half-fail.** Offline, no dependencies, one-command fallback,
   and a smoke script covering every command path.
