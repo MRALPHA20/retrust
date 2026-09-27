@@ -543,6 +543,31 @@ def cmd_eval(args):
     return 0
 
 
+def _product_args(parser):
+    """The four ways a user can name one product."""
+    parser.add_argument("--vendor")
+    parser.add_argument("--product")
+    parser.add_argument("--version", help="firmware version, e.g. 3.1.6")
+    parser.add_argument("--order-number",
+                        help="manufacturer order number, e.g. 6ES7518-4AX00-1AB0")
+
+
+def _scoring_args(parser, samples=300, fail_on="never"):
+    """Options shared by every command that scores something.
+
+    `fail_on` defaults to "never" for the interactive commands and "avoid" for
+    batch, which exists to gate a pipeline.
+    """
+    parser.add_argument("--config", help=f"scoring weights (default {config.DEFAULT_PATH})")
+    parser.add_argument("--samples", type=int, default=samples,
+                        help=f"weightings to sample for robustness (default {samples})")
+    parser.add_argument("--no-sensitivity", action="store_true",
+                        help="skip the weight-robustness check (faster)")
+    parser.add_argument("--fail-on", choices=["avoid", "unassessed", "never"],
+                        default=fail_on,
+                        help=f"what makes the exit code non-zero (default: {fail_on})")
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="retrust",
@@ -560,19 +585,11 @@ def build_parser():
     p.set_defaults(func=cmd_stats)
 
     p = sub.add_parser("score", help="assess one product")
-    p.add_argument("--vendor")
-    p.add_argument("--product")
-    p.add_argument("--version", help="firmware version, e.g. 3.1.6")
-    p.add_argument("--order-number", help="manufacturer order number, e.g. 6ES7518-4AX00-1AB0")
+    _product_args(p)
     p.add_argument("--html", help="also write an HTML report here")
     p.add_argument("--json", metavar="FILE",
                    help='write the full assessment as JSON; "-" for stdout')
-    p.add_argument("--config")
-    p.add_argument("--samples", type=int, default=300)
-    p.add_argument("--no-sensitivity", action="store_true")
-    p.add_argument("--fail-on", choices=["avoid", "unassessed", "never"],
-                   default="never",
-                   help="what makes the exit code non-zero (default: never)")
+    _scoring_args(p)
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("compare", help="rank candidate products for one decision")
@@ -582,13 +599,7 @@ def build_parser():
     p.add_argument("--html", help="also write an HTML report here")
     p.add_argument("--json", metavar="FILE",
                    help='write the ranking as JSON; "-" for stdout')
-    p.add_argument("--fail-on", choices=["avoid", "unassessed", "never"],
-                   default="never",
-                   help="what makes the exit code non-zero (default: never)")
-    p.add_argument("--no-sensitivity", action="store_true",
-                   help="skip the weight-robustness check (faster)")
-    p.add_argument("--samples", type=int, default=300,
-                   help="weightings to sample for robustness (default 300)")
+    _scoring_args(p)
     p.set_defaults(func=cmd_compare)
 
     p = sub.add_parser("demo", help="run the whole tool end to end")
@@ -603,12 +614,7 @@ def build_parser():
     p.add_argument("--json", help="write results as JSON here")
     p.add_argument("--csv", help="write results as CSV here")
     p.add_argument("--html", help="write an HTML report here")
-    p.add_argument("--config")
-    p.add_argument("--samples", type=int, default=200)
-    p.add_argument("--no-sensitivity", action="store_true")
-    p.add_argument("--fail-on", choices=["avoid", "unassessed", "never"],
-                   default="avoid",
-                   help="what makes the exit code non-zero (default: avoid)")
+    _scoring_args(p, samples=200, fail_on="avoid")
     p.set_defaults(func=cmd_batch)
 
     p = sub.add_parser("screenshot", help="render an HTML report to PNG")
@@ -637,12 +643,8 @@ def build_parser():
 
     p = sub.add_parser("sensitivity",
                        help="how much the verdict depends on the weights")
-    p.add_argument("--vendor")
-    p.add_argument("--product")
-    p.add_argument("--version")
-    p.add_argument("--order-number")
-    p.add_argument("--config")
-    p.add_argument("--samples", type=int, default=500)
+    _product_args(p)
+    _scoring_args(p, samples=500)
     p.set_defaults(func=cmd_sensitivity)
 
     p = sub.add_parser("refresh", help="fetch certification and sanctions sources")
