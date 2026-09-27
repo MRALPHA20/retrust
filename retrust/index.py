@@ -36,6 +36,12 @@ CREATE TABLE IF NOT EXISTS affected (
     advisory_id TEXT, product_id TEXT, cve TEXT, cvss REAL, cwe TEXT,
     remediation TEXT);
 
+-- EPSS scores through time, for the LEV estimate. Only CVEs this corpus names
+-- are kept: the full feed is 250,000 CVEs a day and we would store 249,000 of
+-- them to answer questions nobody can ask of an OT index.
+CREATE TABLE IF NOT EXISTS epss_history (
+    cve TEXT, day TEXT, score REAL, PRIMARY KEY (cve, day)) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS exploitation (
     cve TEXT PRIMARY KEY, epss REAL, in_kev INTEGER DEFAULT 0, ransomware INTEGER DEFAULT 0);
 
@@ -157,6 +163,77 @@ def build(db_path, csaf_root, progress=None):
                       f"{counts['advisories']:,} advisories, "
                       f"{counts['products']:,} products")
     return connection, counts
+
+
+def load_epss_history(connection, paths, progress=None):
+    """Load dated EPSS snapshots, keeping only CVEs the corpus names.
+
+    Each file is one day's scores for every CVE in the world. Filtering to the
+    corpus first turns 250,000 rows a day into about 12,000, which is what makes
+    keeping five years of history a 40 MB table instead of a 4 GB one.
+    """
+    import csv
+    import re
+
+    wanted = {row[0] for row in connection.execute("SELECT DISTINCT cve FROM affected")}
+    loaded, days = 0, 0
+    for path in sorted(paths):
+        # The date lives in the filename; the header comment is not always there.
+        if not (stamp := re.search(r"(\d{4}-\d{2}-\d{2})", Path(path).name)):
+            continue
+        day = stamp.group(1)
+        rows = []
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("#") or line.startswith("cve,"):
+                    continue
+                parts = line.split(",")
+                if len(parts) > 1 and parts[0] in wanted:
+                    try:
+                        rows.append((parts[0], day, float(parts[1])))
+                    except ValueError:      # a malformed row is not a reason to stop
+                        continue
+        if rows:
+            with connection:
+                connection.executemany(
+                    "INSERT INTO epss_history VALUES (?,?,?)"
+                    " ON CONFLICT(cve, day) DO UPDATE SET score=excluded.score", rows)
+            loaded += len(rows)
+            days += 1
+        if progress:
+            progress(day, len(rows))
+
+    if days:
+        record_provenance(connection, "FIRST EPSS history",
+                          f"{days:,} daily snapshots, {loaded:,} scores")
+    return {"days": days, "scores": loaded}
+
+
+def epss_history(connection, cves):
+    """{cve: [(date, score), ...]} for the CVEs asked about."""
+    from datetime import date as _date
+    if not cves:
+        return {}
+    cves = sorted(set(cves))
+    found = {}
+    for start in range(0, len(cves), 500):        # SQLite caps variables per query
+        chunk = cves[start:start + 500]
+        for row in connection.execute(
+            f"SELECT cve, day, score FROM epss_history"
+            f" WHERE cve IN ({','.join('?' * len(chunk))}) ORDER BY cve, day", chunk):
+            found.setdefault(row["cve"], []).append(
+                (_date.fromisoformat(row["day"]), row["score"]))
+    return found
+
+
+def has_epss_history(connection):
+    """Whether any history has been loaded, so callers can abstain rather than
+    report a LEV of zero from a table nobody filled."""
+    try:
+        return connection.execute(
+            "SELECT 1 FROM epss_history LIMIT 1").fetchone() is not None
+    except Exception:                 # an index built before the table existed
+        return False
 
 
 def load_exploitation(connection, kev_path=None, epss_path=None):

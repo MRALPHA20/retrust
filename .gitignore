@@ -43,3 +43,6 @@ htmlcov/
 .idea/
 *.swp
 .DS_Store
+
+# EPSS history snapshots (~107 MB), fetched by `retrust lev --update`.
+data/epss-history/

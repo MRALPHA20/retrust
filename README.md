@@ -295,6 +295,7 @@ retrust snapshot --restore retrust-snapshot.zip
 | `diff FILE` | re-score a stored result; what changed since |
 | `alternatives` | other products in the same vendor family |
 | `ssvc` | place findings on CERT/CC's SSVC deployer tree |
+| `lev` | has this probably been exploited already? (NIST CSWP 41) |
 | `score` | assess one product |
 | `compare` | rank candidates for one decision |
 | `batch FILE` | score a whole bill of materials, with a CI exit code |
@@ -454,6 +455,60 @@ The decision table is CERT/CC's published deployer tree v1.0.0, reproduced from
 their repository rather than rewritten, and a test checks all 72 rows still
 agree with it. `--json` emits the decisions for a pipeline, and the exit code is
 non-zero when anything demands action before the next maintenance window.
+
+## Has this probably been exploited already?
+
+KEV records exploitation somebody observed. EPSS estimates the chance over the
+next thirty days. Neither answers the question a buyer has about a flaw that has
+sat in a product for four years. `retrust lev` implements NIST's Likely Exploited
+Vulnerabilities metric (CSWP 41), which composes a CVE's EPSS scores across its
+whole life.
+
+```bash
+retrust lev --update                                       # once: fetch the history
+retrust lev --vendor "Schneider Electric" --product "Modicon M340"
+```
+
+```
+  CVEs estimated                         20
+  expected already exploited            6.9   (sum of the probabilities)
+  listed in CISA KEV                      0   (observed, not estimated)
+
+CVE                   LEV  EPSS NOW   PEAK  KEV  DAYS  FIRST SCORED
+CVE-2015-7937       0.975     0.074  0.163    -    57  2022-02-08
+CVE-2013-0663       0.725     0.060  0.070    -    57  2022-02-08
+CVE-2018-7240       0.526     0.033  0.033    -    67  2021-04-14
+```
+
+That gap is the whole point. This product has **nothing in KEV**, and its worst
+EPSS today is 0.074, which no threshold would catch. CVE-2015-7937 has been
+sitting at roughly that score every month since 2022, and a flaw that is 7%
+likely every month for five years is very likely by now: LEV puts it at 0.975.
+
+**`--update` fetches about 107 MB**, one EPSS snapshot per thirty days back to
+2021-04-14, when FIRST published the first scores. Thirty days is not a tuning
+choice: EPSS scores the following thirty days, so sampling more often would
+multiply overlapping windows and inflate the result. Only CVEs this corpus names
+are stored, which is what makes five years of history a 40 MB table.
+
+**Without that history the command abstains.** Today's scores cannot produce a
+LEV, and printing one from them would be arithmetic on data that is not there.
+
+**LEV is not in the score, deliberately.** It is a model-derived lower bound, and
+folding it into the composite would change every figure published above and
+invalidate the back-test that checks them. It is reported alongside, like
+evidence confidence, for a reader to weigh.
+
+Three rules taken from the paper itself:
+
+- **The expected count is an expectation over a set**, not a claim about any one
+  CVE. "6.9 of these 20" does not name which.
+- **LEV never overrides KEV.** The composite probability takes the highest of
+  KEV, LEV and current EPSS rather than averaging them: KEV is an observation
+  and LEV is a model, and an average would let the model talk down something
+  somebody watched happen.
+- **It augments KEV rather than replacing it.** A high LEV on a CVE absent from
+  KEV is a prompt to go and look, never a finding that it was exploited.
 
 ## Automation
 
@@ -840,7 +895,10 @@ cites each one in every report footer:
 - CISA ICS advisories, from the [cisagov/CSAF](https://github.com/cisagov/CSAF)
   repository (US Government work).
 - [CISA Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog).
-- [FIRST EPSS](https://www.first.org/epss/), used under FIRST's terms.
+- [FIRST EPSS](https://www.first.org/epss/), used under FIRST's terms,
+  including the dated snapshots the LEV estimate composes.
+- [NIST CSWP 41](https://csrc.nist.gov/pubs/cswp/41/likely-exploited-vulnerabilities/final),
+  Likely Exploited Vulnerabilities, implemented in `retrust/lev.py`.
 - [ISASecure](https://isasecure.org/) certified product listings.
 - [Common Criteria](https://www.commoncriteriaportal.org/) certified products.
 - [CERT/CC SSVC](https://github.com/CERTCC/SSVC) deployer decision table

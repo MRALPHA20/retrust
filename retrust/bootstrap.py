@@ -105,6 +105,41 @@ def fetch_feed(data_dir="data", name="kev", force=False):
     return f"{size / 1e6:.1f} MB"
 
 
+EPSS_DAY_URL = "https://epss.empiricalsecurity.com/epss_scores-{day}.csv.gz"
+
+
+def fetch_epss_history(data_dir="data", days=(), force=False, progress=None):
+    """Fetch one EPSS snapshot per sampled day, for the LEV estimate.
+
+    About 1.6 MB each and roughly seventy of them across EPSS's whole life, so
+    this is opt-in rather than part of setup. Days already on disk are skipped,
+    which is what makes a re-run after an interruption cheap.
+    """
+    directory = Path(data_dir) / "epss-history"
+    directory.mkdir(parents=True, exist_ok=True)
+    fetched, present, missing = 0, 0, 0
+    for day in days:
+        destination = directory / f"epss_scores-{day}.csv"
+        if destination.exists() and not force:
+            present += 1
+            continue
+        try:
+            _download(EPSS_DAY_URL.format(day=day), destination, decompress=True)
+            fetched += 1
+        except Exception:
+            # FIRST has gaps, and a missing day is not a reason to abandon the
+            # rest: LEV composes whatever days it has and says how many.
+            missing += 1
+        if progress:
+            progress(day, fetched, present, missing)
+    return {"fetched": fetched, "already_present": present, "unavailable": missing,
+            "directory": str(directory)}
+
+
+def history_files(data_dir="data"):
+    return sorted((Path(data_dir) / "epss-history").glob("epss_scores-*.csv"))
+
+
 def build_index(data_dir="data", db_path="data/retrust.db"):
     """Ingest the corpus and both exploitation feeds."""
     advisories = corpus_dir(data_dir)

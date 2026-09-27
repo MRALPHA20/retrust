@@ -6,6 +6,7 @@
     retrust diff    previous.json                     what changed since that run
     retrust alternatives --vendor V --product P       others in the same family
     retrust ssvc    --vendor V --product P --exposure open   SSVC deployer decisions
+    retrust lev     --vendor V --product P            likely already exploited?
     retrust ingest  --csaf DIR [--kev F] [--epss F]   build the local index
     retrust stats                                     what is in the index
     retrust score   --vendor V --product P [--version X] [--order-number N]
@@ -31,8 +32,8 @@ from pathlib import Path
 from .index import normalize_vendor
 from . import (alternatives, backtest, batch, bootstrap, certification,
                config, console, diff, dossier, evaluate, index, match,
-               report, score, screenshot, search, sensitivity, snapshot,
-               ssvc, supplychain)
+               lev, report, score, screenshot, search, sensitivity,
+               snapshot, ssvc, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -636,6 +637,70 @@ def cmd_search(args):
     return 0 if hits else 1
 
 
+def cmd_lev(args):
+    """Estimate how likely a product's flaws are to have been exploited already."""
+    connection = _open(args.db)
+
+    if args.update:
+        days = lev.sample_days(end=None)
+        print(f"Fetching {len(days)} EPSS snapshots (about "
+              f"{len(days) * 1.6:.0f} MB) into {args.data}/epss-history ...")
+        result = bootstrap.fetch_epss_history(
+            args.data, [d.isoformat() for d in days],
+            progress=lambda day, f, p, m: print(f"  {day}", end="\r", flush=True))
+        print(f"\n  fetched {result['fetched']}, already present "
+              f"{result['already_present']}, unavailable {result['unavailable']}")
+        counts = index.load_epss_history(connection, bootstrap.history_files(args.data))
+        print(f"  loaded {counts['scores']:,} scores across {counts['days']:,} days")
+        return 0
+
+    if not index.has_epss_history(connection):
+        print("No EPSS history loaded, so LEV cannot be estimated.\n"
+              "LEV composes a CVE's EPSS scores across its whole life; today's\n"
+              "scores alone cannot produce it. Fetch the history first:\n\n"
+              "  retrust lev --update\n")
+        return 2
+
+    if args.cve:
+        cves, product = [c.upper() for c in args.cve], ", ".join(args.cve)
+        exploitation = {row["cve"]: row for row in connection.execute(
+            f"SELECT cve, epss, in_kev FROM exploitation"
+            f" WHERE cve IN ({','.join('?' * len(cves))})", cves)}
+    else:
+        assessment, resolution, findings = _assess(
+            connection, args.vendor, args.product, args.version, args.order_number,
+            context=_context(config_path=args.config))
+        if not resolution.resolved:
+            print(f"{assessment.product}: {resolution.reason}")
+            return 2
+        product = assessment.product
+        cves = sorted({f.cve for f in findings})
+        exploitation = {f.cve: {"epss": f.epss, "in_kev": f.in_kev} for f in findings}
+
+    history = index.epss_history(connection, cves)
+    estimates = [
+        lev.estimate(cve, history.get(cve, []),
+                     in_kev=bool((exploitation.get(cve) or {})["in_kev"]),
+                     current_epss=(exploitation.get(cve) or {})["epss"])
+        for cve in cves if cve in exploitation
+    ]
+    print(lev.format_report(product, estimates, limit=args.limit))
+
+    if args.json:
+        written = _emit_json(args.json, batch.envelope(
+            [{"cve": e.cve, "lev": round(e.lev, 4), "composite": round(e.composite, 4),
+              "in_kev": e.in_kev, "current_epss": e.current_epss,
+              "peak_epss": e.peak_epss, "observations": e.observations,
+              "first_seen": e.first_seen, "last_seen": e.last_seen}
+             for e in sorted(estimates, key=lambda e: -e.lev)],
+            {"product": product, "cves": len(estimates),
+             "method": "NIST CSWP 41 (Likely Exploited Vulnerabilities)",
+             "provenance": index.provenance(connection)}))
+        if written:
+            print(f"\nJSON written to {written}")
+    return 0
+
+
 def cmd_ssvc(args):
     """Place a product's findings on CERT/CC's SSVC deployer tree."""
     connection = _open(args.db)
@@ -843,6 +908,17 @@ def build_parser():
     p.add_argument("--vendor", help="restrict a product search to one vendor")
     p.add_argument("--limit", type=int, default=20, help="results to show")
     p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("lev", help="has this probably been exploited already?")
+    _product_args(p)
+    p.add_argument("--cve", action="append", help="estimate one CVE instead")
+    p.add_argument("--update", action="store_true",
+                   help="fetch and load the EPSS history LEV needs")
+    p.add_argument("--data", default="data", help="data directory")
+    p.add_argument("--limit", type=int, default=20, help="CVEs to list")
+    p.add_argument("--json", metavar="FILE", help='write as JSON; "-" for stdout')
+    p.add_argument("--config", help="scoring configuration file")
+    p.set_defaults(func=cmd_lev)
 
     p = sub.add_parser("ssvc", help="place findings on CERT/CC's SSVC tree")
     _product_args(p)

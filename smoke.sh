@@ -83,6 +83,15 @@ check 1 "batch exits 1 on a disqualified part"    -- $RETRUST batch examples/can
 check 0 "batch exits 0 on a clean list"           -- $RETRUST batch examples/approved-bom.csv --no-sensitivity --fail-on never
 
 echo
+echo "== lev =="
+contains "NIST CSWP 41" "the method is attributed"  -- $RETRUST lev --vendor "Schneider Electric" --product "Modicon M340"
+contains "augments KEV" "augment-not-replace is stated" -- $RETRUST lev --vendor "Schneider Electric" --product "Modicon M340"
+contains "expectation over the set" "the expected count is labelled" \
+  -- $RETRUST lev --vendor "Schneider Electric" --product "Modicon M340"
+check 2 "an unresolvable product cannot be estimated" -- $RETRUST lev --vendor Nobody --product Nothing
+check 0 "one CVE by name"                           -- $RETRUST lev --cve CVE-2015-7937
+
+echo
 echo "== ssvc =="
 SSVC="--exposure controlled --automatable yes --human-impact high"
 check 1 "a KEV finding demands out-of-cycle work"  -- $RETRUST ssvc --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6 $SSVC
