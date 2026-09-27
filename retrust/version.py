@@ -146,12 +146,41 @@ def affects(range_text, version_text):
     if (version := parse_version(version_text)) is None:
         return None
 
-    # A lower and an upper bound together describe one interval, so both must
-    # hold. Bounds of a single kind are alternatives: "<2.0 | <3.1".
-    has_lower = any(op in (">", ">=") for op, _ in constraints)
-    has_upper = any(op in ("<", "<=") for op, _ in constraints)
-    check = all if (has_lower and has_upper) else any
-    return check(_holds(op, version, bound) for op, bound in constraints)
+    # Affected in any one interval means affected.
+    return any(_in_interval(group, version) for group in _intervals(constraints))
+
+
+def _intervals(constraints):
+    """Split a constraint list into the intervals it describes.
+
+    A range can name more than one: ">=1.0|<2.0|>=3.0|<4.0" is two disjoint
+    windows, not four conditions. Treating it as four and requiring all of them
+    is unsatisfiable, and returned a confident "not affected" for a version that
+    really was in the first window -- the most dangerous kind of wrong answer
+    this module can give.
+    """
+    groups, current = [], []
+    for op, bound in constraints:
+        # A lower bound after a closed interval opens the next one.
+        if op in (">", ">=") and any(o in ("<", "<=") for o, _ in current):
+            groups.append(current)
+            current = []
+        current.append((op, bound))
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _in_interval(group, version):
+    """Is the version inside one interval?
+
+    A lower and an upper bound together bracket it, so both must hold. Bounds
+    of a single kind are alternatives: "<2.0 | <3.1" means either.
+    """
+    lowers = [c for c in group if c[0] in (">", ">=")]
+    uppers = [c for c in group if c[0] in ("<", "<=")]
+    check = all if (lowers and uppers) else any
+    return check(_holds(op, version, bound) for op, bound in group)
 
 
 def is_determinate(range_text):

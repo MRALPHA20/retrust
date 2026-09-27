@@ -43,10 +43,18 @@ COMMON_CRITERIA_CSV = "https://www.commoncriteriaportal.org/products/certified_p
 _USER_AGENT = "Mozilla/5.0 (compatible; ReTrust/0.1; +certification refresh)"
 
 
+# Certificate listings are small; anything larger is not what we asked for.
+MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+
+
 def _fetch(url, timeout=60):
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
+        raw = response.read(MAX_DOWNLOAD_BYTES + 1)
+    if len(raw) > MAX_DOWNLOAD_BYTES:
+        raise ValueError(f"{url} returned more than "
+                         f"{MAX_DOWNLOAD_BYTES // 1_000_000} MB; refusing it")
+    return raw.decode("utf-8", errors="replace")
 
 
 def _strip_tags(fragment):
@@ -121,7 +129,15 @@ def refresh(data_dir="data", include_common_criteria=True):
         except Exception as error:
             counts["Common Criteria"] = f"failed: {error}"
 
+    # Never replace a good cache with nothing. If every source failed, the
+    # network is down, not the certificates -- and an empty cache would quietly
+    # rescore every certified vendor as uncertified.
     path = directory / "certifications.json"
+    if not records:
+        counts["cached_to"] = (f"unchanged: every source failed, keeping {path}"
+                               if path.exists() else "nothing fetched, nothing written")
+        return counts
+
     path.write_text(json.dumps(records, indent=1), encoding="utf-8")
     counts["cached_to"] = str(path)
     return counts

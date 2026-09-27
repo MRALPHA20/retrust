@@ -53,6 +53,11 @@ def load(path=None):
         raise SystemExit(
             f"{candidate}: unknown pillar(s) {sorted(unknown)}. "
             f"Valid pillars: {sorted(DEFAULT_WEIGHTS)}")
+    negative = sorted(k for k, v in weights.items() if v < 0)
+    if negative:
+        raise SystemExit(
+            f"{candidate}: negative weight on {negative}. A weight is how much a "
+            "pillar counts, so it cannot be below zero; use 0 to ignore a pillar.")
     if weights and sum(weights.values()) <= 0:
         raise SystemExit(f"{candidate}: weights must not all be zero")
 

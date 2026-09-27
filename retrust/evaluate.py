@@ -154,17 +154,25 @@ def run(connection, sample=400):
     return {"version": coverage, "round_trip": trip}
 
 
+def _share(count, total):
+    """Percentage helper that survives an empty index."""
+    return count / total if total else 0.0
+
+
 def format_report(results):
     """Human-readable summary -- this is what `retrust eval` prints."""
     version, trip = results["version"], results["round_trip"]
+    if not version.total and not trip.attempted:
+        return ("The index is empty, so there is nothing to measure.\n"
+                "Run `retrust ingest --csaf <dir>` first.")
     lines = [
         "VERSION-RANGE COVERAGE",
         f"  ranges examined              {version.total:>8,}",
         f"  decided deterministically    {version.decided:>8,}   {version.coverage:6.2%}",
         f"  undecidable by design        {version.undecidable:>8,}   "
-        f"{version.undecidable / version.total:6.2%}  (serial / revision / date scoped)",
+        f"{_share(version.undecidable, version.total):6.2%}  (serial / revision / date scoped)",
         f"  missed                       {version.missed:>8,}   "
-        f"{version.missed / version.total:6.2%}",
+        f"{_share(version.missed, version.total):6.2%}",
         "",
         f"  accuracy on decidable ranges {version.decidable_accuracy:6.2%}",
         "",
@@ -183,7 +191,7 @@ def format_report(results):
         for method, counts in sorted(trip.by_method.items()):
             total = counts["correct"] + counts["wrong"]
             lines.append(f"    {method:<14} {counts['correct']:>5,}/{total:<5,} "
-                         f"{counts['correct'] / total:6.2%}")
+                         f"{_share(counts['correct'], total):6.2%}")
     if version.examples:
         lines.append("")
         lines.append("  most common unparsed ranges:")

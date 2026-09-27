@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import tempfile
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -29,6 +31,10 @@ FORMAT_VERSION = 1
 
 # Everything a scoring run reads, relative to the data directory.
 CONTENTS = ["retrust.db", "certifications.json", "screening.json"]
+
+# A snapshot of the real corpus is ~24 MB unpacked. This ceiling leaves ample
+# room while refusing an archive that claims to expand to gigabytes.
+MAX_UNPACKED_BYTES = 500 * 1024 * 1024
 
 
 def _digest(path):
@@ -88,19 +94,37 @@ def restore(snapshot_path, data_dir="data", verify=True):
 
     directory = Path(data_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    restored, mismatched = [], []
 
-    with zipfile.ZipFile(snapshot_path) as bundle:
-        for name, meta in manifest["files"].items():
-            bundle.extract(name, directory)
-            if verify and _digest(directory / name) != meta["sha256"]:
-                mismatched.append(name)
-            restored.append(name)
+    # Unpack to a staging directory and verify there before touching anything
+    # live. Extracting first and checking afterwards would destroy a good
+    # working index on the way to reporting that the snapshot was corrupt.
+    with tempfile.TemporaryDirectory(dir=directory.parent) as staging:
+        staged = Path(staging)
+        restored, mismatched = [], []
+        total = 0
 
-    if mismatched:
-        raise SystemExit(
-            f"checksum mismatch on {', '.join(mismatched)}. The snapshot is "
-            "corrupt or was modified; results from it would not be trustworthy.")
+        with zipfile.ZipFile(snapshot_path) as bundle:
+            for name, meta in manifest["files"].items():
+                info = bundle.getinfo(name)
+                total += info.file_size
+                if total > MAX_UNPACKED_BYTES:
+                    raise SystemExit(
+                        f"{snapshot_path} unpacks to more than "
+                        f"{MAX_UNPACKED_BYTES // 1_000_000} MB; refusing to "
+                        "expand it. This is what a decompression bomb looks like.")
+                bundle.extract(name, staged)
+                if verify and _digest(staged / name) != meta["sha256"]:
+                    mismatched.append(name)
+                restored.append(name)
+
+        if mismatched:
+            raise SystemExit(
+                f"checksum mismatch on {', '.join(mismatched)}. The snapshot is "
+                "corrupt or was modified; results from it would not be trustworthy. "
+                "Nothing was changed.")
+
+        for name in restored:
+            shutil.move(str(staged / name), str(directory / name))
 
     return {"restored": restored, "created": manifest.get("created"),
             "note": manifest.get("note", ""), "provenance": manifest.get("provenance", [])}

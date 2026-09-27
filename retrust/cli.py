@@ -33,7 +33,13 @@ DEFAULT_DB = "data/retrust.db"
 def _open(path):
     if not Path(path).exists():
         sys.exit(f"No index at {path}. Run:  retrust ingest --csaf <dir>")
-    return index.connect(path)
+    try:
+        connection = index.connect(path)
+        connection.execute("SELECT COUNT(*) FROM advisory").fetchone()
+    except Exception as error:
+        sys.exit(f"{path} is not a usable ReTrust index ({error}). "
+                 f"Rebuild it with:  retrust ingest --csaf <dir>")
+    return connection
 
 
 def _context(data_dir="data", config_path=None):
@@ -56,6 +62,7 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
     # but fall back to the typed one so screening still runs when nothing matched.
     effective_vendor = (resolution.matches[0].vendor if resolution.matches else vendor)
     screening_gates = supplychain.gates_for(context["screening"], effective_vendor)
+    screening_notes = supplychain.notes_for(context["screening"], effective_vendor)
     certificates = certification.certificates_for(
         context["certificates"], effective_vendor, product)
 
@@ -83,6 +90,7 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                               bands=context.get("bands"),
                               certificates=certificates, screening_gates=screening_gates,
                               vendor_key=normalize_vendor(effective_vendor or ""))
+    assessment.notes.extend(screening_notes)
     assessment.inputs = (findings, advisories, certificates, screening_gates,
                          normalize_vendor(effective_vendor or ''))
     return assessment, resolution, findings
@@ -149,6 +157,9 @@ def cmd_score(args):
             print(f"JSON written to {written}")
         return batch.exit_code([detail], args.fail_on)
 
+    exit_status = batch.exit_code(
+        [batch.to_record(assessment, resolution)], args.fail_on)
+
     # A screening gate decides the verdict even when the product never resolved,
     # so check the assessment rather than the resolution.
     if assessment.verdict == "NOT ASSESSED":
@@ -177,8 +188,10 @@ def cmd_score(args):
 
     if args.html:
         _write_html(args.html, report.render(
-            [(assessment, resolution, findings)], title=assessment.product))
-    return 0
+            [(assessment, resolution, findings)], title=assessment.product,
+            weights=context["weights"], config_source=context["config_source"],
+            provenance=index.provenance(connection)))
+    return exit_status
 
 
 def cmd_compare(args):
@@ -240,17 +253,16 @@ def cmd_compare(args):
             stabilities=stabilities, provenance=index.provenance(connection),
             weights=context["weights"], config_source=context["config_source"]))
 
+    records = [batch.to_record(a, r, stabilities.get(a.product))
+               for a, r, _ in blocks]
     if args.json:
-        records = [batch.to_record(a, r, stabilities.get(a.product))
-                   for a, r, _ in blocks]
         written = _emit_json(args.json, batch.envelope(records, {
             "candidates": len(records), "weights": context["weights"],
             "config": context["config_source"],
             "provenance": index.provenance(connection)}))
         if written:
             print(f"JSON written to {written}")
-        return batch.exit_code(records, args.fail_on)
-    return 0
+    return batch.exit_code(records, args.fail_on)
 
 
 def cmd_config(args):
@@ -341,7 +353,7 @@ def cmd_batch(args):
     candidates = batch.read_candidates(args.input)
     print(f"Scoring {len(candidates)} candidate(s) from {args.input} ...\n")
 
-    blocks, records = [], []
+    blocks, records, stabilities = [], [], {}
     for row in candidates:
         block = _assess(connection, row["vendor"], row["product"],
                         row["version"], row["order_number"], context=context)
@@ -351,6 +363,7 @@ def cmd_batch(args):
             stability = sensitivity.stability(*assessment.inputs,
                                               samples=args.samples,
                                               bands=context["bands"])
+            stabilities[assessment.product] = stability
         blocks.append(block)
         records.append(batch.to_record(assessment, resolution, stability))
 
@@ -378,10 +391,12 @@ def cmd_batch(args):
     if args.csv:
         print(f"  CSV   {batch.write_csv(records, args.csv)}")
     if args.html:
-        stabilities = {b[0].product: s for b, s in
-                       zip(blocks, [None] * len(blocks))} if args.no_sensitivity else {}
+        order = {record["product"]: position
+                 for position, record in enumerate(records)}
+        blocks.sort(key=lambda b: order.get(b[0].product, len(order)))
         _write_html(args.html, report.render(
             blocks, title="Procurement batch review",
+            stabilities=stabilities,
             provenance=index.provenance(connection),
             weights=context["weights"], config_source=context["config_source"]))
 

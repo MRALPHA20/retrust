@@ -5,6 +5,8 @@ legitimate manufacturer is sanctioned is the worst error this tool can make, so
 the false-positive cases below are the point of the file.
 """
 
+import json
+
 import pytest
 
 from retrust import certification, score, supplychain
@@ -176,3 +178,114 @@ def test_patchability_reports_zero_coverage_when_unstated():
     pillar = score._patchability([_finding("unknown")])
     assert pillar.coverage == 0.0
     assert pillar.score == 50.0          # neutral, not a guess
+
+
+# --- the tiering that prevents false accusations ---------------------------
+
+def test_individuals_vessels_and_aircraft_are_never_screened():
+    """The bug this guards: "Baxter" matching a VESSEL named BAXTER.
+
+    The screening list holds 7,652 individuals, 1,540 vessels and 342 aircraft.
+    A hardware manufacturer is none of those, and matching against one produced
+    a hard AVOID on a real medical-device maker.
+    """
+    assert "entity" in supplychain.SCREENABLE_TYPES
+    assert "" in supplychain.SCREENABLE_TYPES
+    for kind in ("individual", "vessel", "aircraft"):
+        assert kind not in supplychain.SCREENABLE_TYPES
+
+
+def test_a_vessel_entry_is_not_indexed(tmp_path):
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "screening.json").write_text(json.dumps([
+        {"name": "BAXTER", "type": "Vessel", "source": "Specially Designated Nationals",
+         "alt_names": [], "programs": "", "country": "", "url": ""},
+        {"name": "Real Bad Company", "type": "Entity",
+         "source": "Entity List (EL) - Bureau of Industry and Security",
+         "alt_names": [], "programs": "", "country": "", "url": ""},
+    ]))
+    index = supplychain.load(directory)
+    assert supplychain.screen(index, "Baxter") == ([], [])
+    blocking, _ = supplychain.screen(index, "Real Bad Company")
+    assert blocking
+
+
+def test_single_word_names_advise_but_do_not_block(tmp_path):
+    """"NAVIS" and "INEA" collide with unrelated manufacturers."""
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "screening.json").write_text(json.dumps([
+        {"name": "NAVIS", "type": "Entity", "source": "Specially Designated Nationals",
+         "alt_names": [], "programs": "", "country": "", "url": ""},
+    ]))
+    index = supplychain.load(directory)
+    blocking, advisory = supplychain.screen(index, "Navis")
+    assert blocking == [], "a one-word name is not enough to accuse a company"
+    assert advisory, "but it must still be reported for review"
+    assert supplychain.gates_for(index, "Navis") == []
+    assert supplychain.notes_for(index, "Navis")
+
+
+def test_alias_matches_advise_but_do_not_block(tmp_path):
+    """"Prima Systems" is an alias of an unrelated listed entity."""
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "screening.json").write_text(json.dumps([
+        {"name": "Scientific Production Enterprise Prima Limited", "type": "Entity",
+         "source": "Entity List (EL) - Bureau of Industry and Security",
+         "alt_names": ["Prima Systems"], "programs": "", "country": "", "url": ""},
+    ]))
+    index = supplychain.load(directory)
+    blocking, advisory = supplychain.screen(index, "Prima Systems")
+    assert blocking == []
+    assert advisory and advisory[0]["matched_as"] == "alias"
+    # The full legal name still blocks.
+    assert supplychain.screen(
+        index, "Scientific Production Enterprise Prima Limited")[0]
+
+
+def test_distinctive_legal_name_still_blocks(tmp_path):
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "screening.json").write_text(json.dumps([
+        {"name": "Planet Technology", "type": "", "alt_names": [],
+         "source": "Entity List (EL) - Bureau of Industry and Security",
+         "programs": "", "country": "", "url": ""},
+    ]))
+    index = supplychain.load(directory)
+    assert supplychain.screen(index, "Planet Technology")[0]
+
+
+def test_advisory_notes_explain_themselves(tmp_path):
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "screening.json").write_text(json.dumps([
+        {"name": "NAVIS", "type": "Entity", "source": "Specially Designated Nationals",
+         "alt_names": [], "programs": "", "country": "", "url": ""},
+    ]))
+    notes = supplychain.notes_for(supplychain.load(directory), "Navis")
+    assert notes and "name collision" in notes[0]
+    assert "check the source" in notes[0]
+
+
+@pytest.mark.skipif(not __import__("pathlib").Path("data/retrust.db").exists(),
+                    reason="needs a built index")
+def test_no_false_positives_across_the_whole_corpus():
+    """Screen every vendor the corpus actually contains, not a chosen few.
+
+    The hand-picked list in this file passed while four real vendors were being
+    wrongly flagged. Only sweeping all of them caught it.
+    """
+    import sqlite3
+    screening = supplychain.load("data")
+    connection = sqlite3.connect("data/retrust.db")
+    vendors = [r[0] for r in connection.execute(
+        "SELECT DISTINCT vendor FROM product WHERE vendor != ''")]
+    assert len(vendors) > 500, "index looks wrong; this test needs the real corpus"
+
+    blocked = {v for v in vendors if supplychain.screen(screening, v)[0]}
+    # Everything blocked must be genuinely listed. This set is reviewed by hand;
+    # anything new appearing here needs a human to confirm before it ships.
+    known_listed = {"Dahua Technology Co, Ltd", "Hikvision", "Planet Technology"}
+    assert blocked <= known_listed, f"new hard-AVOID vendors to verify: {blocked - known_listed}"

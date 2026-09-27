@@ -62,13 +62,25 @@ tr.unscored .bar i{background:var(--faint);opacity:.55}
 td.na{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
 """
 
-WEIGHT_LABEL = {
-    "Exploitation": "0.30",
-    "Severity": "0.20",
-    "Patch availability": "0.20",
-    "Vendor practice": "0.15",
-    "Certification": "0.15",
+# Pillar display name -> the weights key it is scored under. The share shown in
+# the report is computed from the weights actually in force, because hardcoding
+# the defaults silently misreported every run that used a custom config.
+PILLAR_KEYS = {
+    "Exploitation": "exploitation",
+    "Severity": "severity",
+    "Patch availability": "patchability",
+    "Vendor practice": "vendor_practice",
+    "Certification": "certification",
 }
+
+
+def _weight_share(pillar_name, weights):
+    """The share this pillar carries, or None when it is not scored at all."""
+    key = PILLAR_KEYS.get(pillar_name)
+    if key is None or not weights:
+        return None
+    total = sum(weights.values()) or 1.0
+    return weights.get(key, 0.0) / total
 
 def _footer_sources(provenance, weights, config_source):
     """Provenance and weights, so a reader can reproduce or dispute the result."""
@@ -99,7 +111,8 @@ def _esc(text):
     return html.escape(str(text))
 
 
-def _assessment_block(assessment, resolution=None, findings=(), stability=None):
+def _assessment_block(assessment, resolution=None, findings=(), stability=None,
+                      weights=None):
     colour = VERDICT_COLOR.get(assessment.verdict, "var(--soft)")
     parts = [f'<h2>{_esc(assessment.product)}</h2>']
 
@@ -149,7 +162,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None):
                  '<th>Evidence</th></tr></thead><tbody>')
     for pillar in assessment.pillars:
         evidence = "".join(f"<li>{_esc(e)}</li>" for e in pillar.evidence)
-        weight = WEIGHT_LABEL.get(pillar.name)
+        share = _weight_share(pillar.name, weights)
+        weight = None if share is None else f"{share:.2f}"
         # Evidence quality is reported but not scored, and must look different
         # from the pillars that move the number.
         unscored = weight is None
@@ -216,7 +230,8 @@ def render(blocks, title="ReTrust assessment", snapshot="", stabilities=None,
     stabilities = stabilities or {}
     summary = _summary_table(blocks, stabilities) if len(blocks) > 1 else ""
     body = "".join(
-        _assessment_block(a, r, f, stabilities.get(a.product)) for a, r, f in blocks)
+        _assessment_block(a, r, f, stabilities.get(a.product), weights)
+        for a, r, f in blocks)
     return (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"

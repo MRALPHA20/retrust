@@ -41,6 +41,8 @@ class Stability:
     @property
     def dominant(self):
         """The verdict that holds under the most weightings."""
+        if not self.verdicts:
+            return "UNKNOWN"
         return max(self.verdicts.items(), key=lambda kv: kv[1])[0]
 
     @property
@@ -65,6 +67,8 @@ class Stability:
         return round(self.agreement * 100) >= 90
 
     def summary(self):
+        if not self.samples and not self.gated:
+            return "not sampled"
         if self.gated:
             return "decided by a hard gate, so the weighting is irrelevant"
         if self.robust:
@@ -113,6 +117,9 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
         scores.append(result.score)
         verdict = _band(result.score, bands)
         verdicts[verdict] = verdicts.get(verdict, 0) + 1
+
+    if not scores:                  # --samples 0
+        return Stability(samples=0, verdicts={})
 
     scores.sort()
     return Stability(

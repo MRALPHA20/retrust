@@ -252,3 +252,82 @@ def test_snapshot_rejects_a_future_format(data_dir, tmp_path):
 
     with pytest.raises(SystemExit, match="not supported"):
         snapshot.restore(future, tmp_path / "out")
+
+
+# --- snapshot and refresh must fail safe -----------------------------------
+
+def test_corrupt_snapshot_leaves_live_data_intact(data_dir, tmp_path):
+    """The bug this guards: extracting over live data, then verifying.
+
+    A corrupt snapshot would destroy a working index on the way to reporting
+    that the snapshot was corrupt -- the worst possible order of operations.
+    """
+    import zipfile
+    out = tmp_path / "snap.zip"
+    snapshot.create(data_dir, out)
+
+    tampered = tmp_path / "bad.zip"
+    with zipfile.ZipFile(out) as src, zipfile.ZipFile(tampered, "w") as dst:
+        for name in src.namelist():
+            payload = src.read(name)
+            if name == "retrust.db":
+                payload = b"CORRUPTED"
+            dst.writestr(name, payload)
+
+    live = data_dir / "retrust.db"
+    before = live.read_bytes()
+    with pytest.raises(SystemExit, match="checksum mismatch"):
+        snapshot.restore(tampered, data_dir)
+    assert live.read_bytes() == before, "a corrupt snapshot destroyed the live index"
+
+
+def test_snapshot_refuses_a_decompression_bomb(data_dir, tmp_path, monkeypatch):
+    out = tmp_path / "snap.zip"
+    snapshot.create(data_dir, out)
+    monkeypatch.setattr(snapshot, "MAX_UNPACKED_BYTES", 10)
+    with pytest.raises(SystemExit, match="decompression bomb"):
+        snapshot.restore(out, tmp_path / "target")
+
+
+def test_certification_refresh_keeps_cache_when_every_source_fails(tmp_path, monkeypatch):
+    """An empty cache would silently rescore every certified vendor as uncertified."""
+    from retrust import certification
+    directory = tmp_path / "data"
+    directory.mkdir()
+    cache = directory / "certifications.json"
+    cache.write_text(json.dumps(
+        [{"scheme": "IEC 62443-4-2", "vendor": "ABB", "product": "X",
+          "detail": "", "source": "u"}]))
+
+    monkeypatch.setattr(certification, "_fetch",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("network down")))
+    counts = certification.refresh(directory)
+
+    assert "unchanged" in str(counts["cached_to"])
+    assert len(json.loads(cache.read_text())) == 1, "a failed refresh wiped the cache"
+    assert certification.load(directory)      # and it still loads
+
+
+def test_screening_refresh_refuses_to_write_an_empty_list(tmp_path, monkeypatch):
+    """An empty screening list would pass every sanctioned vendor."""
+    from retrust import supplychain
+    directory = tmp_path / "data"
+    directory.mkdir()
+
+    class FakeResponse:
+        def read(self, *_): return b"name,source\n"      # header only, no entities
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(supplychain.urllib.request, "urlopen",
+                        lambda *a, **k: FakeResponse())
+    with pytest.raises(SystemExit, match="empty"):
+        supplychain.refresh(directory)
+
+
+def test_screening_refresh_reports_a_network_failure_clearly(tmp_path, monkeypatch):
+    from retrust import supplychain
+    monkeypatch.setattr(supplychain.urllib.request, "urlopen",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no route")))
+    with pytest.raises(SystemExit, match="Could not fetch"):
+        supplychain.refresh(tmp_path)

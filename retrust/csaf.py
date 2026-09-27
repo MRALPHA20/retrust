@@ -98,14 +98,26 @@ def _walk(branches, inherited=None):
 
 
 def parse(path):
-    """Read one CSAF file. Returns an Advisory, or None if it is not usable."""
+    """Read one CSAF file. Returns an Advisory, or None if it is not usable.
+
+    Deliberately total: any unreadable or structurally odd file yields None
+    rather than an exception. The corpus is ~4,000 files from hundreds of
+    vendors, and one of them having `"document": null` must not abort an ingest
+    of all the rest.
+    """
     try:
-        document = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        return _parse(path)
+    except Exception:           # malformed structure, wrong types, bad encoding
         return None
 
-    meta = document.get("document", {})
-    tracking = meta.get("tracking", {})
+
+def _parse(path):
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        return None
+
+    meta = document.get("document") or {}
+    tracking = meta.get("tracking") or {}
     advisory = Advisory(
         advisory_id=tracking.get("id") or Path(path).stem,
         title=meta.get("title", ""),
@@ -113,16 +125,18 @@ def parse(path):
         source=str(path),
     )
 
-    tree = document.get("product_tree", {})
+    tree = document.get("product_tree") or {}
     leaves = list(_walk(tree.get("branches")))
-    leaves += [({}, p) for p in tree.get("full_product_names", [])]
+    leaves += [({}, p) for p in (tree.get("full_product_names") or [])]
 
     for attributes, entry in leaves:
+        if not isinstance(entry, dict):
+            continue
         product_id = entry.get("product_id")
         if not product_id:
             continue
         name = entry.get("name", "")
-        helper = entry.get("product_identification_helper", {}) or {}
+        helper = entry.get("product_identification_helper") or {}
         order_numbers = set(helper.get("model_numbers") or []) | set(helper.get("skus") or [])
         order_numbers |= find_order_numbers(name)
         order_numbers |= find_order_numbers(attributes.get("product_name", ""))
@@ -141,11 +155,13 @@ def parse(path):
             )
         )
 
-    for vulnerability in document.get("vulnerabilities", []) or []:
+    for vulnerability in document.get("vulnerabilities") or []:
+        if not isinstance(vulnerability, dict):
+            continue
         cve = vulnerability.get("cve")
         if not cve:
             continue
-        status = vulnerability.get("product_status", {}) or {}
+        status = vulnerability.get("product_status") or {}
         affected = list(status.get("known_affected") or [])
 
         cvss = None

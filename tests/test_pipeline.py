@@ -156,3 +156,44 @@ def test_evidence_quality_is_not_in_the_score(db):
     # Evidence quality is present in the output but carries no weight key.
     assert any(p.name == "Evidence quality" for p in assessment.pillars)
     assert "evidence_quality" not in score.DEFAULT_WEIGHTS
+
+
+# --- robustness against bad input ------------------------------------------
+
+MALFORMED = {
+    "not-json.json": "{ this is not json",
+    "null-document.json": '{"document": null}',
+    "top-level-list.json": "[1, 2, 3]",
+    "null-tree.json": '{"document": {}, "product_tree": null}',
+    "null-vuln.json": '{"document":{},"product_tree":{"branches":[]},"vulnerabilities":[null]}',
+    "empty.json": "",
+    "binary.json": "\x00\x01\x02",
+    "wrong-types.json": '{"document": {"tracking": 7}, "product_tree": {"branches": "x"}}',
+}
+
+
+def test_one_bad_advisory_does_not_abort_the_ingest(tmp_path):
+    """The corpus is ~4,000 files from hundreds of vendors.
+
+    One of them having "document": null must not cost us the other 3,936.
+    """
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    (directory / "good.json").write_text(json.dumps(ADVISORY))
+    for name, payload in MALFORMED.items():
+        (directory / name).write_text(payload)
+
+    connection, counts = index.build(str(tmp_path / "t.db"), str(directory))
+    assert counts["advisories"] == 1          # the good one still landed
+    assert index.stats(connection)["cves"] == 2
+
+
+@pytest.mark.parametrize("payload", list(MALFORMED.values()))
+def test_parse_returns_none_rather_than_raising(tmp_path, payload):
+    path = tmp_path / "a.json"
+    path.write_text(payload)
+    assert csaf.parse(path) is None
+
+
+def test_parse_handles_a_missing_file(tmp_path):
+    assert csaf.parse(tmp_path / "absent.json") is None

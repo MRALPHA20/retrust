@@ -144,7 +144,10 @@ class Finding:
     in_kev: bool
     ransomware: bool
     version_range: str
-    decided: bool          # False when the version range could not be parsed
+    # True when this finding's version range was actually evaluated against a
+    # supplied version. With no --version nothing was checked, so this is False
+    # and the evidence line says "not checked" rather than "parsed cleanly".
+    decided: bool
     remediation: str = "unknown"   # vendor_fix / mitigation / workaround / none_available
 
 
@@ -162,12 +165,14 @@ def findings(connection, resolution, version=None):
     for match in resolution.matches:
         # Skip products whose range we can read and that clearly exclude this
         # version. When the range is unparseable we keep the CVE and flag it.
-        decided = True
+        decided = False
         if version and match.version_range:
             verdict = affects(match.version_range, version)
             if verdict is False:
                 continue
             decided = verdict is not None
+        elif not version:
+            decided = False            # no version given: nothing was decided
 
         rows = connection.execute(
             "SELECT a.cve, a.cvss, a.cwe, a.remediation, e.epss, e.in_kev, e.ransomware"

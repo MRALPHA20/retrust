@@ -10,17 +10,20 @@ shows the evidence behind every number.
 
 ```
 $ retrust compare \
-    --candidate "Siemens|SIMATIC S7-1500|3.1.6" \
-    --candidate "Rockwell Automation|ControlLogix" \
+    --candidate "ABB|AC 800M" \
     --candidate "Schneider Electric|Modicon M340" \
-    --candidate "Moxa|EDS-405A"
+    --candidate "Rockwell Automation|ControlLogix" \
+    --candidate "Moxa|EDS-405A" \
+    --candidate "Siemens|SIMATIC S7-1500|3.1.6" \
+    --candidate "Hikvision|IP Camera"
 
-CANDIDATE                                 VERDICT       SCORE  CVES  NOTES
-Schneider Electric Modicon M340           PREFER         70.0    21
-Moxa EDS-405A                             CONDITIONAL    62.5    10
-Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          31.3  1011  Known exploited vulnerability
-Hikvision IP Camera                       AVOID           --      -   Named on a covered list
-ABB RTU500                                NOT ASSESSED    --      -   no product of 'ABB' matched 'RTU500'
+CANDIDATE                                 VERDICT       SCORE  CVES  ROBUST  NOTES
+ABB AC 800M                               PREFER         81.5    10    96%
+Schneider Electric Modicon M340           PREFER         77.2    21    84%
+Rockwell Automation ControlLogix          CONDITIONAL    56.4    35   100%
+Moxa EDS-405A                             CONDITIONAL    55.9    10    89%
+Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.1  1011   gated  Known exploited vulnerability
+Hikvision IP Camera                       AVOID           --      -     -     Named on a covered list
 ```
 
 ---
@@ -159,16 +162,17 @@ retrust batch candidates.csv --json results.json --csv results.csv --html review
 ```
 
 ```
-CANDIDATE                              VERDICT      SCORE  NOTES
-ABB AC 800M                            PREFER        81.5
-Schneider Electric Modicon M340        PREFER        77.2
-Rockwell Automation ControlLogix       CONDITIONAL   56.4
-Moxa EDS-405A                          CONDITIONAL   55.9
-Siemens SIMATIC S7-1500 (fw 3.1.6)     AVOID         39.1  Known exploited vulnerability
-Hikvision IP Camera                    AVOID          --   Named on a covered list
-Acme Widgets Nonexistent 9000          NOT ASSESSED   --   vendor not in the advisory corpus
+CANDIDATE                                     VERDICT      SCORE  NOTES
+ABB AC 800M                                   PREFER        81.5
+Schneider Electric Modicon M340               PREFER        77.2
+Rockwell Automation ControlLogix              CONDITIONAL   56.4
+Moxa EDS-405A                                 CONDITIONAL   55.9
+Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP  AVOID         44.6  Known exploited vulnerability
+Siemens SIMATIC S7-1500 (firmware 3.1.6)      AVOID         39.1  Known exploited vulnerability
+Hikvision IP Camera                           AVOID          --   Named on a covered list
+Acme Widgets Nonexistent 9000                 NOT ASSESSED   --   vendor not in the advisory corpus
 
-  AVOID: 2, CONDITIONAL: 2, NOT ASSESSED: 1, PREFER: 2
+  AVOID: 3, CONDITIONAL: 2, NOT ASSESSED: 1, PREFER: 2
   exit 1: a candidate is disqualified
 ```
 
@@ -317,6 +321,13 @@ how much to trust the verdict, not how safe the product is.
   vendor fix is a gate. Weighted scoring alone could not reach AVOID for one —
   pillars the vendor did well on offset the one that made the product
   unbuyable.
+- **Screening is tiered, because a false accusation is the worst error here.**
+  Only a distinctive legal name on a blocking list stops a purchase. A
+  single-word name or an alias is reported for review instead: screened against
+  all 883 vendors in the corpus, matching on those produced four false
+  positives, including a medical-device maker colliding with a *vessel* named
+  BAXTER on the SDN list. Individuals, vessels and aircraft are excluded
+  outright — a hardware manufacturer is none of them.
 - **Sanctions screening never fuzzy-matches.** Wrongly flagging a real
   manufacturer is the worst error this tool could make, so screening matches
   exact identity-preserving names only. Using the looser vendor normaliser here
@@ -353,17 +364,20 @@ so abstention is a feature rather than a failure.
 | CISA ICS advisories (CSAF 2.0) | authoritative product→CVE mappings | `cisagov/CSAF` on GitHub |
 | CISA KEV | confirmed exploitation, ransomware linkage | JSON feed |
 | FIRST EPSS | exploitation probability, covers 99.7% of OT CVEs | daily CSV |
-| Siemens ProductCERT | 841 signed CSAF advisories | ROLIE feed |
-| Schneider, ABB, Hitachi Energy | vendor CSAF | BSI CSAF aggregator |
+| ISASecure | IEC 62443-4-1/4-2/3-3 certificates | scraped listings |
+| Common Criteria | 2,122 certified products | official CSV |
 | Consolidated Screening List | 26,144 sanctioned/restricted entities | trade.gov CSV |
 | FCC Covered List / NDAA §889 | named covered entities | curated, cited in-repo |
-| ISASecure | 155 IEC 62443-4-1/4-2/3-3 certificates | isasecure.org |
-| Common Criteria | 2,122 certified products | official CSV |
+
+Vendors that run their own CSAF feed (Siemens, Schneider, ABB, Hitachi Energy
+and others, verified via the BSI CSAF aggregator) are used as a *signal* in the
+vendor-practice pillar. ReTrust does not yet ingest those feeds directly —
+CISA's repository already mirrors most of their advisories.
 
 ## Development
 
 ```bash
-python3 -m pytest tests/ -q      # 151 tests, no network needed
+python3 -m pytest tests/ -q      # 214 tests, no network needed
 ```
 
 Layout:

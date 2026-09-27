@@ -108,7 +108,8 @@ def build(db_path, csaf_root, progress=None):
         for advisory in csaf.parse_directory(csaf_root):
             connection.execute(
                 "INSERT OR REPLACE INTO advisory VALUES (?,?,?,?)",
-                (advisory.advisory_id, advisory.title, advisory.released, advisory.source),
+                (advisory.advisory_id, advisory.title, advisory.released,
+                 Path(advisory.source).name),
             )
             counts["advisories"] += 1
 
@@ -142,8 +143,12 @@ def build(db_path, csaf_root, progress=None):
             if progress and counts["advisories"] % 500 == 0:
                 progress(counts)
 
+    # Record what was ingested, not where it happened to sit on this machine:
+    # the absolute path is noise in a shared report and leaks local directory
+    # structure into every snapshot and JSON export.
     record_provenance(connection, "CISA OT advisories (CSAF 2.0)",
-                      f"{counts['advisories']:,} advisories from {csaf_root}")
+                      f"{counts['advisories']:,} advisories, "
+                      f"{counts['products']:,} products")
     return connection, counts
 
 

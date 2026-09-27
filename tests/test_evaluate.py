@@ -247,10 +247,30 @@ def test_format_report_shows_the_numbers_it_measured(db):
 
 
 def test_format_report_handles_an_empty_index(tmp_path):
-    """An empty index must not crash the harness or divide by zero."""
-    directory = tmp_path / "empty"
-    directory.mkdir()
-    connection = index.connect(str(tmp_path / "e.db"))
+    """An empty index must explain itself, not divide by zero.
+
+    `retrust eval` on a fresh clone hits exactly this: the user has not run
+    ingest yet, and a traceback is a worse answer than a sentence.
+    """
     results = {"version": evaluate.Result(), "round_trip": evaluate.RoundTrip()}
-    with pytest.raises(ZeroDivisionError):
-        evaluate.format_report(results)
+    text = evaluate.format_report(results)
+    assert "empty" in text.lower()
+    assert "retrust ingest" in text
+
+
+def test_format_report_survives_a_partial_index():
+    """Coverage measured but nothing round-tripped, and vice versa."""
+    only_versions = {"version": evaluate.Result(total=10, decided=9, missed=1),
+                     "round_trip": evaluate.RoundTrip()}
+    assert "90.00%" in evaluate.format_report(only_versions)
+
+    only_trip = {"version": evaluate.Result(),
+                 "round_trip": evaluate.RoundTrip(attempted=5, correct=5)}
+    assert "100.00%" in evaluate.format_report(only_trip)
+
+
+def test_eval_on_an_empty_index_does_not_crash(tmp_path):
+    connection = index.connect(str(tmp_path / "e.db"))
+    results = evaluate.run(connection, sample=5)
+    assert results["version"].total == 0
+    evaluate.format_report(results)          # must not raise

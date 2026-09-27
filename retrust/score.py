@@ -202,9 +202,14 @@ def _evidence_quality(findings):
     n = len(findings)
     quality = (decided / n + with_cvss / n + with_epss / n) / 3
 
-    evidence = [f"{decided}/{n} version ranges parsed cleanly",
-                f"{with_cvss}/{n} scored by the vendor, {with_epss}/{n} covered by EPSS"]
-    if decided < n:
+    evidence = [
+        f"{decided}/{n} version ranges checked against the firmware you gave"
+        if decided else
+        f"no firmware version supplied, so none of the {n} version ranges were "
+        "checked -- every CVE for this product is in scope",
+        f"{with_cvss}/{n} scored by the vendor, {with_epss}/{n} covered by EPSS",
+    ]
+    if 0 < decided < n:
         evidence.append(f"{n - decided} range(s) need manual review")
     return Pillar("Evidence quality", 100 * quality, quality, evidence)
 
