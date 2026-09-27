@@ -167,6 +167,91 @@ retrust refresh
 
 `make all` does the same thing through the Makefile.
 
+## Find what you are looking for
+
+The corpus names 27,234 product entries under 814 vendor spellings, and scoring
+needs the spelling the advisory used. `retrust search` is how you get it.
+
+```
+$ retrust search S7-1500
+
+4 products matching 'S7-1500', strongest match first:
+
+  Siemens / S7-1500 (when HTTPS active)
+    prefix        --                      1 advisory
+  Siemens / SIMATIC S7-1500 Software Controller
+    tokens        --                      20 advisories
+  Siemens / SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES75...
+    tokens        6ES7518-4AX00-1AB0      16 advisories
+```
+
+Every hit says which test matched it: `exact`, `prefix`, `tokens` (every word of
+your query appears), `substring`, or `similar 0.86` for an edit-distance match.
+A ranked list nobody can explain is only a score in different clothes.
+
+```bash
+retrust search modicon                      # products, the common case
+retrust search --vendors schneider          # vendors, with their corpus weight
+retrust search --order-number 6ES7518       # order numbers, whole or partial
+retrust search --vendor Moxa EDS            # products from one vendor only
+```
+
+**A lookup that fails suggests what to try instead.** This is the part that
+saves the most time: `score` and `vendor` both fall back to it, so a misspelling
+ends in a shortlist instead of `NOT ASSESSED`.
+
+```
+$ retrust vendor Siemems
+
+Vendors in the corpus with a similar name:
+
+VENDOR                                  PRODUCTS  ADVISORIES  MATCHED BY
+Siemens                                   15,015       1,041  similar 0.86
+Simens                                         1           1  similar 0.77
+```
+
+`Simens` is not a typo in this README. It is a misspelling in CISA's own corpus,
+which is the kind of thing keying on exact names quietly loses.
+
+## Vendor profiles
+
+Procurement shortlists suppliers before it shortlists products. `retrust vendor`
+reports what the index holds on one manufacturer.
+
+```
+$ retrust vendor Moxa
+
+VENDOR DOSSIER   Moxa
+  vendor key "moxa" -- 2 spellings in the corpus
+
+WHAT THE INDEX HOLDS
+  advisories                                  51
+  product entries                            152
+  distinct CVEs                              151
+  first advisory                      2013-05-08
+  most recent advisory                2024-09-24
+  CVEs listed in CISA KEV                      0
+  highest CVSS                              10.0
+  median CVSS                                7.6
+
+  These are counts of what has been published, not a verdict. A vendor that
+  discloses diligently shows more advisories than one that stays quiet, so
+  ReTrust does not score or rank vendors.
+
+REMEDIATION   (advisories by the best remedy they offer)
+  a vendor fix                                 7
+  mitigation or workaround only               44
+```
+
+It also lists every spelling of the vendor's name in the corpus (any of them
+works as `--vendor`), whether they run their own CSAF feed, their certificates,
+and their screening status.
+
+**It will not grade a vendor, and says so in its own output.** The rule that
+keeps raw CVE counts out of the product score applies here too, and a
+vendor-level view is where it would be easiest to break by accident. A figure
+that was not measured prints as `not checked`, never as `0`.
+
 ## Use
 
 Not installed? Replace `retrust` with `python3 -m retrust.cli` throughout.
@@ -174,11 +259,6 @@ Not installed? Replace `retrust` with `python3 -m retrust.cli` throughout.
 Run `retrust` on its own to see what the index holds and what to try next.
 
 ```bash
-# Find something. The corpus names 27,234 product entries, so start here
-retrust search S7-1500
-retrust search --vendors schneider
-retrust search --order-number 6ES7518
-
 # Assess one product by its manufacturer order number
 retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
 
@@ -203,6 +283,44 @@ retrust config --init
 retrust snapshot --note "Q4 procurement review"
 retrust snapshot --restore retrust-snapshot.zip
 ```
+
+### Every command
+
+| Command | |
+|---|---|
+| `retrust` | what the index holds, and what to try next |
+| `setup` | fetch every source and build the index |
+| `search QUERY` | find vendors, products or order numbers |
+| `vendor NAME` | what the index holds on one manufacturer |
+| `score` | assess one product |
+| `compare` | rank candidates for one decision |
+| `batch FILE` | score a whole bill of materials, with a CI exit code |
+| `sensitivity` | how much a verdict depends on the weights |
+| `eval` | reproduce the accuracy figures |
+| `backtest` | did the score predict later disclosure? |
+| `stats` | counts from the index |
+| `config` | show or create the scoring weights |
+| `snapshot` | pin the data into one portable file |
+| `ingest` | build the index from a CSAF directory |
+| `refresh` | update the certification and sanctions lists |
+| `screenshot` | render an HTML report to PNG |
+| `demo` | run everything end to end |
+| `completion bash\|zsh` | print a shell completion script |
+
+Two flags work everywhere: `--db PATH` to use an index somewhere other than
+`data/retrust.db`, and `--no-color` to strip the colour. Colour already turns
+itself off when output is not a terminal, when `NO_COLOR` is set, and under
+`TERM=dumb`, so you rarely need the flag.
+
+### Tab completion
+
+```bash
+eval "$(retrust completion bash)"     # or: retrust completion zsh
+```
+
+The script is generated from the live argument parser, so it cannot go on
+advertising a flag that was renamed. Add the line to `~/.bashrc` or `~/.zshrc`
+to keep it.
 
 ## Automation
 
