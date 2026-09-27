@@ -15,12 +15,11 @@ Alternative, if a shorter title is wanted:
 
 ---
 
-## Abstract (primary, ~500 words)
+## Abstract (primary, 500 words)
 
-Every OT security tool on the market analyses equipment you already own. Asset
-inventory platforms fingerprint what is already on the wire; firmware tools like
-EMBA and FACT take apart images you already have. Nobody has built the layer
-above them: a defensible answer to *which of these candidate PLCs should go on
+Every OT security tool analyses equipment you already own. Asset inventory
+platforms fingerprint what is on the wire; firmware tools like EMBA and FACT take
+apart images you already have. Nobody has built the layer above them: a defensible answer to *which of these candidate PLCs should go on
 the purchase order*, at the one moment when a security decision is still cheap.
 
 ReTrust is that layer, and building it surfaced why nobody had. Measured across
@@ -36,9 +35,9 @@ Covered List, the BIS Entity List, OFAC) sit outside the weighted composite,
 because a weighted disqualifier can be averaged away by good scores elsewhere.
 Raw CVE counts are never scored, since that would rank a diligent discloser below
 a silent one. A product that cannot be resolved gets no score at all, because
-every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags
-any verdict that survives fewer than 90% of random weightings as a judgement call
-instead of dressing it in false precision.
+every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags any
+verdict surviving fewer than 90% of random weightings as a judgement call, not a
+result.
 
 `retrust eval` recomputes every accuracy figure from your own index: **93.1%** of
 26,958 version ranges decided deterministically, **99.9%** resolution precision
@@ -55,18 +54,16 @@ public. `retrust ssvc` places every finding on CERT/CC's SSVC deployer tree,
 reproduced from their repository rather than rewritten, with three of its four
 decision points left for the buyer because they describe a plant this tool has
 never seen. `retrust lev` implements NIST CSWP 41, composing a CVE's EPSS scores
-across its whole life. On one real product, Delta Electronics DIAEnergie, SSVC
-returns 72 findings all marked *scheduled* because none are in KEV, while LEV
-estimates that **23 of those same 72 have probably already been exploited**. The
-tool prints both, and `retrust lev --audit` measures whether LEV discriminates at
-all before anyone leans on it.
+across its whole life. On Delta Electronics DIAEnergie, SSVC returns 72 findings
+all marked *scheduled* because none are in KEV, while LEV estimates **23 of those
+same 72 have probably already been exploited**. The tool prints both, and
+`retrust lev --audit` measures whether LEV discriminates before anyone leans on
+it.
 
-It also looks like what it is: the interface follows ISA-101, the HMI standard
-for industrial control rooms, and a menu sits beside the flags for buyers who
-would rather not learn them. Python 3.10+, no third-party dependencies,
-Apache-2.0, fully offline. A clone and one command build the whole thing, so a
-visitor can have it running on their own laptop before they reach the next
-station.
+The interface follows ISA-101, the HMI standard for industrial control rooms, and
+a menu sits beside the flags. Python 3.10+, no dependencies, Apache-2.0, offline:
+a clone and one command build it, so a visitor can have it running on their own
+laptop before reaching the next station.
 
 ---
 
