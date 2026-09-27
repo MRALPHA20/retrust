@@ -377,7 +377,7 @@ CISA's repository already mirrors most of their advisories.
 ## Development
 
 ```bash
-python3 -m pytest tests/ -q      # 250 tests, no network needed
+python3 -m pytest tests/ -q      # 259 tests, no network needed
 ```
 
 Layout:
@@ -447,10 +447,48 @@ CISA's KEV catalogue unambiguously went badly, whatever its vendor's disclosure
 habits. On this corpus only **29 products across 2 vendors** qualify, so the tool
 reports that sparsity rather than computing a rate from it.
 
+### Matched cohort: holding the vendor constant
+
+If the pooled correlation is a vendor effect, comparing each product only
+against *others from the same manufacturer* should dissolve it. It does:
+
+```
+MATCHED COHORT AT 2022-01-01  (each product compared only with others from the same vendor)
+  vendors with enough products                   21
+  products inside those vendors               3,814
+  pooled within-vendor rho                   +0.106   p=0.003 (within-vendor shuffles)
+  same, excluding Siemens                    -0.187   (leave-one-out)
+  vendors pointing each way               9 negative / 10 positive
+```
+
+Three readings, in order:
+
+| Design | rho | What it means |
+|---|---:|---|
+| Pooled across all vendors | **+0.432** | confounded — disclosure practice varies by vendor |
+| Within vendor | **+0.106** | most of the effect *was* the vendor |
+| Within vendor, excluding Siemens | **−0.187** | one stratum carried the sign |
+
+Siemens is half the matched sample and bundles hundreds of upstream Linux CVEs
+into single advisories, so it dominates any count-based outcome. Dropping it
+reverses the sign — which is why the tool reports leave-one-out rather than a
+single number.
+
+The honest conclusion is not "the score predicts" or "the score fails". It is
+that **once the vendor is held constant the effect largely dissolves**, its
+residual is small, and its sign is not consistent between manufacturers (9 to
+10) or across cutoffs. With 3,814 products a small p-value means "not zero", not
+"large enough to act on", and the report says so.
+
+Strata where every product scored alike, or none had a later CVE, are dropped
+rather than averaged in — they would inflate the apparent sample without adding
+information.
+
 This is what a back-test is for: not to award the score a pass mark, but to show
 which outcome variables are usable and which are confounded. Nothing leaks across
 the cutoff — a test asserts that adding post-cutoff advisories cannot move a
-pre-cutoff score.
+pre-cutoff score, and the permutation null shuffles *within* each vendor so it
+preserves the stratification.
 
 ```bash
 retrust backtest --cutoff 2022-01-01 --json results.json

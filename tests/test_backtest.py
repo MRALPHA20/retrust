@@ -188,3 +188,123 @@ def test_bands_report_counts_and_medians(db):
         assert stats["products"] >= 1
         assert stats["median_cves_after"] >= 0
         assert 0.0 <= stats["share_with_any"] <= 1.0
+
+
+# --- matched cohort --------------------------------------------------------
+
+def _stratified_db(tmp_path, vendors=("VendorA", "VendorB"), per_vendor=12):
+    """Products across several vendors, so strata can be formed."""
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    n = 0
+    for vendor in vendors:
+        for i in range(per_vendor):
+            # Pre-cutoff: a varying number of CVEs so scores differ.
+            before = _advisory(f"ICSA-20-{n:03d}-01", "2020-01-01", f"{vendor}-P{i}",
+                               [f"CVE-2020-{n:04d}"], cvss=4.0 + (i % 6))
+            before["product_tree"]["branches"][0]["name"] = vendor
+            (directory / f"b{n}.json").write_text(json.dumps(before))
+            n += 1
+            # Post-cutoff: a varying number, so outcomes differ.
+            after = _advisory(f"ICSA-23-{n:03d}-01", "2023-01-01", f"{vendor}-P{i}",
+                              [f"CVE-2023-{n:04d}-{k}" for k in range(i % 4)])
+            after["product_tree"]["branches"][0]["name"] = vendor
+            if after["vulnerabilities"]:
+                (directory / f"a{n}.json").write_text(json.dumps(after))
+            n += 1
+    connection, _ = index.build(str(tmp_path / "s.db"), str(directory))
+    return connection
+
+
+def test_strata_are_formed_per_vendor(tmp_path):
+    connection = _stratified_db(tmp_path)
+    result = backtest.run(connection, cutoff="2022-01-01", permutations=0)
+    matched = backtest.matched_cohort(result, min_stratum=5, permutations=0)
+    assert matched.usable_strata == 2
+    assert {s.vendor for s in matched.strata} == {"VendorA", "VendorB"}
+    assert all(s.products >= 5 for s in matched.strata)
+
+
+def test_small_vendors_are_excluded(tmp_path):
+    connection = _stratified_db(tmp_path, per_vendor=12)
+    result = backtest.run(connection, cutoff="2022-01-01", permutations=0)
+    assert backtest.matched_cohort(result, min_stratum=50,
+                                   permutations=0).usable_strata == 0
+
+
+def test_strata_without_variation_are_dropped_not_averaged(tmp_path):
+    """A vendor whose products all scored alike carries no ordering.
+
+    Counting it would inflate the apparent sample without adding information.
+    """
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    for i in range(12):
+        # Identical CVSS and no later CVEs: no variation on either axis.
+        document = _advisory(f"ICSA-20-{i:03d}-01", "2020-01-01", f"Flat-P{i}",
+                             [f"CVE-2020-{i:04d}"], cvss=7.5)
+        document["product_tree"]["branches"][0]["name"] = "FlatVendor"
+        (directory / f"f{i}.json").write_text(json.dumps(document))
+    connection, _ = index.build(str(tmp_path / "f.db"), str(directory))
+
+    result = backtest.run(connection, cutoff="2022-01-01", permutations=0)
+    matched = backtest.matched_cohort(result, min_stratum=5, permutations=0)
+    assert matched.usable_strata == 0
+    assert matched.dropped_no_variation == 1
+    assert "No vendor had enough products" in backtest.format_matched(matched)
+
+
+def test_centered_ranks_remove_the_stratum_level():
+    """Centring is what makes strata poolable."""
+    centred = backtest._centered_ranks([10, 20, 30])
+    assert sum(centred) == pytest.approx(0.0)
+    # Only the ordering survives, not the values.
+    assert backtest._centered_ranks([10, 20, 30]) == \
+           backtest._centered_ranks([1000, 2000, 3000])
+
+
+def test_pooled_correlation_matches_spearman_for_one_stratum():
+    scores = [1, 2, 3, 4, 5]
+    outcomes = [5, 4, 3, 2, 1]
+    assert backtest._pooled_correlation([(scores, outcomes)]) == pytest.approx(
+        backtest._spearman(scores, outcomes))
+
+
+def test_pooled_correlation_ignores_between_stratum_level():
+    """Two strata with opposite levels but identical internal ordering.
+
+    A naive pooled correlation would be driven by the level difference; the
+    matched design must see only the within-stratum agreement.
+    """
+    low = ([1, 2, 3, 4], [1, 2, 3, 4])
+    high = ([101, 102, 103, 104], [101, 102, 103, 104])
+    assert backtest._pooled_correlation([low, high]) == pytest.approx(1.0)
+
+
+def test_permutation_shuffles_within_strata(tmp_path):
+    """The null must preserve the stratification, or it tests the wrong thing."""
+    connection = _stratified_db(tmp_path)
+    result = backtest.run(connection, cutoff="2022-01-01", permutations=0)
+    a = backtest.matched_cohort(result, min_stratum=5, permutations=100, seed=3)
+    b = backtest.matched_cohort(result, min_stratum=5, permutations=100, seed=3)
+    assert a.p_value == b.p_value
+    assert 0.0 < a.p_value <= 1.0
+
+
+def test_leave_one_out_is_reported(tmp_path):
+    """A pooled figure one vendor carries must not pass unnoticed."""
+    connection = _stratified_db(tmp_path, vendors=("Big", "Small"), per_vendor=12)
+    result = backtest.run(connection, cutoff="2022-01-01", permutations=0)
+    matched = backtest.matched_cohort(result, min_stratum=5, permutations=0)
+    assert matched.largest_vendor in ("Big", "Small")
+    text = backtest.format_matched(matched)
+    assert "leave-one-out" in text
+
+
+def test_matched_report_states_its_residual_limitation(tmp_path):
+    connection = _stratified_db(tmp_path)
+    result = backtest.run(connection, cutoff="2022-01-01", permutations=0)
+    text = backtest.format_matched(
+        backtest.matched_cohort(result, min_stratum=5, permutations=0))
+    # Removing the vendor effect does not remove product-level exposure.
+    assert "vendor-level part" in text

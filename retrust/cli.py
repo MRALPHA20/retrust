@@ -542,8 +542,15 @@ def cmd_backtest(args):
     result = backtest.run(connection, cutoff=args.cutoff,
                           min_history=args.min_history, limit=args.limit,
                           permutations=args.permutations)
+    matched = None
+    if not args.no_matched:
+        matched = backtest.matched_cohort(result, min_stratum=args.min_stratum,
+                                          permutations=args.permutations)
     if not quiet:
         print(backtest.format_report(result))
+        if matched:
+            print()
+            print(backtest.format_matched(matched))
 
     if args.json:
         payload = batch.envelope(
@@ -560,7 +567,17 @@ def cmd_backtest(args):
                 "kev_vendors": result.kev_vendors,
                 "kev_outcome_measurable": result.kev_is_measurable,
                 "by_band": result.by_band,
-                "interpretation": backtest.interpretation(result)}})
+                "interpretation": backtest.interpretation(result),
+                "matched_cohort": None if not matched else {
+                    "usable_strata": matched.usable_strata,
+                    "products": matched.products,
+                    "rho_within_vendor": round(matched.rho, 4),
+                    "rho_excluding_largest_vendor": round(matched.rho_without_largest, 4),
+                    "largest_vendor": matched.largest_vendor,
+                    "p_value": round(matched.p_value, 4),
+                    "vendors_negative": matched.negative_strata,
+                    "vendors_positive": matched.positive_strata,
+                    "by_vendor": [vars(st) for st in matched.strata]}}})
         if written := _emit_json(args.json, payload):
             print(f"\nJSON written to {written}")
     return 0
@@ -702,6 +719,10 @@ def build_parser():
     p.add_argument("--limit", type=int, help="cap the cohort, for a quick run")
     p.add_argument("--permutations", type=int, default=1000,
                    help="shuffles for the significance control (default 1000)")
+    p.add_argument("--min-stratum", type=int, default=backtest.MIN_STRATUM,
+                   help="products a vendor needs to form a matched stratum")
+    p.add_argument("--no-matched", action="store_true",
+                   help="skip the within-vendor matched comparison")
     p.add_argument("--json", metavar="FILE", help='write results as JSON; "-" for stdout')
     p.set_defaults(func=cmd_backtest)
 

@@ -299,3 +299,229 @@ def format_report(result):
     for line in interpretation(result):
         lines.append(f"  {line}")
     return "\n".join(lines)
+
+
+# --- matched cohort --------------------------------------------------------
+#
+# The pooled correlation above is confounded by the vendor: disclosure practice,
+# deployment scale and advisory-bundling habits all vary between manufacturers
+# and all move the outcome. Comparing products only against their own vendor's
+# other products removes every one of those in a single step, because within a
+# stratum they are held constant by construction.
+#
+# What survives is the question actually worth asking: given two products from
+# the same manufacturer, does the one ReTrust scored lower go on to accumulate
+# more vulnerabilities?
+
+MIN_STRATUM = 10
+
+
+@dataclass
+class Stratum:
+    """One vendor's products, compared only against each other."""
+
+    vendor: str
+    products: int
+    rho: float
+    median_score: float
+    total_cves_after: int
+
+
+@dataclass
+class MatchedResult:
+    cutoff: str
+    strata: list = field(default_factory=list)
+    products: int = 0            # products inside usable strata
+    usable_strata: int = 0
+    dropped_no_variation: int = 0
+    rho: float = 0.0             # pooled within-vendor rank correlation
+    p_value: float = 1.0
+    permutations: int = 0
+    negative_strata: int = 0     # strata pointing the predictive way
+    positive_strata: int = 0
+    rho_without_largest: float = 0.0   # leave-one-out: drop the biggest vendor
+    largest_vendor: str = ""
+
+    @property
+    def predictive(self):
+        return self.rho < 0 and self.p_value < 0.05
+
+
+def _centered_ranks(values):
+    """Ranks within one stratum, centred on the stratum mean.
+
+    Centring is what makes strata poolable: it removes each vendor's level and
+    leaves only the ordering of its own products.
+    """
+    n = len(values)
+    order = sorted(range(n), key=lambda i: values[i])
+    ranks = [0.0] * n
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        shared = (i + j) / 2 + 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = shared
+        i = j + 1
+    mean = sum(ranks) / n
+    return [r - mean for r in ranks]
+
+
+def _pooled_correlation(strata_values):
+    """Pearson on pooled centred ranks -- a stratified Spearman."""
+    xs, ys = [], []
+    for scores, outcomes in strata_values:
+        xs += _centered_ranks(scores)
+        ys += _centered_ranks(outcomes)
+    if len(xs) < 3:
+        return 0.0
+    sxy = sum(a * b for a, b in zip(xs, ys))
+    sxx = sum(a * a for a in xs) ** 0.5
+    syy = sum(b * b for b in ys) ** 0.5
+    return sxy / (sxx * syy) if sxx and syy else 0.0
+
+
+def matched_cohort(result, min_stratum=MIN_STRATUM, permutations=1000, seed=7):
+    """Re-run the comparison within vendors, holding the vendor constant.
+
+    Takes a completed `run()` result so the scoring work is not repeated.
+    """
+    matched = MatchedResult(cutoff=result.cutoff, permutations=permutations)
+
+    groups = {}
+    for outcome in result.outcomes:
+        groups.setdefault(outcome.vendor, []).append(outcome)
+
+    usable = []
+    for vendor, members in sorted(groups.items()):
+        if len(members) < min_stratum:
+            continue
+        scores = [o.score for o in members]
+        after = [o.cves_after for o in members]
+        # A stratum where every product scored the same, or where none had a
+        # later CVE, carries no ordering information. Including it would not
+        # bias the pooled figure, but it would inflate the apparent sample.
+        if len(set(scores)) < 2 or len(set(after)) < 2:
+            matched.dropped_no_variation += 1
+            continue
+
+        usable.append((scores, after))
+        rho = _spearman(scores, after)
+        matched.strata.append(Stratum(
+            vendor=vendor, products=len(members), rho=round(rho, 3),
+            median_score=round(sorted(scores)[len(scores) // 2], 1),
+            total_cves_after=sum(after)))
+        matched.products += len(members)
+        if rho < 0:
+            matched.negative_strata += 1
+        elif rho > 0:
+            matched.positive_strata += 1
+
+    matched.usable_strata = len(usable)
+    if not usable:
+        return matched
+
+    matched.rho = _pooled_correlation(usable)
+
+    # The null must preserve the stratification, so scores are shuffled inside
+    # each vendor rather than across the whole cohort.
+    if permutations > 0:
+        rng = random.Random(seed)
+        as_extreme = 0
+        for _ in range(permutations):
+            shuffled = []
+            for scores, after in usable:
+                copy = list(scores)
+                rng.shuffle(copy)
+                shuffled.append((copy, after))
+            if abs(_pooled_correlation(shuffled)) >= abs(matched.rho):
+                as_extreme += 1
+        matched.p_value = (as_extreme + 1) / (permutations + 1)
+
+    # One vendor can dominate the pool -- Siemens is half of it here. Recompute
+    # without the largest stratum so a result that rests on a single
+    # manufacturer cannot pass unnoticed.
+    if len(usable) > 1:
+        largest = max(range(len(usable)), key=lambda i: len(usable[i][0]))
+        matched.rho_without_largest = _pooled_correlation(
+            [g for i, g in enumerate(usable) if i != largest])
+        matched.largest_vendor = max(matched.strata, key=lambda st: st.products).vendor \
+            if matched.strata else ""
+
+    matched.strata.sort(key=lambda s: -s.products)
+    return matched
+
+
+def format_matched(matched, top=8):
+    """Human-readable summary of the matched-cohort comparison."""
+    lines = [
+        f"MATCHED COHORT AT {matched.cutoff}  (each product compared only with "
+        "others from the same vendor)",
+        f"  vendors with enough products            {matched.usable_strata:>9,}",
+        f"  products inside those vendors           {matched.products:>9,}",
+        f"  vendors dropped, no score or outcome variation {matched.dropped_no_variation:>2,}",
+    ]
+    if not matched.usable_strata:
+        return "\n".join(lines + ["", "  No vendor had enough products to compare within."])
+
+    lines += [
+        f"  pooled within-vendor rho                {matched.rho:>+9.3f}"
+        f"   p={matched.p_value:.3f} ({matched.permutations:,} shuffles, within vendor)",
+        f"  same, excluding {matched.largest_vendor[:22]:<22}  {matched.rho_without_largest:>+9.3f}"
+        "   (leave-one-out: does one vendor carry it?)",
+        f"  vendors pointing each way               "
+        f"{matched.negative_strata} negative / {matched.positive_strata} positive",
+        "",
+        f"  {'vendor':<34}{'products':>9}{'rho':>8}{'median score':>14}{'CVEs after':>12}",
+    ]
+    for stratum in matched.strata[:top]:
+        lines.append(f"  {stratum.vendor[:33]:<34}{stratum.products:>9,}"
+                     f"{stratum.rho:>+8.3f}{stratum.median_score:>14}"
+                     f"{stratum.total_cves_after:>12,}")
+
+    lines.append("")
+    if matched.predictive:
+        lines.append(
+            f"  Holding the vendor constant, a lower score went with more later "
+            f"CVEs (rho = {matched.rho:+.3f}, p = {matched.p_value:.3f}). Because "
+            "every comparison is between products of one manufacturer, the "
+            "vendor-level confounders -- disclosure practice, deployment scale, "
+            "advisory bundling -- cannot explain it.")
+    elif matched.rho > 0.05:
+        lines.append(
+            f"  Even within a vendor, a higher score went with slightly more later "
+            f"CVEs (rho = {matched.rho:+.3f}). The magnitude is the point: holding "
+            "the vendor constant collapsed the effect, so most of the pooled "
+            "correlation was a vendor effect rather than anything about the "
+            "score. What remains is product-level exposure -- a flagship PLC "
+            "draws more research than a niche sensor from the same catalogue.")
+        lines.append(
+            f"  With {matched.products:,} products the p-value is small for an "
+            "effect this size; significance here means 'not zero', not 'large "
+            "enough to act on'. The split of "
+            f"{matched.negative_strata} vendors negative against "
+            f"{matched.positive_strata} positive says the direction is not "
+            "consistent between manufacturers.")
+    else:
+        lines.append(
+            f"  Holding the vendor constant leaves no relationship "
+            f"(rho = {matched.rho:+.3f}, p = {matched.p_value:.3f}). The pooled "
+            "correlation was therefore a vendor effect, not a property of the "
+            "score.")
+    # A pooled figure that one stratum carries is worth flagging on its own.
+    if matched.largest_vendor and abs(matched.rho - matched.rho_without_largest) > 0.15:
+        direction = ("reverses" if matched.rho * matched.rho_without_largest < 0
+                     else "changes materially")
+        lines.append(
+            f"  Dropping {matched.largest_vendor} {direction} the result "
+            f"({matched.rho:+.3f} to {matched.rho_without_largest:+.3f}). That "
+            "vendor bundles hundreds of upstream CVEs into single advisories, so "
+            "it dominates any count-based outcome. Treat the pooled number as "
+            "describing that vendor more than the score.")
+
+    lines.append(
+        "  Counting CVEs still measures disclosure volume; this design removes "
+        "the vendor-level part of that, not the product-level part.")
+    return "\n".join(lines)
