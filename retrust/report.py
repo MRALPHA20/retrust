@@ -3,64 +3,117 @@
 The report is the deliverable a buyer attaches to a purchase decision, so every
 number shows the evidence behind it and every abstention is stated plainly. No
 external assets, so it can be emailed or opened offline.
+
+The look follows ISA-101, the control-room HMI standard the scoring rules
+already cite: the field stays low-chroma grey and saturated colour is spent only
+on a verdict, a gate or a meter fill, because a panel where everything is
+coloured is a panel where nothing stands out. Identifiers are set in monospace
+throughout -- they are part numbers, and should read like the plate they are
+stamped on.
 """
 
 import html
+import re
 from datetime import date
 
 from . import score
 
-CSS = """
-:root{--bg:#f4f6f8;--card:#fff;--sunk:#e9edf1;--rule:#ccd4dc;--ink:#16202a;
---soft:#47586a;--faint:#5c6c7d;--strong:#9aa8b5;--prefer:#1c6b4a;--cond:#8a5c00;--avoid:#9c2a24;}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#171c21;--card:#1e252c;
---sunk:#141a1f;--rule:#323c46;--ink:#e4eaf0;--soft:#a9b8c6;--faint:#8b9aa8;
---strong:#55636f;--prefer:#5fc493;--cond:#e0ab4e;--avoid:#f08d84;}}
-:root[data-theme=dark]{--bg:#171c21;--card:#1e252c;--sunk:#141a1f;--rule:#323c46;
---ink:#e4eaf0;--soft:#a9b8c6;--faint:#8b9aa8;--strong:#55636f;--prefer:#5fc493;--cond:#e0ab4e;--avoid:#f08d84;}
+# One palette, written once and emitted three times. The bare :root is the
+# light default; the two dark selectors let the reader's OS preference and an
+# explicit data-theme each win, the latter being what the screenshot tool
+# stamps to shoot both themes deterministically.
+LIGHT = ("--field:#e6e9eb;--panel:#f2f4f5;--sunk:#d8dcdf;--rule:#b5bcc2;"
+         "--ink:#1a2026;--soft:#58626c;--faint:#868f99;"
+         "--prefer:#1c7a4a;--cond:#a86e00;--avoid:#b02a20")
+DARK = ("--field:#191e23;--panel:#222930;--sunk:#13171b;--rule:#38414a;"
+        "--ink:#e2e6ea;--soft:#9aa4ae;--faint:#6f7983;"
+        "--prefer:#45b07a;--cond:#d79a26;--avoid:#e06054")
+
+# System faces only. A webfont would be a network fetch, and this file has to
+# render from a mail attachment on a machine that cannot reach the internet.
+FACES = ("--sans:ui-sans-serif,system-ui,sans-serif;"
+         "--mono:ui-monospace,SFMono-Regular,Menlo,monospace")
+
+# Sizing hangs off the root, not off body, so one number moves the whole scale.
+THEME = (f":root{{font-size:17px;{FACES};{LIGHT}}}\n"
+         f"@media(prefers-color-scheme:dark){{:root:not([data-theme=light]){{{DARK}}}}}\n"
+         f":root[data-theme=dark]{{{DARK}}}\n")
+
+CSS = THEME + """
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 ui-sans-serif,system-ui,sans-serif}
+body{margin:0;background:var(--field);color:var(--ink);font:1rem/1.6 var(--sans)}
 .wrap{max-width:58rem;margin:0 auto;padding:2.5rem 1.4rem 4rem}
-h1{font-size:1.9rem;margin:0 0 .3rem;letter-spacing:-.02em}
-h2{font-size:1.15rem;margin:2.2rem 0 .6rem;padding-bottom:.4rem;border-bottom:1px solid var(--rule)}
-.meta{font:500 .72rem/1.5 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+h1{font-size:1.75rem;font-weight:700;letter-spacing:-.015em;
+ margin:0 0 1.4rem;padding-bottom:.5rem;border-bottom:2px solid var(--rule)}
+h2{font-size:1.2rem;font-weight:700;letter-spacing:-.01em;
+ margin:0 0 .8rem;padding-bottom:.4rem;border-bottom:1px solid var(--rule)}
+/* Engraved legends, as on the front of control gear. */
+.meta,th,td.na,.sources h2{font-family:var(--mono);font-size:.78rem;font-weight:600;
+ letter-spacing:.08em;text-transform:uppercase}
+.meta{color:var(--faint)}
+/* Identifiers: CVE and advisory ids, order numbers, version ranges. They do
+   not wrap -- half a part number at the end of a line is not a part number. */
+code,.id{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums}
+code{white-space:nowrap}
+/* The state stripe. This is the panel indicator lamp, and it is how a reader
+   skims a comparison of six candidates. --vc is set once per block, so the
+   verdict word and every meter fill below it inherit the same state colour. */
+.block{border-left:4px solid var(--vc);padding-left:1.3rem;margin:2.8rem 0 0}
 .verdict{display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;
- border:1px solid var(--rule);border-left:5px solid var(--vc);background:var(--card);
- padding:1rem 1.2rem;margin:1.4rem 0}
-.verdict .v{font:700 1.5rem/1 ui-sans-serif,system-ui,sans-serif;color:var(--vc)}
-.verdict .s{font:600 1.1rem/1 ui-monospace,monospace;font-variant-numeric:tabular-nums}
-.verdict .n{color:var(--soft);font-size:.9rem}
-.gate{border:1px solid var(--avoid);background:var(--card);padding:.8rem 1rem;margin:.6rem 0}
+ border:1px solid var(--rule);background:var(--panel);padding:1rem 1.2rem;margin:0 0 1rem}
+.verdict .v{font:700 1.55rem/1 var(--sans);color:var(--vc)}
+.verdict .s{font:600 1.2rem/1 var(--mono);font-variant-numeric:tabular-nums}
+.verdict .n{color:var(--soft);font-size:.95rem}
+.gate{border:1px solid var(--rule);border-left:3px solid var(--avoid);
+ background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
 .gate b{color:var(--avoid)}
-.gate .src{display:block;margin-top:.25rem;font-size:.78rem;color:var(--faint)}
-table{border-collapse:collapse;width:100%;font-size:.88rem;background:var(--card);border:1px solid var(--rule)}
-th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--rule);vertical-align:top}
-th{font:600 .68rem/1.4 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;
- color:var(--soft);background:var(--sunk)}
+.gate .src{display:block;margin-top:.3rem;font-size:.82rem;color:var(--faint)}
+.tw{overflow-x:auto;margin:1rem 0}
+table{border-collapse:collapse;width:100%;font-size:.93rem;background:var(--panel);
+ border:1px solid var(--rule);font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top}
+th{line-height:1.4;white-space:nowrap;color:var(--soft);background:var(--sunk)}
 tbody tr:last-child td{border-bottom:none}
-td.n{text-align:right;font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
-.bar{display:block;position:relative;height:6px;background:var(--sunk);border-radius:3px;overflow:hidden;min-width:70px}
-.bar i{position:absolute;inset:0 auto 0 0;background:var(--soft)}
-.ev{margin:.3rem 0 0;padding-left:1.1rem;color:var(--soft);font-size:.83rem}
-.note{border:1px solid var(--rule);border-left:3px solid var(--cond);background:var(--card);
- padding:.75rem 1rem;margin:.6rem 0;font-size:.9rem;color:var(--soft)}
-.tw{overflow-x:auto}
-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--rule);font-size:.8rem;color:var(--faint)}
-code{font-family:ui-monospace,monospace;font-size:.86em}
-.stability{font-size:.86rem;padding:.55rem .8rem;margin:.5rem 0 1rem;
- border-left:3px solid var(--strong);background:var(--card);color:var(--soft)}
-.stability.fragile{border-left-color:var(--cond)}
-.stability.robust{border-left-color:var(--prefer)}
-.tnote{font-size:.82rem;color:var(--faint);margin:.5rem 0 1.5rem}
-.sources{margin-top:2.5rem;font-size:.84rem;color:var(--soft)}
-.sources h2{font-size:1rem}
-.sources dl{display:grid;grid-template-columns:auto 1fr;gap:.25rem 1rem;margin:.6rem 0}
-.sources dt{font-family:ui-monospace,monospace;font-size:.78rem;color:var(--faint)}
-.sources dd{margin:0}
+td.n{text-align:right;font-family:var(--mono);white-space:nowrap}
+td.na{color:var(--faint)}
+td.rng{max-width:15rem;overflow-wrap:anywhere;color:var(--soft)}
+tr.cand td:first-child{border-left:4px solid var(--vc)}
+td.v{color:var(--vc);font-weight:700}
+/* Meters read as one state per block rather than as a decorative accent. */
+.bar{display:block;position:relative;height:9px;min-width:5rem;overflow:hidden;
+ background:var(--sunk);border:1px solid var(--rule)}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--vc,var(--faint))}
+/* Evidence quality is reported but not scored, so its meter stays inert grey. */
 tr.unscored{background:var(--sunk)}
-tr.unscored .bar i{background:var(--faint);opacity:.55}
-td.na{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+tr.unscored .bar{background:var(--panel)}
+tr.unscored .bar i{background:var(--faint)}
+.ev{margin:.2rem 0 0;padding-left:1.1rem;color:var(--soft);font-size:.9rem}
+/* Secondary panels separate on a hairline and a recessed ground, the way a
+   mimic diagram does. It also survives the thing that happens to this file:
+   printed in grey scale and stapled to a purchase order. */
+.note{border:1px solid var(--rule);border-left:3px solid var(--cond);background:var(--panel);
+ padding:.75rem 1rem;margin:.6rem 0;font-size:.95rem;color:var(--soft)}
+.stability{border:1px solid var(--rule);border-left:3px solid var(--rule);background:var(--panel);
+ padding:.7rem 1rem;margin:0 0 1rem;font-size:.92rem;color:var(--soft)}
+/* Only the fragile case is coloured. A robust result is the normal condition,
+   and a green stripe on an AVOID block would read as a second, contradicting
+   verdict rather than as the weight note it is. */
+.stability.fragile{border-left-color:var(--cond)}
+.tnote{font-size:.86rem;color:var(--faint);margin:0 0 1rem}
+.sources{margin-top:3rem;font-size:.9rem;color:var(--soft)}
+.sources h2{font-size:.82rem;color:var(--faint)}
+.sources dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem 1.2rem;margin:.8rem 0}
+.sources dt{font-family:var(--mono);font-size:.82rem;color:var(--faint);
+ font-variant-numeric:tabular-nums}
+.sources dd{margin:0}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--rule);
+ font-size:.84rem;color:var(--faint)}
 """
+
+# Identifiers turn up in prose too -- a KEV gate names the CVEs it fired on --
+# and they should read as part numbers there as well. Substituted after
+# escaping, and matching bare id shapes only, so it cannot introduce markup.
+IDENTIFIER = re.compile(r"\b((?:CVE|ICSA|ICSMA|SSA|VDE)-[0-9][0-9A-Z-]*[0-9A-Z])")
 
 # Derived from the one pillar registry, so a new pillar shows a weight here
 # without anyone remembering to update a second list.
@@ -98,16 +151,29 @@ def _footer_sources(provenance, weights, config_source):
 
 VERDICT_COLOR = {"PREFER": "var(--prefer)", "CONDITIONAL": "var(--cond)",
                  "AVOID": "var(--avoid)", "NOT ASSESSED": "var(--faint)"}
+# A verdict this table does not know is an unknown state, and an unknown state
+# is inert -- not --soft, which is secondary text everywhere else in the sheet
+# and would light a stripe in a colour that means nothing.
+INERT = VERDICT_COLOR["NOT ASSESSED"]
 
 
 def _esc(text):
     return html.escape(str(text))
 
 
+def _ids(escaped):
+    """Set the identifiers inside an already-escaped run of prose in monospace."""
+    return IDENTIFIER.sub(r"<code>\1</code>", escaped)
+
+
 def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                       weights=None):
-    colour = VERDICT_COLOR.get(assessment.verdict, "var(--soft)")
-    parts = [f'<h2>{_esc(assessment.product)}</h2>']
+    colour = VERDICT_COLOR.get(assessment.verdict, INERT)
+    # Declared once on the block. The stripe, the verdict word and every meter
+    # fill below all read --vc, so a product cannot end up half one state and
+    # half another the way six separate inline colours eventually would.
+    parts = [f'<section class="block" style="--vc:{colour}">'
+             f'<h2>{_esc(assessment.product)}</h2>']
 
     if assessment.score is None:
         # Two very different states share "no score": a product we could not
@@ -125,10 +191,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         summary = (f'<span class="s">{assessment.score}/100</span>'
                    f'<span class="n">{detail}</span>')
 
-    parts.append(
-        f'<div class="verdict" style="--vc:{colour}">'
-        f'<span class="v">{_esc(assessment.verdict)}</span>{summary}</div>'
-    )
+    parts.append(f'<div class="verdict"><span class="v">'
+                 f'{_esc(assessment.verdict)}</span>{summary}</div>')
 
     if stability is not None:
         klass = "robust" if (stability.gated or stability.robust) else "fragile"
@@ -153,24 +217,26 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     for gate in assessment.gates:
         parts.append(
             f'<div class="gate"><b>Hard gate &mdash; {_esc(gate["gate"])}</b><br>'
-            f'{_esc(gate["detail"])}<span class="src">Source: {_esc(gate["source"])}</span></div>')
+            f'{_ids(_esc(gate["detail"]))}'
+            f'<span class="src">Source: {_esc(gate["source"])}</span></div>')
 
     if assessment.pillars:
         parts.append(_pillar_table(assessment, weights))
 
     for note in assessment.notes:
-        parts.append(f'<div class="note">{_esc(note)}</div>')
+        parts.append(f'<div class="note">{_ids(_esc(note))}</div>')
 
     top = sorted(findings, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))[:10]
     if top:
         parts.append(_cve_table(top))
 
+    parts.append('</section>')
     return "".join(parts)
 
 
 def _pillar_table(assessment, weights):
     parts = ['<div class="tw"><table><thead><tr><th>Pillar</th><th>Score</th>'
-             '<th style="width:30%">&nbsp;</th><th>Weight</th><th>Coverage</th>'
+             '<th style="width:18%">&nbsp;</th><th>Weight</th><th>Coverage</th>'
              '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
         evidence = "".join(f"<li>{_esc(e)}</li>" for e in pillar.evidence)
@@ -193,10 +259,15 @@ def _pillar_table(assessment, weights):
 
 
 def _cve_table(findings):
-    """The most significant CVEs, worst exploitation probability first."""
+    """The most significant CVEs, worst exploitation probability first.
+
+    The affected range is shown because it is what a reader has to check by
+    hand on the rows marked "needs review": saying a range could not be parsed
+    without saying which range leaves them nowhere to start.
+    """
     parts = ['<div class="tw"><table><thead><tr><th>Most significant CVEs</th>'
              '<th>CVSS</th><th>EPSS</th><th>KEV</th><th>Advisory</th>'
-             '</tr></thead><tbody>']
+             '<th>Affected range</th></tr></thead><tbody>']
     for f in findings:
         parts.append(
             f'<tr><td><code>{_esc(f.cve)}</code>'
@@ -204,7 +275,8 @@ def _cve_table(findings):
             + f'</td><td class="n">{"" if f.cvss is None else f"{f.cvss:.1f}"}</td>'
             f'<td class="n">{"" if f.epss is None else f"{f.epss:.3f}"}</td>'
             f'<td class="n">{"yes" if f.in_kev else ""}</td>'
-            f'<td><code>{_esc(f.advisory_id)}</code></td></tr>')
+            f'<td><code>{_esc(f.advisory_id)}</code></td>'
+            f'<td class="id rng">{_esc(f.version_range)}</td></tr>')
     parts.append('</tbody></table></div>')
     return "".join(parts)
 
@@ -213,15 +285,16 @@ def _summary_table(blocks, stabilities):
     """Side-by-side ranking, so the decision is visible without scrolling."""
     rows = []
     for assessment, resolution, _ in blocks:
-        colour = VERDICT_COLOR.get(assessment.verdict, "var(--soft)")
+        colour = VERDICT_COLOR.get(assessment.verdict, INERT)
         st = stabilities.get(assessment.product)
         robust = "&mdash;" if st is None else (
             "gated" if st.gated else f"{st.agreement:.0%}")
         note = (assessment.gates[0]["gate"] if assessment.gates
                 else "" if resolution.resolved else resolution.reason)
         rows.append(
-            f'<tr><td><b>{_esc(assessment.product)}</b></td>'
-            f'<td style="color:{colour};font-weight:600">{_esc(assessment.verdict)}</td>'
+            f'<tr class="cand" style="--vc:{colour}">'
+            f'<td><b>{_esc(assessment.product)}</b></td>'
+            f'<td class="v">{_esc(assessment.verdict)}</td>'
             f'<td class="n">{"&mdash;" if assessment.score is None else assessment.score}</td>'
             f'<td class="n">{"&mdash;" if assessment.score is None else assessment.findings_count}</td>'
             f'<td class="n">{robust}</td>'

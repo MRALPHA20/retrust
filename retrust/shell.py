@@ -13,7 +13,11 @@ decision from producing -- nobody has to know in advance that they wanted HTML.
 
 from dataclasses import dataclass, field
 
-BANNER = "ReTrust interactive. Pick a number, or q to quit."
+from . import console
+
+# The legend stamped on the nameplate, not a line of its own: what a first-time
+# reader needs is on the panel below it, where q sits under its own rule.
+BANNER = "interactive session"
 
 # A blank answer means "I have changed my mind", everywhere, so no prompt can
 # trap somebody who opened it by accident.
@@ -61,12 +65,17 @@ def ask_yes(prompt, default=False, reader=input):
 def choose(actions, reader=input):
     """Show the menu and return the chosen key, or None to quit."""
     print()
+    print(console.hairline("┌", "┐", "┬"))
     for key, (label, description, _) in actions.items():
-        print(f"  {key:>2}  {label:<26} {description}")
-    print("   q  Quit")
+        print(console.row(f"{console.pad(label, console.LABEL)}{description}", key))
+    # Quit is not a ninth thing this tool does, so it goes below its own rule
+    # rather than being read as one.
+    print(console.hairline("├", "┤", "┼"))
+    print(console.row("Quit", "q"))
+    print(console.hairline("└", "┘", "┴"))
     while True:
         try:
-            answer = reader("\n> ").strip().lower()
+            answer = reader("\n  > ").strip().lower()
         except EOFError:
             return None
         if answer in ("q", "quit", "exit"):
@@ -113,9 +122,11 @@ def save(result, writers, reader=input):
 
 def run(actions, writers, banner=BANNER, reader=input, greet=None):
     """The menu loop. Actions return a Result, or None if they produced nothing."""
-    print(banner)
-    if greet:
-        print(greet)
+    # The caller writes its greeting as a sentence; a status strip is a list of
+    # readings, so the full stop goes, and the legend matches the one bare
+    # `retrust` puts these same three numbers under.
+    print(console.nameplate(banner,
+                            [("holds", str(greet).rstrip("."))] if greet else []))
     result = Result()
     while (key := choose(actions, reader)) is not None:
         label, _, action = actions[key]

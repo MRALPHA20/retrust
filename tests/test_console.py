@@ -121,12 +121,18 @@ def test_disable_forces_colour_off_for_the_rest_of_the_run(colour):
 # --- what gets painted -----------------------------------------------------
 
 def test_verdicts_take_the_same_colours_as_the_html_report(colour):
+    """Pinned exactly, and in 256 colour: `31` is whatever the theme calls red.
+
+    The four verdicts are the ISA-101 states, and a state the reader has to
+    interpret twice -- once here, once in the report they paste it into -- is not
+    a state. So the codes are the palette's, not the terminal's own sixteen.
+    """
     colour()
     assert set(console.VERDICT_STYLES) == set(report.VERDICT_COLOR)
-    assert console.paint_verdict("PREFER") == "\x1b[32mPREFER\x1b[0m"
-    assert console.paint_verdict("CONDITIONAL") == "\x1b[33mCONDITIONAL\x1b[0m"
-    assert console.paint_verdict("AVOID") == "\x1b[31mAVOID\x1b[0m"
-    assert console.paint_verdict("NOT ASSESSED") == "\x1b[2mNOT ASSESSED\x1b[0m"
+    assert console.paint_verdict("PREFER") == "\x1b[38;5;29mPREFER\x1b[0m"
+    assert console.paint_verdict("CONDITIONAL") == "\x1b[38;5;136mCONDITIONAL\x1b[0m"
+    assert console.paint_verdict("AVOID") == "\x1b[38;5;160mAVOID\x1b[0m"
+    assert console.paint_verdict("NOT ASSESSED") == "\x1b[38;5;245mNOT ASSESSED\x1b[0m"
 
 
 def test_an_unknown_style_is_returned_unpainted(colour):
@@ -161,6 +167,49 @@ def test_pad_right_aligns_and_never_truncates():
 def test_pad_rejects_an_unknown_alignment():
     with pytest.raises(ValueError, match="centre"):
         console.pad("AVOID", 12, align="centre")
+
+
+# --- the panel grid --------------------------------------------------------
+
+def test_every_line_of_the_grid_is_drawn_to_one_width(colour):
+    colour(isatty=False)
+    lines = [*console.nameplate(rows=[("index", "retrust.db")]).splitlines(),
+             console.section("start here"), console.row("a reading"),
+             console.row("a reading", "1"), console.hairline("├", "┤", "┼")]
+    assert {console.visible_width(line) for line in lines} == {console.WIDTH}
+
+
+def test_the_grid_holds_its_width_once_it_is_painted(colour):
+    """The rules are painted, and paint is exactly what shears a column."""
+    colour()
+    plate = console.nameplate(rows=[("index", "retrust.db")])
+    assert "\x1b[" in plate
+    assert all(console.visible_width(line) == console.WIDTH
+               for line in plate.splitlines())
+
+
+def test_the_key_column_rule_meets_the_rail_beneath_it(colour):
+    """One column for the joint and the rail, or the menu shears below its head."""
+    colour(isatty=False)
+    assert console.row("Quit", "q").index("│", 1) == \
+        console.hairline("┌", "┐", "┬").index("┬")
+
+
+def test_a_reading_too_wide_for_the_grid_keeps_every_character(colour):
+    """An order number trimmed to fit the panel is a different order number."""
+    colour(isatty=False)
+    number = "6ES7 516-3AN02-0AB0"
+    assert number in console.row(number, "1")
+    assert number * 5 in console.row(number * 5)     # and it widens, not truncates
+
+
+def test_a_panel_still_says_which_reading_is_which_with_colour_off(colour):
+    """Structure carries this, not colour: it has to survive a pipe intact."""
+    colour(isatty=False)
+    plate = console.nameplate(rows=[("match on", "1,615 order numbers")])
+    assert "\x1b" not in plate
+    assert plate.startswith("┌─ ReTrust ── OT HARDWARE")
+    assert "MATCH ON  1,615 order numbers" in plate
 
 
 # --- the overview ----------------------------------------------------------

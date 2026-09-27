@@ -175,21 +175,25 @@ rather not learn them, `retrust shell` asks instead.
 ```
 $ retrust shell
 
-ReTrust interactive. Pick a number, or q to quit.
-3,937 advisories, 27,234 product entries, 814 vendors.
+┌─ ReTrust ── INTERACTIVE SESSION ─────────────────────────────────────────┐
+│  HOLDS     3,937 advisories, 27,234 product entries, 814 vendors         │
+└──────────────────────────────────────────────────────────────────────────┘
 
-   1  Search the corpus          find a vendor, product or order number
-   2  Score one product          verdict, pillars and the evidence
-   3  Compare candidates         rank several for one decision
-   4  Vendor profile             what the index holds on a manufacturer
-   5  Score a BOM file           a CSV or JSON list of candidates
-   6  Likely exploited           NIST LEV, has it probably happened already
-   7  SSVC decisions             what buying this commits you to
-   8  What changed               re-score a saved result against today
-   s  Save the last result       HTML, JSON or CSV
-   q  Quit
+┌─────┬────────────────────────────────────────────────────────────────────┐
+│   1 │ Search the corpus       find a vendor, product or order number     │
+│   2 │ Score one product       verdict, pillars and the evidence          │
+│   3 │ Compare candidates      rank several for one decision              │
+│   4 │ Vendor profile          what the index holds on a manufacturer     │
+│   5 │ Score a BOM file        a CSV or JSON list of candidates           │
+│   6 │ Likely exploited        NIST LEV, has it probably happened already │
+│   7 │ SSVC decisions          what buying this commits you to            │
+│   8 │ What changed            re-score a saved result against today      │
+│   s │ Save the last result    HTML, JSON or CSV                          │
+├─────┼────────────────────────────────────────────────────────────────────┤
+│   q │ Quit                                                               │
+└─────┴────────────────────────────────────────────────────────────────────┘
 
-> 3
+  > 3
 Add candidates one at a time. Blank vendor when you are done.
 Candidate 1 vendor: ABB
   Product: AC 800M
