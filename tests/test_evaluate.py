@@ -228,9 +228,9 @@ def test_realistic_flag_actually_changes_the_query(db, monkeypatch):
     assert verbatim != seen
 
 
-def test_run_returns_both_measurements(db):
+def test_run_returns_every_measurement(db):
     results = evaluate.run(db, sample=10)
-    assert set(results) == {"version", "round_trip"}
+    assert set(results) == {"identifiers", "version", "round_trip"}
     assert isinstance(results["version"], evaluate.Result)
     assert isinstance(results["round_trip"], evaluate.RoundTrip)
 
@@ -274,3 +274,52 @@ def test_eval_on_an_empty_index_does_not_crash(tmp_path):
     results = evaluate.run(connection, sample=5)
     assert results["version"].total == 0
     evaluate.format_report(results)          # must not raise
+
+
+# --- identifier coverage: the measurement the whole design rests on ---------
+
+def test_identifier_coverage_counts_what_the_corpus_carries(db):
+    counts = evaluate.identifier_coverage(db)
+    assert counts["total"] == 3
+    assert counts["cpe"] == 0               # the fixture gives no CPE, as CISA rarely does
+    # All three inherit "(TC-9000-A1)" from the parent branch name -- which is
+    # the point: order numbers are recoverable even where the helper omits them.
+    assert counts["order_number"] == 3
+    assert counts["vendor"] == 3
+    assert counts["name"] == 3
+
+
+def test_identifier_coverage_sees_a_cpe_when_one_is_given(tmp_path):
+    """The zero above must be a measurement, not an unread column."""
+    advisory = json.loads(json.dumps(ADVISORY))
+    leaves = advisory["product_tree"]["branches"][0]["branches"][0]["branches"]
+    leaves[0]["product"]["product_identification_helper"]["cpe"] = \
+        "cpe:2.3:h:testco:testplc_9000:-:*:*:*:*:*:*:*"
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    (directory / "a.json").write_text(json.dumps(advisory))
+    connection, _ = index.build(str(tmp_path / "c.db"), str(directory))
+    assert evaluate.identifier_coverage(connection)["cpe"] == 1
+
+
+def test_identifier_coverage_abstains_on_an_older_index(tmp_path):
+    """An index built before has_cpe existed must not report zero CPEs.
+
+    Zero would read as "measured, and there were none" -- the same output the
+    real corpus nearly produces -- when in fact nothing was measured at all.
+    """
+    connection = index.connect(str(tmp_path / "old.db"))
+    connection.execute("ALTER TABLE product DROP COLUMN has_cpe")
+    assert evaluate.identifier_coverage(connection) is None
+    text = evaluate.format_report(
+        {"identifiers": None, "version": evaluate.Result(total=1, decided=1),
+         "round_trip": evaluate.RoundTrip()})
+    assert "not recorded" in text
+    assert "retrust ingest" in text
+
+
+def test_format_report_prints_the_identifier_table(db):
+    text = evaluate.format_report(evaluate.run(db, sample=10))
+    assert "IDENTIFIER COVERAGE" in text
+    assert "CPE" in text
+    assert "order number" in text

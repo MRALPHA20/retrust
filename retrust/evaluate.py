@@ -15,6 +15,7 @@ publish. Two things are measured, and they are deliberately kept apart:
 """
 
 import re
+import sqlite3
 from dataclasses import dataclass, field
 
 from . import match
@@ -67,6 +68,38 @@ def version_coverage(connection, limit=None):
             key = range_text.strip()[:44]
             result.examples[key] = result.examples.get(key, 0) + 1
     return result
+
+
+def identifier_coverage(connection):
+    """Which identifiers the corpus actually carries, per product entry.
+
+    This is the measurement the whole design rests on: conventional tooling
+    joins products to CVEs through CPE, and CPE is all but absent from OT
+    advisory data. Reproduced here rather than quoted, so a reader can check
+    it on their own index instead of taking the claim on trust.
+
+    Returns None for an index built before this was recorded: reporting zero
+    CPEs there would be indistinguishable from having measured none, and a
+    number nobody measured is the one thing this module must not print.
+    """
+    try:
+        return _identifier_counts(connection)
+    except sqlite3.OperationalError:        # index predates the has_cpe column
+        return None
+
+
+def _identifier_counts(connection):
+    row = connection.execute(
+        "SELECT COUNT(*) total,"
+        "       SUM(has_cpe) cpe,"
+        "       SUM(vendor != '') vendor,"
+        "       SUM(name != '') name,"
+        "       SUM(EXISTS(SELECT 1 FROM order_number o"
+        "                   WHERE o.product_rowid = p.rowid_)) order_number"
+        "  FROM product p").fetchone()
+    total = row["total"] or 0
+    return {"total": total, **{key: (row[key] or 0) for key in
+                               ("cpe", "order_number", "vendor", "name")}}
 
 
 @dataclass
@@ -149,7 +182,8 @@ def run(connection, sample=400):
     """Run both measurements. Returns a dict ready to print or serialise."""
     coverage = version_coverage(connection)
     trip = round_trip(connection, sample=sample)
-    return {"version": coverage, "round_trip": trip}
+    return {"identifiers": identifier_coverage(connection),
+            "version": coverage, "round_trip": trip}
 
 
 def _share(count, total):
@@ -163,7 +197,25 @@ def format_report(results):
     if not version.total and not trip.attempted:
         return ("The index is empty, so there is nothing to measure.\n"
                 "Run `retrust ingest --csaf <dir>` first.")
-    lines = [
+    lines = []
+    if results.get("identifiers", False) is None:
+        lines += ["IDENTIFIER COVERAGE   not recorded by the build that made this",
+                  "  index -- re-run `retrust ingest` to measure it.", ""]
+    elif identifiers := results.get("identifiers"):
+        total = identifiers["total"]
+        lines += ["IDENTIFIER COVERAGE   (what the corpus gives us to join on)",
+                  f"  product entries              {total:>8,}"]
+        for key, label in (("cpe", "CPE -- what scanners join on"),
+                           ("order_number", "manufacturer order number"),
+                           ("vendor", "vendor name"),
+                           ("name", "product name")):
+            lines.append(f"  {label:<28} {identifiers[key]:>8,}   "
+                         f"{_share(identifiers[key], total):6.2%}")
+        if identifiers["cpe"]:
+            lines.append(f"  order numbers are {identifiers['order_number'] / identifiers['cpe']:,.0f}x "
+                         "more available than CPE")
+        lines.append("")
+    lines += [
         "VERSION-RANGE COVERAGE",
         f"  ranges examined              {version.total:>8,}",
         f"  decided deterministically    {version.decided:>8,}   {version.coverage:6.2%}",

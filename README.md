@@ -46,6 +46,11 @@ tooling performs so poorly on OT gear. Order numbers are ~315× more available �
 and `6ES7518-4AX00-1AB0` is exactly what a buyer types onto a requisition.
 ReTrust keys on those instead.
 
+`retrust eval` recomputes that table from your own index, so it is a measurement
+you can check rather than a claim you have to accept. An index built before this
+was recorded says so instead of reporting zero CPEs — zero measured and zero
+stored would otherwise look identical.
+
 ## Accuracy, and how to check it yourself
 
 Run `retrust eval`. It recomputes every figure below from your own index, so you

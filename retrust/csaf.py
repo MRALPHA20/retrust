@@ -69,6 +69,9 @@ class Product:
     name: str
     version_range: str
     order_numbers: set = field(default_factory=set)
+    # Whether the advisory gave a CPE string. Recorded so `retrust eval` can
+    # reproduce the coverage figure that justifies keying on order numbers.
+    has_cpe: bool = False
 
 
 @dataclass
@@ -153,6 +156,7 @@ def _parse(path):
                     or ""
                 ).strip(),
                 order_numbers={o.strip() for o in order_numbers if o and o.strip()},
+                has_cpe=bool(helper.get("cpe")),
             )
         )
 

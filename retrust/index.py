@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS product (
     advisory_id TEXT, product_id TEXT,
     vendor TEXT, vendor_key TEXT,     -- vendor_key is the normalised vendor
     name TEXT, name_key TEXT,         -- name_key is the normalised product name
-    version_range TEXT);
+    version_range TEXT,
+    has_cpe INTEGER DEFAULT 0);       -- did the advisory give a CPE string?
 
 CREATE TABLE IF NOT EXISTS order_number (
     number_key TEXT, product_rowid INTEGER);
@@ -115,12 +116,12 @@ def build(db_path, csaf_root, progress=None):
             for product in advisory.products:
                 cursor = connection.execute(
                     "INSERT INTO product (advisory_id, product_id, vendor, vendor_key,"
-                    " name, name_key, version_range) VALUES (?,?,?,?,?,?,?)",
+                    " name, name_key, version_range, has_cpe) VALUES (?,?,?,?,?,?,?,?)",
                     (
                         advisory.advisory_id, product.product_id,
                         product.vendor, normalize_vendor(product.vendor),
                         product.name, normalize_name(product.name),
-                        product.version_range,
+                        product.version_range, int(product.has_cpe),
                     ),
                 )
                 counts["products"] += 1
