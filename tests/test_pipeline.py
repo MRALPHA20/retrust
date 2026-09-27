@@ -197,3 +197,22 @@ def test_parse_returns_none_rather_than_raising(tmp_path, payload):
 
 def test_parse_handles_a_missing_file(tmp_path):
     assert csaf.parse(tmp_path / "absent.json") is None
+
+
+def test_epss_loads_with_or_without_the_comment_line(tmp_path):
+    """The bug this guards: blindly skipping line 1 to drop EPSS's comment.
+
+    Not every mirror ships the "#model_version" line. When it was absent the
+    skip ate the CSV header instead and the load died with KeyError: 'cve',
+    which took the exploitation signals with it.
+    """
+    for label, text in [
+            ("with comment", "#model_version:v1\ncve,epss,percentile\nCVE-2026-0001,0.5,0.9\n"),
+            ("without comment", "cve,epss,percentile\nCVE-2026-0001,0.5,0.9\n")]:
+        path = tmp_path / f"{label}.csv"
+        path.write_text(text)
+        connection = index.connect(str(tmp_path / f"{label}.db"))
+        with connection:
+            connection.execute("INSERT INTO affected VALUES"
+                               " ('A','P','CVE-2026-0001',7.0,'CWE-1','vendor_fix')")
+        assert index.load_exploitation(connection, epss_path=str(path))["epss"] == 1, label

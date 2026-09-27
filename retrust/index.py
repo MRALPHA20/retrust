@@ -175,10 +175,14 @@ def load_exploitation(connection, kev_path=None, epss_path=None):
         if epss_path:
             # Only CVEs we actually reference, so the index stays small.
             wanted = {r[0] for r in connection.execute("SELECT DISTINCT cve FROM affected")}
+            # EPSS ships a "#model_version:..." comment above the header, but
+            # not every mirror keeps it. Skipping line 1 blindly ate the header
+            # when it was absent and died with KeyError: 'cve'; filter by
+            # content so both shapes load.
             with open(epss_path, newline="") as handle:
-                handle.readline()               # "#model_version:..." comment line
-                rows = [(r["cve"], float(r["epss"]))
-                        for r in csv.DictReader(handle) if r["cve"] in wanted]
+                lines = [line for line in handle if not line.startswith("#")]
+            rows = [(r["cve"], float(r["epss"]))
+                    for r in csv.DictReader(lines) if r["cve"] in wanted]
             connection.executemany(
                 "INSERT INTO exploitation (cve, epss) VALUES (?,?) "
                 "ON CONFLICT(cve) DO UPDATE SET epss=excluded.epss", rows)
