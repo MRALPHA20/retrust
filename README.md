@@ -36,25 +36,26 @@ corpus:
 
 | Identifier available on the product entry | Entries | Share |
 |---|---:|---:|
-| **CPE** — what conventional scanners join on | 26 | **0.10%** |
+| **CPE**, the join key conventional scanners use | 26 | **0.10%** |
 | Order number the advisory declares (`model_numbers` / `skus`) | 8,204 | 30.12% |
 | Order number ReTrust recovers from the product name | 1,384 | 5.08% |
-| **Order number, either** — what ReTrust keys on | **9,588** | **35.21%** |
+| **Order number, either** (what ReTrust keys on) | **9,588** | **35.21%** |
 | Vendor name | 27,231 | 99.99% |
 | Product name | 27,234 | 100.00% |
 
 CPE is effectively absent from ICS advisory data, which is why general-purpose
 tooling performs so poorly on OT gear. Declared order numbers are **316×** more
-available, and the ones ReTrust recovers from product names bring that to 369× —
-and `6ES7518-4AX00-1AB0` is exactly what a buyer types onto a requisition.
-ReTrust keys on those instead.
+available, and the ones ReTrust recovers from product names bring that to 369×.
+An order number is also what a buyer types onto a requisition in the first
+place, so `6ES7518-4AX00-1AB0` is a key both sides of the transaction already
+use. ReTrust keys on those instead.
 
 `retrust eval` recomputes that whole table from your own index, so it is a
-measurement you can check rather than a claim you have to accept. The declared
+measurement you can check, not a claim you have to accept. The declared
 and recovered rows are counted apart because they are different claims: one is
 what the vendor published, the other is what this tool inferred. An index built
-before this was recorded says so instead of reporting zero CPEs — zero measured
-and zero stored would otherwise print identically.
+before this was recorded says so instead of reporting zero CPEs, since zero
+measured and zero stored would otherwise print identically.
 
 ## Accuracy, and how to check it yourself
 
@@ -73,7 +74,7 @@ Two things that keep these honest:
 
 - **The round-trip test does not feed the corpus string back verbatim.** It
   strips the parenthetical order number, drops punctuation and case, and keeps
-  only the first four words — roughly what a buyer types. Testing exact strings
+  only the first four words, roughly what a buyer types. Testing exact strings
   against themselves reports a meaningless 100%.
 - **Ranges that cannot be decided are counted separately, not hidden.** A range
   pinned to a serial number or a board revision (`<= first 5 digits of serial
@@ -81,8 +82,8 @@ Two things that keep these honest:
   says why.
 
 **What this does not claim.** These figures measure resolving a *named* product
-to its advisories. They are not device-fingerprinting accuracy — identifying
-equipment from passive network traffic is a much harder problem where the
+to its advisories. They are not device-fingerprinting accuracy. Identifying
+equipment from passive network traffic is a much harder problem, where the
 commercial state of the art is around 83%. Different question, different number.
 
 ## Install
@@ -98,9 +99,9 @@ python3 -m retrust.cli setup
 ```
 
 `setup` fetches CISA's OT advisory corpus, the KEV and EPSS exploitation feeds,
-and the certification and sanctions lists, then builds the local index — about
-165 MB, a couple of minutes on a normal connection. It prints what it is doing
-at each step and finishes by telling you what to run next.
+and the certification and sanctions lists, then builds the local index. That is
+about 165 MB, and a couple of minutes on a normal connection. It prints what it
+is doing at each step, and finishes by telling you what to run next.
 
 Then score something:
 
@@ -112,8 +113,8 @@ That is the whole installation. Everything after this point is optional.
 
 **If it is interrupted, run it again.** Each step is skipped when its output is
 already there, so a dropped connection costs you only the step it dropped on.
-Downloads are written to a temporary file and moved into place, so a half-fetched
-feed is never mistaken for a complete one.
+Downloads go to a temporary file and are moved into place once complete, so a
+half-fetched feed is never mistaken for a whole one.
 
 | Flag | |
 |---|---|
@@ -122,9 +123,9 @@ feed is never mistaken for a complete one.
 | `--skip-refresh` | Skip the certification and sanctions lists |
 | `--data DIR` | Keep the data somewhere other than `data/` |
 
-`setup` stops rather than finishing on an index it knows is incomplete. If KEV
+`setup` stops instead of finishing on an index it knows is incomplete. If KEV
 or EPSS is missing, the exploitation gate cannot fire, and a product with a
-known exploited vulnerability would score as merely mediocre — so it says so
+known exploited vulnerability would score as merely mediocre, so it says so
 instead of handing you a plausible-looking index.
 
 ### Installing the `retrust` command (optional)
@@ -139,7 +140,7 @@ pip install -e .
 
 The virtualenv is not optional on Debian, Ubuntu or Kali: those ship Python as
 an externally managed environment, and `pip install -e .` outside a venv fails
-with a PEP 668 error. Both forms are equivalent — `retrust <command>` below is
+with a PEP 668 error. Both forms are equivalent: `retrust <command>` below is
 the same as `python3 -m retrust.cli <command>`.
 
 ### Doing it by hand (optional)
@@ -170,7 +171,14 @@ retrust refresh
 
 Not installed? Replace `retrust` with `python3 -m retrust.cli` throughout.
 
+Run `retrust` on its own to see what the index holds and what to try next.
+
 ```bash
+# Find something. The corpus names 27,234 product entries, so start here
+retrust search S7-1500
+retrust search --vendors schneider
+retrust search --order-number 6ES7518
+
 # Assess one product by its manufacturer order number
 retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
 
@@ -199,7 +207,7 @@ retrust snapshot --restore retrust-snapshot.zip
 ## Automation
 
 **Score a whole bill of materials.** Point it at a CSV or JSON export from your
-procurement system — column names are matched loosely, so `Manufacturer`,
+procurement system. Column names are matched loosely, so `Manufacturer`,
 `Part Number` and `Firmware Version` all work without reshaping.
 
 ```bash
@@ -221,14 +229,14 @@ Acme Widgets Nonexistent 9000                 NOT ASSESSED   --   vendor not in 
   exit 1: a candidate is disqualified
 ```
 
-**The exit code is the point.** It makes this a gate rather than a report
+**The exit code is the point.** It makes this a gate, not a report
 somebody has to read:
 
 | `--fail-on` | Non-zero when |
 |---|---|
 | `avoid` (default) | a candidate is disqualified |
 | `unassessed` | also when a candidate could not be assessed at all |
-| `never` | never — just report |
+| `never` | never; just report |
 
 ```yaml
 # In CI, block a merge that introduces a disqualified component
@@ -236,7 +244,7 @@ somebody has to read:
 ```
 
 **Run everything end to end.** One command that scores, checks robustness,
-writes the report, captures screenshots and re-measures accuracy — so a station
+writes the report, captures screenshots and re-measures accuracy, so a station
 demo cannot half-fail in front of an audience:
 
 ```bash
@@ -244,7 +252,7 @@ retrust demo
 ```
 
 **JSON from any command.** `score`, `compare` and `batch` all take `--json`.
-Pass a filename, or `-` to write to stdout — the human table is suppressed then,
+Pass a filename, or `-` to write to stdout. The human table is suppressed then,
 so the output pipes cleanly:
 
 ```bash
@@ -269,7 +277,7 @@ of them:
 
 `score --json` returns a superset of the same record: the evidence line behind
 every pillar, the citation behind every gate, and the most significant CVEs with
-their EPSS, KEV and remediation status. Anything trimmed is counted rather than
+their EPSS, KEV and remediation status. Anything trimmed is counted, never
 silently dropped (`findings_truncated`). The envelope carries the weights and
 the data provenance, so a stored result stays interpretable months later.
 
@@ -284,7 +292,7 @@ retrust screenshot reports/comparison.html --both-themes
 ```
 
 Documentation screenshots are regenerated by `make docs`, so they are always
-produced by the current code rather than hand-updated and left to drift.
+produced by the current code instead of hand-updated and left to drift.
 
 ## How the score is built
 
@@ -298,7 +306,7 @@ can be averaged away by good scores elsewhere.
 **1. Hard gates** also cover supply chain. A vendor on the FCC Covered List, the
 BIS Entity List or an OFAC sanctions list is `AVOID` outright. Screening runs on
 the vendor name alone, so it fires even for a vendor absent from the advisory
-corpus — otherwise the gate would only protect you from suppliers you were
+corpus. Otherwise the gate would only protect you from suppliers you were
 already going to hear about.
 
 **2. Five risk pillars**, each 0–100 where higher is better:
@@ -313,12 +321,12 @@ already going to hear about.
 
 **3. A weighted composite**, reported as a band: `PREFER` (≥70),
 `CONDITIONAL` (≥40), `AVOID`. Weights and thresholds live in an editable config
-file — run `retrust config --init`.
+file; run `retrust config --init`.
 
 ### Do the weights actually matter?
 
 The usual objection to any composite score is that its weights were invented.
-That is fair, and the honest answer is to measure it rather than argue about it.
+That is fair, and the honest answer is to measure it instead of arguing about it.
 `retrust sensitivity` samples hundreds of weightings from across the whole
 simplex and reports how often the verdict survives:
 
@@ -343,7 +351,7 @@ how much to trust the verdict, not how safe the product is.
 ### Rules that keep this defensible
 
 - **Raw CVE counts are never scored.** A vendor that discloses diligently would
-  rank below one that stays quiet — exactly backwards.
+  rank below one that stays quiet, which is exactly backwards.
 - **Weights are configurable and printed.** Disagree with them without having to
   distrust the whole result.
 - **Every figure cites its source.** The tool reports what CISA and the vendors
@@ -359,11 +367,11 @@ how much to trust the verdict, not how safe the product is.
   analysis caught two: severity scored ~0 for every OT product (nearly all have
   a 9.8+, so `100 - peak × 10` saturated), and vendor practice scored ~100 for
   everyone (CISA normalises the advisories it republishes, so advisory quality
-  is near-constant). Both were silently adding fixed offsets rather than
+  is near-constant). Both were silently adding fixed offsets instead of
   ranking anything. Severity now also weighs how *many* flaws are critical, and
   vendor practice reads whether the vendor runs its own CSAF feed.
 - **Some facts cannot be outvoted.** A critical, likely-exploited flaw with no
-  vendor fix is a gate. Weighted scoring alone could not reach AVOID for one —
+  vendor fix is a gate. Weighted scoring alone could not reach AVOID for one:
   pillars the vendor did well on offset the one that made the product
   unbuyable.
 - **Screening is tiered, because a false accusation is the worst error here.**
@@ -372,17 +380,17 @@ how much to trust the verdict, not how safe the product is.
   all 883 vendors in the corpus, matching on those produced four false
   positives, including a medical-device maker colliding with a *vessel* named
   BAXTER on the SDN list. Individuals, vessels and aircraft are excluded
-  outright — a hardware manufacturer is none of them.
+  outright, since a hardware manufacturer is none of them.
 - **Sanctions screening never fuzzy-matches.** Wrongly flagging a real
   manufacturer is the worst error this tool could make, so screening matches
   exact identity-preserving names only. Using the looser vendor normaliser here
-  matched *Schneider Electric* against *Schneider GMBH* on the BIS Entity List —
-  the test suite now pins that case.
+  matched *Schneider Electric* against *Schneider GMBH* on the BIS Entity List.
+  The test suite now pins that case.
 
 ### A note on convergent validity
 
 CISA KEV records exploitation confirmed in the wild; FIRST's EPSS is an
-independent statistical model. On this corpus they agree sharply — OT CVEs
+independent statistical model. On this corpus they agree sharply. OT CVEs
 listed in KEV have a median EPSS of **0.70** against **0.0073** for OT CVEs
 overall, roughly a 97× separation. Two independently built sources pointing the
 same way is the empirical footing for the exploitation pillar.
@@ -416,7 +424,7 @@ so abstention is a feature rather than a failure.
 
 Vendors that run their own CSAF feed (Siemens, Schneider, ABB, Hitachi Energy
 and others, verified via the BSI CSAF aggregator) are used as a *signal* in the
-vendor-practice pillar. ReTrust does not yet ingest those feeds directly —
+vendor-practice pillar. ReTrust does not yet ingest those feeds directly;
 CISA's repository already mirrors most of their advisories.
 
 ## Development
@@ -449,7 +457,7 @@ retrust/
 
 ## Reproducibility
 
-Every report footer records which data snapshot produced it — the advisory
+Every report footer records which data snapshot produced it: the advisory
 count, the KEV and EPSS capture dates, and the weights used. `retrust snapshot`
 bundles the index and both auxiliary lists into one checksummed zip, so a
 result can be regenerated months later and shown to be the same result. Restore
@@ -472,22 +480,23 @@ BACK-TEST AT 2022-01-01
 ```
 
 **That positive number is the interesting part, and it is not a validation.** A
-higher score went with *more* later CVEs — the opposite of what a risk score
-should do, if CVE count were the right yardstick.
+higher score went with *more* later CVEs, the opposite of what a risk score
+should do if CVE count were the right yardstick.
 
 It is not the right yardstick. The score rewards vendors who run a real
 disclosure programme, and those vendors publish more CVEs. The extreme case here
 is a Siemens CPU with 2 CVEs before the cutoff and **1,029 after**, because one
 advisory bundled hundreds of upstream Linux CVEs. Counting CVEs measures how much
-a vendor discloses — precisely what the scoring rules refuse to penalise.
+a vendor discloses, which is what the scoring rules deliberately refuse to
+penalise.
 
 The decomposition is printed for exactly this reason. The score barely tracks
 *past* CVE count (−0.049), so it is not simply re-reading history; it tracks
 *future* count (+0.432) because it tracks disclosure maturity. The sign is stable
 across every cutoff from 2019 to 2024, so it is a property of the outcome
-variable rather than of one date.
+variable, not of one date.
 
-The sound outcome would be confirmed exploitation — a product later appearing in
+The sound outcome would be confirmed exploitation. A product later appearing in
 CISA's KEV catalogue unambiguously went badly, whatever its vendor's disclosure
 habits. On this corpus only **29 products across 2 vendors** qualify, so the tool
 reports that sparsity rather than computing a rate from it.
@@ -510,13 +519,13 @@ Three readings, in order:
 
 | Design | rho | What it means |
 |---|---:|---|
-| Pooled across all vendors | **+0.432** | confounded — disclosure practice varies by vendor |
+| Pooled across all vendors | **+0.432** | confounded; disclosure practice varies by vendor |
 | Within vendor | **+0.106** | most of the effect *was* the vendor |
 | Within vendor, excluding Siemens | **−0.187** | one stratum carried the sign |
 
 Siemens is half the matched sample and bundles hundreds of upstream Linux CVEs
 into single advisories, so it dominates any count-based outcome. Dropping it
-reverses the sign — which is why the tool reports leave-one-out rather than a
+reverses the sign, which is why the tool reports leave-one-out instead of a
 single number.
 
 The honest conclusion is not "the score predicts" or "the score fails". It is
@@ -526,12 +535,12 @@ residual is small, and its sign is not consistent between manufacturers (9 to
 "large enough to act on", and the report says so.
 
 Strata where every product scored alike, or none had a later CVE, are dropped
-rather than averaged in — they would inflate the apparent sample without adding
-information.
+rather than averaged in, because they would inflate the apparent sample without
+adding information.
 
 This is what a back-test is for: not to award the score a pass mark, but to show
 which outcome variables are usable and which are confounded. Nothing leaks across
-the cutoff — a test asserts that adding post-cutoff advisories cannot move a
+the cutoff: a test asserts that adding post-cutoff advisories cannot move a
 pre-cutoff score, and the permutation null shuffles *within* each vendor so it
 preserves the stratification.
 
@@ -554,7 +563,7 @@ and the sensitivity sampler all derive from that list, so nothing else needs
 editing. A test asserts they stay in step.
 
 Adding a data source means a loader that writes into `data/`, a `load()` that
-reads it, and wiring it into the pillar that uses it — `certification.py` is the
+reads it, and wiring it into the pillar that uses it. `certification.py` is the
 smallest complete example to copy.
 
 ## Limitations
@@ -587,8 +596,8 @@ cites each one in every report footer:
   and the [FCC Covered List](https://www.fcc.gov/supplychain/coveredlist).
 
 Screening and certification results are reproductions of what those sources
-publish. They are decision support for a buyer, not a legal determination —
-verify any gate against the cited source before acting on it.
+publish. They are decision support for a buyer, not a legal determination.
+Verify any gate against the cited source before acting on it.
 
 ## Licence
 

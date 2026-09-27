@@ -630,8 +630,11 @@ def cmd_completion(args):
     parser = build_parser()
     subparsers = next(action for action in parser._actions
                       if isinstance(action, argparse._SubParsersAction))
-    flags = [option for action in parser._actions for option in action.option_strings]
-    print(console.completion(args.shell, sorted(subparsers.choices), flags))
+    commands = {name: [option for action in subparser._actions
+                       for option in action.option_strings]
+                for name, subparser in sorted(subparsers.choices.items())}
+    shared = [option for action in parser._actions for option in action.option_strings]
+    print(console.completion(args.shell, commands, shared))
     return 0
 
 
