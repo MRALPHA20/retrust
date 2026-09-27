@@ -1,18 +1,12 @@
-"""Look through the corpus, and say what it does hold when a lookup fails.
+"""Search the corpus, and say what it does hold when a lookup fails.
 
-The index names tens of thousands of product entries from hundreds of vendors,
-but until now the only way in was to already know a product's exact name:
-scoring either resolved what you typed or said NOT ASSESSED and left you to
-guess which spelling it wanted. This module searches vendors, product names and
-order numbers, and -- the part that earns its keep -- offers the closest things
-that really are in the corpus when a resolution fails, so "no match" becomes a
-shortlist rather than a dead end.
+Until this existed the only way in was to know a product's exact name: scoring
+either resolved what you typed or said NOT ASSESSED. Searching vendors, product
+names and order numbers turns that dead end into a shortlist.
 
-Four tests are tried in order, strongest first: a normalised exact match, a
-prefix, every word of the query appearing in the name, and finally only some of
-them. Each hit carries the test that found it, the way match.py names the method
-it resolved by, because a result nobody can explain is worth little more than a
-bare score. Nothing is invented to fill an empty answer.
+Four tests are tried in order, strongest first: normalised exact match, prefix,
+every word of the query present, then only some of them. Each hit reports the
+test that found it, as match.py reports its method.
 """
 
 import difflib
@@ -51,12 +45,10 @@ def _cap(limit):
 def _ladder(column, query, normalise, split=True):
     """The ranking test and the narrowing clause for one column, as SQL.
 
-    Ranking in SQL means only the rows actually shown are ever built in Python.
     Returns (None, None, None) when normalisation leaves nothing usable: "-" and
-    "%" both normalise to "", and an empty key would turn every LIKE below into
-    "match everything", the trap match.py documents at its rung 2. Nothing but
-    alphanumerics survives normalisation, so no wildcard can reach a pattern and
-    no ESCAPE clause is needed.
+    "%" both normalise to "", and an empty key would turn every LIKE into "match
+    everything", the trap match.py documents at its rung 2. Only alphanumerics
+    survive normalisation, so no wildcard ever reaches a pattern.
     """
     key = normalise(query or "")
     if not key:
@@ -78,35 +70,32 @@ def _ladder(column, query, normalise, split=True):
 def _commonest(connection, table, group, value, keys):
     """The spelling most entries give, for each group about to be printed.
 
-    MIN() takes the alphabetically first instead, which labels the vendor key
-    "rockwell" as "Rockwell" -- the spelling 5 of its 1,011 entries carry, not
-    the "Rockwell Automation" the other 1,006 give -- and names a product "MC
-    Works 64" where 8 entries of 10 print "MC Works64". It misnames 21 of the
-    corpus's 814 vendor keys and 94 product names that way. The printed string
-    is the one a buyer types back into `score`, so every search labels through
-    here and one thing prints one way throughout.
+    MIN() would take the alphabetically first, labelling the key "rockwell" as
+    "Rockwell" (5 of 1,011 entries) instead of "Rockwell Automation" (the other
+    1,006). It misnames 21 vendor keys and 94 product names that way, and the
+    printed string is what a buyer types back into `score`.
 
-    `keys` are tuples over the `group` columns, whose last column narrows the
-    query. Table and column names are this module's own literals, never a query.
+    Returns {group tuple: spelling}. Table and column names are this module's
+    own literals, never a query.
     """
-    values = sorted({key[-1] for key in keys})
-    if not values:
+    keys = sorted(set(keys))
+    if not keys:
         return {}
     columns = ", ".join(group)
     # Ascending, so the commonest spelling is written last and wins. A tie goes
     # to the alphabetically first, which keeps the label stable between runs.
     return {tuple(row)[:len(group)]: row[value] for row in connection.execute(
         f"SELECT {columns}, {value}, COUNT(*) entries FROM {table}"
-        f" WHERE {group[-1]} IN ({','.join('?' * len(values))}) AND {value} != ''"
-        f" GROUP BY {columns}, {value} ORDER BY entries, {value} DESC", values)}
+        f" WHERE {group[-1]} IN ({','.join('?' * len(keys))}) AND {value} != ''"
+        f" GROUP BY {columns}, {value} ORDER BY entries, {value} DESC", keys)}
 
 
 def _labels(connection, rows):
-    """The vendor and product spellings to print, for rows grouped on both."""
+    """The vendor and the product spellings to print, for rows grouped on both."""
     return (_commonest(connection, "product", ("vendor_key",), "vendor",
-                       {(row["vendor_key"],) for row in rows}),
+                       [row["vendor_key"] for row in rows]),
             _commonest(connection, "product", ("vendor_key", "name_key"), "name",
-                       {(row["vendor_key"], row["name_key"]) for row in rows}))
+                       [row["name_key"] for row in rows]))
 
 
 def vendors(connection, query, limit=20):
@@ -116,13 +105,12 @@ def vendors(connection, query, limit=20):
         return []
     rows = connection.execute(
         f"SELECT {rank} rung, vendor_key, COUNT(*) products,"
-        "        COUNT(DISTINCT advisory_id) advisories"
-        f"  FROM product WHERE {narrow}"
-        "  GROUP BY vendor_key"
-        "  ORDER BY rung, advisories DESC, products DESC LIMIT ?",
+        " COUNT(DISTINCT advisory_id) advisories FROM product"
+        f" WHERE {narrow} GROUP BY vendor_key"
+        " ORDER BY rung, advisories DESC, products DESC LIMIT ?",
         parameters + [_cap(limit)]).fetchall()
     names = _commonest(connection, "product", ("vendor_key",), "vendor",
-                       {(row["vendor_key"],) for row in rows})
+                       [row["vendor_key"] for row in rows])
     return [Hit(METHODS[row["rung"]], vendor=names.get((row["vendor_key"],), ""),
                 products=row["products"], advisories=row["advisories"])
             for row in rows]
@@ -146,39 +134,33 @@ def products(connection, query, vendor=None, limit=20):
             return []
         scope, scoped = " AND vendor_key = ?", [vendor_key]
     rows = connection.execute(
-        f"SELECT {rank} rung, vendor_key, name_key,"
-        "        MIN(name) name, COUNT(DISTINCT advisory_id) advisories"
-        f"  FROM product WHERE {narrow}{scope}"
-        "  GROUP BY vendor_key, name_key"
-        "  ORDER BY rung, advisories DESC, name LIMIT ?",
+        f"SELECT {rank} rung, vendor_key, name_key, MIN(name) name,"
+        f" COUNT(DISTINCT advisory_id) advisories FROM product WHERE {narrow}{scope}"
+        " GROUP BY vendor_key, name_key"
+        " ORDER BY rung, advisories DESC, name LIMIT ?",
         parameters + scoped + [_cap(limit)]).fetchall()
     vendor_names, names = _labels(connection, rows)
-    numbers = _numbers_for(connection, {(row["vendor_key"], row["name_key"])
-                                        for row in rows})
-    hits = []
-    for row in rows:
-        group = (row["vendor_key"], row["name_key"])
-        hits.append(Hit(METHODS[row["rung"]], advisories=row["advisories"],
-                        vendor=vendor_names.get((row["vendor_key"],), ""),
-                        name=names.get(group, row["name"]),
-                        order_numbers=numbers.get(group, ())))
-    return hits
+    numbers = _numbers_for(connection, rows)
+    return [Hit(METHODS[row["rung"]], advisories=row["advisories"],
+                vendor=vendor_names.get((row["vendor_key"],), ""),
+                name=names.get((row["vendor_key"], row["name_key"]), row["name"]),
+                order_numbers=numbers.get((row["vendor_key"], row["name_key"]), ()))
+            for row in rows]
 
 
-def _numbers_for(connection, groups):
+def _numbers_for(connection, rows):
     """Order numbers for the shown products only, in one pass over the table.
 
     Nothing indexes order_number(product_rowid), so one query for the lot beats
-    one per shown row (3 ms against 7 ms each) and beats fetching them inside
-    the grouped query (148 ms). Counting by number_key rather than by spelling
-    keeps the six products that print one number two ways ("6ES7 288-1CR40-0AA0"
-    against "6ES7288-1CR40-0AA0") from reporting two order numbers when they
-    have one, and keying on vendor as well as name stops a name two vendors
-    share from inheriting the other one's number.
+    one per row (3 ms against 7 ms each). Grouping by number_key rather than
+    spelling stops the six products printing one number two ways from reporting
+    two; keying on vendor as well as name stops a name two vendors share from
+    inheriting the other one's number.
     """
-    names = sorted({name_key for _, name_key in groups})
-    if not names:
+    groups = {(row["vendor_key"], row["name_key"]) for row in rows}
+    if not groups:
         return {}
+    names = sorted({name_key for _, name_key in groups})
     found = {}
     for row in connection.execute(
         "SELECT p.vendor_key, p.name_key, o.number_key FROM order_number o"
@@ -187,7 +169,7 @@ def _numbers_for(connection, groups):
         if (group := (row["vendor_key"], row["name_key"])) in groups:
             found.setdefault(group, set()).add(row["number_key"])
     spellings = _commonest(connection, "order_number", ("number_key",), "number",
-                           {(key,) for keys in found.values() for key in keys})
+                           [key for keys in found.values() for key in keys])
     return {group: tuple(spellings.get((key,), key) for key in sorted(keys))
             for group, keys in found.items()}
 
@@ -198,24 +180,22 @@ def order_numbers(connection, query, limit=20):
     The whole query counts as one word: an order number has no others, so
     "every word appears" would only repeat the substring test. One number can
     belong to two vendors -- the reason match.py cross-checks the vendor at its
-    order-number rung -- so every product carrying it is listed separately
-    rather than collapsed into a single row.
+    order-number rung -- so every product carrying it is listed separately.
     """
     rank, narrow, parameters = _ladder(
         "o.number_key", query, normalize_order_number, split=False)
     if not rank:
         return []
     rows = connection.execute(
-        f"SELECT {rank} rung, o.number_key, p.vendor_key, p.name_key,"
-        "        MIN(p.name) name, COUNT(DISTINCT p.advisory_id) advisories"
-        "   FROM order_number o JOIN product p ON p.rowid_ = o.product_rowid"
-        f"  WHERE {narrow}"
-        "  GROUP BY o.number_key, p.vendor_key, p.name_key"
-        "  ORDER BY rung, advisories DESC, o.number_key LIMIT ?",
+        f"SELECT {rank} rung, o.number_key, p.vendor_key, p.name_key, MIN(p.name) name,"
+        " COUNT(DISTINCT p.advisory_id) advisories FROM order_number o"
+        f" JOIN product p ON p.rowid_ = o.product_rowid WHERE {narrow}"
+        " GROUP BY o.number_key, p.vendor_key, p.name_key"
+        " ORDER BY rung, advisories DESC, o.number_key LIMIT ?",
         parameters + [_cap(limit)]).fetchall()
     vendor_names, names = _labels(connection, rows)
     spellings = _commonest(connection, "order_number", ("number_key",), "number",
-                           {(row["number_key"],) for row in rows})
+                           [row["number_key"] for row in rows])
     return [Hit(METHODS[row["rung"]], advisories=row["advisories"],
                 vendor=vendor_names.get((row["vendor_key"],), ""),
                 name=names.get((row["vendor_key"], row["name_key"]), row["name"]),
@@ -246,10 +226,9 @@ def suggest(connection, vendor=None, product=None, limit=5):
 def _closest_vendors(connection, key, limit):
     """Edit distance over the vendor keys, for a vendor no LIKE test reached.
 
-    Ratios are rounded to a tenth before sorting, so corpus weight settles a
-    near tie: "Seimens" puts Siemens (0.86, 1,041 advisories) above Simens
-    (0.92, 1 advisory). Six hundredths of a ratio is not evidence; an advisory
-    count is. This is the one place edit distance earns its keep -- product
+    Ratios round to a tenth before sorting, so corpus weight settles a near tie:
+    "Seimens" puts Siemens (0.86, 1,041 advisories) above Simens (0.92, one).
+    Six hundredths of a ratio is not evidence; an advisory count is. Product
     names are left to the word tests, which already recover a typo in any name
     of more than one word.
     """
@@ -257,10 +236,9 @@ def _closest_vendors(connection, key, limit):
         return []
     rows = {row["vendor_key"]: row for row in connection.execute(
         "SELECT vendor_key, COUNT(*) products, COUNT(DISTINCT advisory_id) advisories"
-        "  FROM product WHERE vendor_key != '' GROUP BY vendor_key")}
+        " FROM product WHERE vendor_key != '' GROUP BY vendor_key")}
     close = difflib.get_close_matches(key, list(rows), n=wanted, cutoff=SIMILAR_CUTOFF)
-    names = _commonest(connection, "product", ("vendor_key",), "vendor",
-                       {(near,) for near in close})
+    names = _commonest(connection, "product", ("vendor_key",), "vendor", close)
     hits = [Hit("similar", vendor=names.get((near,), ""),
                 products=rows[near]["products"], advisories=rows[near]["advisories"],
                 similarity=round(difflib.SequenceMatcher(None, key, near).ratio(), 2))
@@ -289,11 +267,9 @@ def _advisories(count):
 
 
 def _shown(hit):
-    """The order-number column: the first one, plus how many more there are.
+    """The first order number, plus how many more there are.
 
-    A product can carry a dozen; listing them all would push the line past the
-    width, and dropping the count silently would hide that there are more. The
-    18 leaves room for " +17" inside the 22 columns the formatters pad to.
+    Clipped to 18 so " +17" still fits the 22 the formatters pad to.
     """
     if not hit.order_numbers:
         return "--"
@@ -321,11 +297,7 @@ def format_vendors(hits, query, lead=None):
 
 
 def format_products(hits, query, lead=None):
-    """Two lines per product, because names run past fifty characters.
-
-    One row of five columns would need about 105; two lines keep every line
-    inside the 74 the rest of the command line already uses.
-    """
+    """Two lines per product, because one row of five columns would need 105."""
     lines = [_heading("product", query, hits, lead)]
     for hit in hits:
         # The name gets whatever the vendor leaves, so a short vendor name is
