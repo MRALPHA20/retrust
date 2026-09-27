@@ -15,7 +15,7 @@ Alternative, if a shorter title is wanted:
 
 ---
 
-## Abstract (primary, ~650 words)
+## Abstract (primary, ~500 words)
 
 Every OT security tool on the market analyses equipment you already own. Asset
 inventory platforms fingerprint what is already on the wire; firmware tools like
@@ -28,18 +28,17 @@ all 27,234 product entries in CISA's OT advisory corpus, exactly **26 carry a CP
 string, 0.1%**. Every conventional vulnerability tool joins products to CVEs
 through CPE, which is why general-purpose tooling performs so badly on industrial
 gear. Manufacturer order numbers (Siemens MLFB, `6ES7518-4AX00-1AB0`) are
-declared on 30.1% of entries, **316× more available**, rising to 35.2% once
-ReTrust recovers the ones buried in product names. They are also what a buyer
-types onto a requisition in the first place. ReTrust keys on those instead.
+declared on 30.1% of entries, **316× more available**, and are what a buyer types
+onto a requisition in the first place. ReTrust keys on those instead.
 
 The scoring is built to survive a hostile reviewer. Hard gates (CISA KEV, the FCC
 Covered List, the BIS Entity List, OFAC) sit outside the weighted composite,
 because a weighted disqualifier can be averaged away by good scores elsewhere.
 Raw CVE counts are never scored, since that would rank a diligent discloser below
-a silent one. `retrust sensitivity` samples hundreds of weightings from across
-the simplex and flags any verdict surviving fewer than 90% of them as a judgement
-call instead of dressing it in false precision. A product that cannot be resolved
-gets no score at all, because every pillar reads "no CVEs found" as good news.
+a silent one. A product that cannot be resolved gets no score at all, because
+every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags
+any verdict that survives fewer than 90% of random weightings as a judgement call
+instead of dressing it in false precision.
 
 `retrust eval` recomputes every accuracy figure from your own index: **93.1%** of
 26,958 version ranges decided deterministically, **99.9%** resolution precision
@@ -56,31 +55,18 @@ public. `retrust ssvc` places every finding on CERT/CC's SSVC deployer tree,
 reproduced from their repository rather than rewritten, with three of its four
 decision points left for the buyer because they describe a plant this tool has
 never seen. `retrust lev` implements NIST CSWP 41, composing a CVE's EPSS scores
-across its whole life to estimate whether it has probably been exploited already.
-On one real product, Delta Electronics DIAEnergie, SSVC returns 72 findings all
-marked *scheduled* because none are in KEV, while LEV estimates that **23 of
-those same 72 have probably already been exploited**. The tool prints both and
-explains the disagreement instead of picking the flattering one.
+across its whole life. On one real product, Delta Electronics DIAEnergie, SSVC
+returns 72 findings all marked *scheduled* because none are in KEV, while LEV
+estimates that **23 of those same 72 have probably already been exploited**. The
+tool prints both, and `retrust lev --audit` measures whether LEV discriminates at
+all before anyone leans on it.
 
-That demanded an audit rather than a claim, so `retrust lev --audit` measures
-whether the metric discriminates across all 12,003 corpus CVEs: KEV-listed flaws
-carry a median LEV of 1.000 against 0.162 for the rest, a 6× separation that is
-NIST's own validation check. It also shows the confound in the same table.
-LEV is cumulative, so 2.6% of CVEs under a year old clear the threshold against
-87.5% of those over three, which means a high score on an old CVE is the expected
-case and not a finding. Every per-product count is therefore printed against that
-base rate.
-
-It also looks like what it is. The interface follows ISA-101, the HMI standard
-for industrial control rooms: a low-chroma field, colour reserved strictly for
-abnormal conditions, identifiers set as the part numbers they are. Both the
-terminal and the printed report are built on it, and a `retrust shell` menu sits
-beside the flags for buyers who would rather not learn them.
-
-Python 3.10+, no third-party runtime dependencies, Apache-2.0, fully offline
-against a local SQLite index. A clone and one command build the whole thing, so a
-visitor can have it running on their own laptop, against their own bill of
-materials, before they reach the next station.
+It also looks like what it is: the interface follows ISA-101, the HMI standard
+for industrial control rooms, and a menu sits beside the flags for buyers who
+would rather not learn them. Python 3.10+, no third-party dependencies,
+Apache-2.0, fully offline. A clone and one command build the whole thing, so a
+visitor can have it running on their own laptop before they reach the next
+station.
 
 ---
 
