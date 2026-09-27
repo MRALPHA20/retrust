@@ -1,6 +1,8 @@
 """Command line interface.
 
     retrust setup                                     fetch everything, build the index
+    retrust search  QUERY                             find vendors, products, order numbers
+    retrust vendor  NAME                              what the index knows about a maker
     retrust ingest  --csaf DIR [--kev F] [--epss F]   build the local index
     retrust stats                                     what is in the index
     retrust score   --vendor V --product P [--version X] [--order-number N]
@@ -25,8 +27,8 @@ from pathlib import Path
 
 from .index import normalize_vendor
 from . import (backtest, batch, bootstrap, certification, config, console,
-               evaluate, index, match, report, score, screenshot, search,
-               sensitivity, snapshot, supplychain)
+               dossier, evaluate, index, match, report, score, screenshot,
+               search, sensitivity, snapshot, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -621,6 +623,27 @@ def cmd_search(args):
     return 0 if hits else 1
 
 
+def cmd_vendor(args):
+    """Everything the index knows about one manufacturer."""
+    connection = _open(args.db)
+    context = _context(args.data)
+    name = " ".join(args.vendor)
+    profile = dossier.build(connection, name,
+                            screening=context["screening"],
+                            certificates=context["certificates"])
+    print(dossier.format_report(profile))
+
+    # An unrecognised name is far more often a spelling difference than a vendor
+    # the corpus has never heard of. suggest(), not vendors(): a substring search
+    # cannot reach "Siemens" from "Siemems", which is exactly the typo to catch.
+    if not profile.known:
+        if hits := search.suggest(connection, vendor=name)["vendors"]:
+            print()
+            print(search.format_vendors(hits, name,
+                                        lead="Vendors in the corpus with a similar name:"))
+    return 0 if profile.known else 1
+
+
 def cmd_completion(args):
     """Emit a completion script listing the real parser's commands and flags.
 
@@ -712,6 +735,11 @@ def build_parser():
     p.add_argument("--vendor", help="restrict a product search to one vendor")
     p.add_argument("--limit", type=int, default=20, help="results to show")
     p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("vendor", help="what the index knows about a manufacturer")
+    p.add_argument("vendor", nargs="+", help="manufacturer name")
+    p.add_argument("--data", default="data", help="data directory")
+    p.set_defaults(func=cmd_vendor)
 
     p = sub.add_parser("completion", help="print a shell completion script")
     p.add_argument("shell", choices=["bash", "zsh"])

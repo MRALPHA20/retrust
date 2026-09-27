@@ -16,6 +16,7 @@ say only in front of an audience. pad() measures what a terminal really draws.
 
 import os
 import re
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -31,14 +32,13 @@ VERDICT_STYLES = {"PREFER": "prefer", "CONDITIONAL": "conditional",
                   "AVOID": "avoid", "NOT ASSESSED": "faint"}
 
 ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
-
 _forced_off = False
 
 
 def enabled():
     """True only when a person is looking at a terminal that wants colour."""
-    if _forced_off or os.environ.get("NO_COLOR") is not None:
-        return False              # NO_COLOR counts at any value, per no-color.org
+    if _forced_off or os.environ.get("NO_COLOR"):
+        return False          # any non-empty value counts, per no-color.org
     # Under pytest, or behind a pipe wrapper, stdout may have no isatty at all.
     return os.environ.get("TERM") != "dumb" and bool(
         getattr(sys.stdout, "isatty", lambda: False)())
@@ -83,19 +83,16 @@ def pad(text, width, align="left"):
 
 
 HEADER = "ReTrust scores OT hardware for cyber risk before you buy it."
-
 NEXT_STEPS = """\
 Examples:
   retrust search S7-1500
   retrust score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
   retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"
   retrust batch candidates.csv --html review.html"""
-
 BUILD_STEPS = """\
 Build one, and every command after it runs offline:
   retrust ingest --csaf <directory of CSAF JSON files>
   retrust snapshot --restore retrust-snapshot.zip   (a pinned bundle instead)"""
-
 FOOTER = """\
   retrust --help              every command and flag
   retrust completion bash     tab completion for bash or zsh"""
@@ -104,8 +101,7 @@ FOOTER = """\
 def overview(db_path):
     """What bare `retrust` prints: what the index holds, then what to do next.
 
-    Short on purpose: a wall of text is a worse first impression than the usage
-    error it replaces.
+    Short on purpose: a wall of text is a worse greeting than the usage error.
     """
     described, has_data = _summarise(db_path)
     return "\n".join([HEADER, "", *described, "",
@@ -113,41 +109,49 @@ def overview(db_path):
 
 
 def _summarise(db_path):
-    """Describe the index at db_path, or say why it cannot be described."""
-    # index.connect() creates the file it is handed, so merely being greeted must
-    # not leave an empty database behind for the next run to report on.
-    if not Path(db_path).exists():
-        return [f"No index yet at {db_path}."], False
+    """The count lines for the index at db_path, or why there are none."""
     try:
-        counts = index.stats(index.connect(db_path))
-    except Exception as error:      # not a database, a directory, an older schema
-        return [f"{db_path} exists but is not a usable ReTrust index",
-                f"({error})."], False
+        # exists() is inside the try because it raises on a path we may not even
+        # look at, such as an index under somebody else's home directory.
+        if not Path(db_path).exists():
+            return [f"No index yet at {db_path}."], False
+        # Read-only: index.connect() would add any table the schema lacks, and
+        # ReTrust's tables have no business in a database that is not ours.
+        counts = index.stats(sqlite3.connect(
+            f"{Path(db_path).resolve().as_uri()}?mode=ro", uri=True))
+    except Exception as error:    # a directory, unreadable, not a database at all
+        return [f"{db_path} is not a usable ReTrust index", f"({error})."], False
     if not counts["advisories"]:
         # Seven zeros would read as a measurement, and nothing was measured.
         return [f"The index at {db_path} is empty: no advisories in it."], False
     return [
         f"Index at {db_path}",
-        f"  {counts['advisories']:,} advisories, {counts['products']:,} products, "
-        f"{counts['vendors']:,} vendors, {counts['cves']:,} CVEs",
+        # "products" would overstate by a factor of two: index.stats counts
+        # product rows, and a product gets one per advisory that names it.
+        f"  {counts['advisories']:,} advisories, {counts['products']:,} product "
+        f"entries, {counts['vendors']:,} vendors, {counts['cves']:,} CVEs",
         f"  {counts['order_numbers']:,} order numbers to match on",
-        f"  {counts['kev']:,} CVEs in CISA KEV, {counts['epss']:,} scored by EPSS",
+        # Not "CVEs in CISA KEV", which would read as a share of the count above:
+        # these are whole catalogues as loaded, most of KEV naming no OT product.
+        f"  signals loaded: {counts['kev']:,} KEV entries, "
+        f"{counts['epss']:,} EPSS scores",
     ], True
 
 
-# %-formatting rather than str.format below, because both templates are full of
-# the shell's own braces and doubling every one would make them unreadable.
+# %-formatting below, not str.format: both templates are full of the shell's own
+# braces, and doubling every one would make them unreadable.
 BASH = """\
 # retrust completion for bash. Install: add  eval "$(retrust completion bash)"  to ~/.bashrc
 _retrust() {
-    local commands="%(commands)s" shared="%(shared)s" flags="" subcommand="" word
+    local subcommands="%(commands)s" shared="%(shared)s" flags="" subcommand="" word
+    # The subcommand is the first word that is one; the value of --db is not.
     for word in "${COMP_WORDS[@]:1:COMP_CWORD-1}"; do
-        [[ $word == -* ]] || { subcommand=$word; break; }
+        [[ " $subcommands " == *" $word "* ]] && { subcommand=$word; subcommands=""; break; }
     done
     case "$subcommand" in
 %(cases)s
     esac
-    COMPREPLY=($(compgen -W "$commands $flags $shared" -- "${COMP_WORDS[COMP_CWORD]}"))
+    COMPREPLY=($(compgen -W "$subcommands $flags $shared" -- "${COMP_WORDS[COMP_CWORD]}"))
 }
 complete -F _retrust retrust
 """
@@ -156,34 +160,42 @@ ZSH = """\
 #compdef retrust
 # Install: add  eval "$(retrust completion zsh)"  to ~/.zshrc
 _retrust() {
-    local shared=(%(shared)s)
-    (( CURRENT == 2 )) && { compadd -- %(commands)s $shared; return }
-    case ${words[2]} in
+    local shared=(%(shared)s) subcommands=(%(commands)s) subcommand="" word
+    # ${words[2]} would do until somebody types `retrust --db other.db score`.
+    for word in ${words[2,CURRENT-1]}; do
+        (( $subcommands[(I)$word] )) && { subcommand=$word; subcommands=(); break }
+    done
+    case "$subcommand" in
 %(cases)s
-        *) compadd -- $shared ;;
+        *) compadd -- $subcommands $shared ;;
     esac
 }
-# Guarded because compdef only exists once compinit has run.
-(( $+functions[compdef] )) && compdef _retrust retrust
+# Guarded because compdef only exists once compinit has run, and `|| true` so that
+# sourcing this from ~/.zshrc before compinit does not leave $? at 1 for the prompt.
+(( $+functions[compdef] )) && compdef _retrust retrust || true
 """
 
 
 def completion(shell, commands, global_flags=()):
     """A bash or zsh completion script, as a string.
 
-    `commands` maps each subcommand name to its option strings and `global_flags`
-    holds the top-level ones. The CLI reads both off argparse and passes them in,
-    so a generated script cannot outlive a renamed command or flag.
+    `commands` maps each subcommand name to its own option strings, `global_flags`
+    holds the top-level ones, and a bare sequence of names is accepted too -- those
+    subcommands then complete to the global flags alone. The CLI reads all of it
+    off the live parser, so a generated script cannot outlive a renamed flag.
     """
     template = {"bash": BASH, "zsh": ZSH}.get(shell)
     if template is None:
         raise ValueError(f"no completion script for {shell!r}; choose bash or zsh")
+    if not hasattr(commands, "items"):    # names alone, without their flags
+        commands = dict.fromkeys(commands, ())
     # A flag that is also global belongs in `shared` alone, or the menu offers
     # --help twice. Joined here: reusing a quote inside an f-string needs 3.12.
-    joined = {name: " ".join(flag for flag in flags if flag not in global_flags)
-              for name, flags in commands.items()}
-    cases = [f'        {name}) flags="{options}"; commands="" ;;' if shell == "bash"
-             else f"        {name}) compadd -- {options} $shared ;;"
-             for name, options in joined.items()]
+    own = {name: " ".join(flag for flag in flags if flag not in global_flags)
+           for name, flags in commands.items()}
+    # Only flags of its own earn a branch; the loop above dropped the names.
+    cases = [f'        {name}) flags="{flags}" ;;' if shell == "bash"
+             else f"        {name}) compadd -- {flags} $shared ;;"
+             for name, flags in own.items() if flags]
     return template % {"commands": " ".join(commands), "cases": "\n".join(cases),
                        "shared": " ".join(global_flags)}

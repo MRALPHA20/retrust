@@ -16,10 +16,10 @@ from retrust import index, search
 
 # --- the fixture corpus ------------------------------------------------------
 
-def leaf(product_id, name, model=None):
+def leaf(product_id, name, *models):
     product = {"product_id": product_id, "name": name}
-    if model:
-        product["product_identification_helper"] = {"model_numbers": [model]}
+    if models:
+        product["product_identification_helper"] = {"model_numbers": list(models)}
     return {"category": "product_version_range", "name": "vers:intdot/<2.0",
             "product": product}
 
@@ -44,8 +44,9 @@ def advisory(advisory_id, released, branches, affected):
 
 
 # Two advisories that between them cover every case the module has to handle:
-# one product named by both of them, two vendors sharing a product name, and the
-# Siemens/Simens pair that the similarity tie-break exists for.
+# one product named by both of them, two vendors sharing a product name, one
+# order number printed two ways, a vendor whose rare spelling sorts first, and
+# the Siemens/Simens pair that the similarity tie-break exists for.
 ONE = advisory("ICSA-26-001-01", "2026-01-01T00:00:00Z", [
     vendor("Testco Electric",
            branch("TestPLC 9000 (TC-9000-A1)", leaf("P1", "TestPLC 9000", "TC-9000-A1")),
@@ -58,11 +59,14 @@ ONE = advisory("ICSA-26-001-01", "2026-01-01T00:00:00Z", [
 
 TWO = advisory("ICSA-26-002-01", "2026-02-01T00:00:00Z", [
     vendor("Testco Electric",
-           branch("TestPLC 9000 (TC-9000-A1)", leaf("Q1", "TestPLC 9000", "TC-9000-A1"))),
+           branch("TestPLC 9000 (TC-9000-A1)",
+                  leaf("Q1", "TestPLC 9000", "TC-9000-A1", "TC 9000 A1"))),
     vendor("Other Industries", branch("Widgetron 500", leaf("Q2", "Widgetron 500"))),
     vendor("Siemens", branch("SIMATIC S7-1500", leaf("Q3", "SIMATIC S7-1500"))),
     vendor("Simens", branch("SIMATIC S7-1200", leaf("Q4", "SIMATIC S7-1200"))),
-], ["Q1", "Q2", "Q3", "Q4"])
+    # Collapses to the same vendor key as "Testco Electric", and sorts before it.
+    vendor("Testco", branch("Legacy Unit 1", leaf("Q5", "Legacy Unit 1"))),
+], ["Q1", "Q2", "Q3", "Q4", "Q5"])
 
 
 @pytest.fixture
@@ -86,7 +90,26 @@ def test_vendors_finds_an_exact_normalised_match(db):
     hits = search.vendors(db, "Testco Electric")
     assert hits[0].method == "exact"
     assert hits[0].vendor == "Testco Electric"
-    assert (hits[0].products, hits[0].advisories) == (3, 2)
+    assert (hits[0].products, hits[0].advisories) == (4, 2)
+
+
+def test_vendors_print_the_spelling_most_entries_use(db):
+    """The printed name is the one a buyer types back, so it must be the usual one.
+
+    MIN(vendor) would label this key "Testco", the spelling one entry of four
+    carries; on the real corpus it renames Rockwell Automation's 1,006 entries
+    after the 5 that say just "Rockwell".
+    """
+    assert db.execute("SELECT MIN(vendor) FROM product WHERE vendor_key = 'testco'"
+                      ).fetchone()[0] == "Testco"
+    assert search.vendors(db, "Testco")[0].vendor == "Testco Electric"
+
+
+def test_one_vendor_prints_one_way_in_every_search(db):
+    """A vendor named two ways across three commands reads as two vendors."""
+    assert search.products(db, "TestPLC 9000 Panel")[0].vendor == "Testco Electric"
+    assert search.order_numbers(db, "TC-9000-A1")[0].vendor == "Testco Electric"
+    assert search.suggest(db, vendor="Tesco")["vendors"][0].vendor == "Testco Electric"
 
 
 def test_vendors_counts_come_from_the_corpus(db):
@@ -125,6 +148,30 @@ def test_products_reports_the_order_numbers(db):
     assert hit.order_numbers == ("9000-A1", "TC-9000-A1")
 
 
+def test_one_order_number_written_two_ways_is_counted_once(db):
+    """Counting spellings rather than numbers would invent an order number.
+
+    This product's helper gives "TC-9000-A1" and "TC 9000 A1", which are the
+    same number; the corpus has six such products. The count shown has to be
+    one a buyer can check against the device.
+    """
+    key = index.normalize_order_number("TC-9000-A1")
+    assert db.execute("SELECT COUNT(DISTINCT number) FROM order_number"
+                      " WHERE number_key = ?", (key,)).fetchone()[0] == 2
+    hit = search.products(db, "TestPLC 9000 (TC-9000-A1)")[0]
+    assert hit.order_numbers.count("TC-9000-A1") == 1
+    assert "TC 9000 A1" not in hit.order_numbers      # the rarer spelling
+    assert len(hit.order_numbers) == len({index.normalize_order_number(number)
+                                          for number in hit.order_numbers})
+
+
+def test_the_two_searches_agree_on_how_a_number_is_spelt(db):
+    """Otherwise one number looks like two, depending on which command found it."""
+    from_product = search.products(db, "TestPLC 9000 (TC-9000-A1)")[0].order_numbers
+    from_number = search.order_numbers(db, "TC9000A1")[0].order_numbers[0]
+    assert from_number in from_product
+
+
 def test_products_do_not_inherit_another_vendors_order_number(db):
     """Two vendors name a Widgetron 500; only one of them gives a number."""
     by_vendor = {hit.vendor: hit for hit in search.products(db, "Widgetron 500")}
@@ -154,7 +201,7 @@ def test_products_can_be_scoped_to_one_vendor(db):
 
 
 def test_products_abstains_on_a_vendor_that_normalises_to_nothing(db):
-    """"GmbH" is a stripped suffix; scoping on "" would answer a different question."""
+    """A stripped suffix normalises away; scoping on "" answers a different question."""
     assert index.normalize_vendor("GmbH") == ""
     assert search.products(db, "TestPLC", vendor="GmbH") == []
 
@@ -190,7 +237,7 @@ def test_order_numbers_counts_advisories_not_entries(db):
 # --- suggestions -------------------------------------------------------------
 
 def test_suggest_offers_the_closest_vendor(db):
-    """"Tesco" is not a substring of "testco", so only edit distance can save it."""
+    """No LIKE can reach this: "tesco" is not a substring of "testco"."""
     found = search.suggest(db, vendor="Tesco Electric")
     assert found["vendor_known"] is False
     assert found["vendors"][0].vendor == "Testco Electric"

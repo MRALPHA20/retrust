@@ -1,19 +1,27 @@
 """Tests for the terminal presentation layer.
 
-Two of these matter more than the rest. The first is that pad() measures visible
-width: a painted verdict and a plain one must occupy the same columns, or every
-aligned table in the tool breaks the moment colour is on -- which is to say in
-front of an audience, and nowhere else. The second is that overview() never
-creates the database it is describing, because index.connect() would, and a
+Three of these matter more than the rest. The first is that pad() measures
+visible width: a painted verdict and a plain one must occupy the same columns, or
+every aligned table in the tool breaks the moment colour is on -- which is to say
+in front of an audience, and nowhere else. The second is that overview() never
+writes to the database it is describing, because index.connect() would, and a
 missing index would then report itself as an empty one on the next run.
+
+The third is that the completion scripts are driven by real shells rather than
+read. Both shells once looked correct and offered nothing useful after a global
+flag (`retrust --db other.db score <TAB>`), which `bash -n` cannot see: a syntax
+check only proves the script parses, so the cases below run it.
 
 Colour depends on the environment, so every test that needs it states the whole
 environment it assumes rather than inheriting the one pytest happens to run in.
 """
 
 import json
+import os
 import re
+import shlex
 import shutil
+import sqlite3
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -89,8 +97,10 @@ def test_stdout_without_an_isatty_method_does_not_raise(colour, monkeypatch):
 
 def test_no_color_environment_variable_wins_even_on_a_tty(colour, monkeypatch):
     colour()
-    monkeypatch.setenv("NO_COLOR", "")       # any value counts, including empty
+    monkeypatch.setenv("NO_COLOR", "0")      # the value is not read, only its presence
     assert not console.enabled()
+    monkeypatch.setenv("NO_COLOR", "")       # except an empty one, which no-color.org
+    assert console.enabled()                 # says to ignore
 
 
 def test_term_dumb_disables_colour(colour, monkeypatch):
@@ -158,9 +168,29 @@ def test_pad_rejects_an_unknown_alignment():
 def test_overview_describes_an_index_that_has_data(db_path):
     text = console.overview(db_path)
     assert db_path in text
-    assert "1 advisories" in text and "1 products" in text
+    assert "1 advisories" in text and "1 product entries" in text
     assert 'retrust score --vendor Siemens' in text
     assert "No index" not in text
+
+
+def test_overview_counts_product_entries_rather_than_claiming_distinct_products(tmp_path):
+    """The same product under three advisories is three rows, not three products.
+
+    index.stats counts rows, which on the real corpus is 27,234 against 11,644
+    distinct vendor-and-name pairs. Calling that "products" in the first thing a
+    new user reads would overstate the index by a factor of two.
+    """
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    for number in range(3):
+        advisory = json.loads(json.dumps(ADVISORY))
+        advisory["document"]["tracking"]["id"] = f"ICSA-26-00{number}-01"
+        (directory / f"a{number}.json").write_text(json.dumps(advisory))
+    path = tmp_path / "repeats.db"
+    index.build(str(path), str(directory))
+    text = console.overview(str(path))
+    assert "3 advisories, 3 product entries" in text
+    assert "3 products" not in text            # there is one, named three times
 
 
 def test_overview_without_an_index_gives_the_build_command_and_creates_nothing(tmp_path):
@@ -185,6 +215,65 @@ def test_overview_on_a_file_that_is_not_an_index_does_not_raise(tmp_path):
     assert "not a usable" in text and "retrust ingest" in text
 
 
+def test_overview_on_a_path_it_may_not_even_look_at(tmp_path):
+    """Path.exists() raises on an unreadable directory, so the check is guarded.
+
+    An index at /var/lib/retrust or under another user's home is the realistic
+    case, and a traceback is not the way to say "I cannot read that".
+    """
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "index.db").write_bytes(b"")
+    locked.chmod(0o000)
+    try:
+        if os.access(locked / "index.db", os.F_OK):
+            pytest.skip("running as root, where the permission bits do not bite")
+        text = console.overview(str(locked / "index.db"))
+    finally:
+        locked.chmod(0o700)
+    assert "not a usable ReTrust index" in text and "Permission denied" in text
+
+
+def test_overview_leaves_another_tool_s_database_alone(tmp_path):
+    """Somebody else's SQLite file is not an empty index, and must not become one.
+
+    index.connect() would add every missing ReTrust table to it and the greeting
+    would then describe the result as an empty index, having quietly made it one.
+    """
+    path = tmp_path / "somebody-elses.db"
+    other = sqlite3.connect(path)
+    other.execute("CREATE TABLE payroll (name TEXT)")
+    other.commit()
+    text = console.overview(str(path))
+    assert "not a usable ReTrust index" in text and "empty" not in text
+    tables = {row[0] for row in other.execute("SELECT name FROM sqlite_master")}
+    assert tables == {"payroll"}
+
+
+def test_overview_reports_the_signal_catalogues_it_loaded_not_a_share_of_the_index(
+        tmp_path, db_path):
+    """KEV's number is the catalogue, so it must not be labelled as index CVEs.
+
+    index.stats counts every KEV entry loaded, most naming software no advisory
+    here mentions. Printed as "N CVEs in CISA KEV" beside the index's own CVE
+    count it reads as a subset of it, which would overstate the exposure of
+    everything in the index by whatever the ratio happens to be.
+    """
+    (tmp_path / "kev.json").write_text(json.dumps({"vulnerabilities": [
+        {"cveID": "CVE-2026-0001", "knownRansomwareCampaignUse": "Known"},
+        {"cveID": "CVE-1999-9999"}]}))       # in KEV, unknown to this index
+    (tmp_path / "epss.csv").write_text(
+        "#model_version:test\ncve,epss,percentile\n"
+        "CVE-2026-0001,0.5,0.9\nCVE-1999-9999,0.1,0.2\n")
+    counts = index.load_exploitation(index.connect(db_path),
+                                     str(tmp_path / "kev.json"),
+                                     str(tmp_path / "epss.csv"))
+    assert counts == {"kev": 2, "epss": 1}   # EPSS is filtered to CVEs we reference
+    text = console.overview(db_path)
+    assert "2 KEV entries" in text and "1 EPSS scores" in text
+    assert "2 CVEs" not in text              # the index holds one, and it is not two
+
+
 def test_overview_stays_short_enough_to_read(tmp_path, db_path):
     directory = tmp_path / "adirectory"
     directory.mkdir()
@@ -194,16 +283,16 @@ def test_overview_stays_short_enough_to_read(tmp_path, db_path):
         assert len(console.overview(target).splitlines()) < 20, target
 
 
-# --- completion ------------------------------------------------------------
+# --- completion, as text ---------------------------------------------------
 
-def test_bash_completion_names_every_command_and_its_flags():
+def test_bash_completion_names_every_command_and_the_flags_it_alone_takes():
     script = console.completion("bash", COMMANDS, GLOBAL_FLAGS)
-    for name in COMMANDS:
-        assert f"        {name}) flags=" in script
+    assert 'subcommands="ingest stats score"' in script
     # -h and --help are global, so they are offered once, from shared, not twice.
     assert 'ingest) flags="--csaf --kev --epss"' in script
-    assert 'stats) flags=""' in script
     assert 'shared="-h --help --db --no-color"' in script
+    # stats has nothing of its own left, and a branch saying so would be empty.
+    assert "stats)" not in script
     assert "eval \"$(retrust completion bash)\"" in script     # how to install it
 
 
@@ -213,16 +302,12 @@ def test_zsh_completion_starts_with_the_compdef_line():
     assert "Install" in lines[1]
 
 
-@pytest.mark.parametrize("commands", [COMMANDS, {}], ids=["commands", "none"])
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
-def test_generated_scripts_pass_their_shell_syntax_check(tmp_path, shell, commands):
-    if not shutil.which(shell):
-        pytest.skip(f"{shell} is not installed")
-    script = tmp_path / f"completion.{shell}"
-    script.write_text(console.completion(shell, commands, GLOBAL_FLAGS))
-    checked = subprocess.run([shell, "-n", str(script)],
-                             capture_output=True, text=True)
-    assert checked.returncode == 0, checked.stderr
+def test_completion_accepts_command_names_without_their_flags(shell):
+    """A caller that can see the commands but not their flags still gets a script."""
+    script = console.completion(shell, ["ingest", "score"], GLOBAL_FLAGS)
+    assert "ingest score" in script           # named, and nothing claimed about flags
+    assert "--csaf" not in script
 
 
 def test_completion_rejects_an_unsupported_shell():
@@ -236,3 +321,103 @@ def test_completion_uses_only_the_names_it_was_given():
     script = console.completion("bash", {"invented": ["--nonexistent-flag"]})
     assert "invented" in script and "--nonexistent-flag" in script
     assert "ingest" not in script
+
+
+# --- completion, driven by the shells themselves --------------------------
+
+DRIVERS = {
+    "bash": """\
+source %(script)s
+COMP_WORDS=(%(words)s); COMP_CWORD=%(last)s; COMPREPLY=()
+_retrust
+printf '%%s\\n' "${COMPREPLY[@]}"
+""",
+    "zsh": """\
+source %(script)s
+compadd() { shift; print -l -- "$@" }    # the real one exists only mid-completion
+words=(%(words)s); CURRENT=%(count)s
+_retrust
+""",
+}
+
+
+def offered(tmp_path, shell, *words, commands=COMMANDS):
+    """What the generated script really offers, as that shell itself runs it.
+
+    The last word is the one being completed, so an empty one asks for every
+    candidate: bash filters COMPREPLY by the prefix and zsh does not, and only an
+    empty prefix makes the two shells answer comparably.
+    """
+    if not shutil.which(shell):
+        pytest.skip(f"{shell} is not installed")
+    script = tmp_path / f"completion.{shell}"
+    script.write_text(console.completion(shell, commands, GLOBAL_FLAGS))
+    driver = tmp_path / f"driver.{shell}"
+    driver.write_text(DRIVERS[shell] % {
+        "script": shlex.quote(str(script)), "last": len(words) - 1,
+        "words": " ".join(shlex.quote(word) for word in words), "count": len(words)})
+    run = subprocess.run([shell, "-f", str(driver)], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    return run.stdout.split()
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_a_shell_offers_the_commands_until_one_is_named(tmp_path, shell):
+    assert {"ingest", "score"} <= set(offered(tmp_path, shell, "retrust", ""))
+    named = offered(tmp_path, shell, "retrust", "ingest", "")
+    assert "--csaf" in named and "score" not in named
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_a_shell_offers_each_global_flag_once(tmp_path, shell):
+    """--help belongs to every subparser too, and was offered twice for it."""
+    assert offered(tmp_path, shell, "retrust", "ingest", "").count("--help") == 1
+
+
+@pytest.mark.parametrize("words", [("retrust", "--db", "other.db", "score", ""),
+                                   ("retrust", "--no-color", "score", "")],
+                         ids=["flag-with-a-value", "bare-flag"])
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_a_shell_still_finds_the_subcommand_behind_a_global_flag(tmp_path, shell, words):
+    """The value of --db is not a subcommand, and --no-color does not hide one.
+
+    Both shells used to take the word after the global flags on trust: bash read
+    `other.db` as the subcommand and offered nothing at all, zsh looked only at
+    the second word and offered nothing but the global flags.
+    """
+    assert "--vendor" in offered(tmp_path, shell, *words)
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_a_shell_falls_back_to_the_global_flags_for_a_command_with_none(tmp_path, shell):
+    after_stats = offered(tmp_path, shell, "retrust", "stats", "")
+    assert "--db" in after_stats and "ingest" not in after_stats
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_sourcing_a_generated_script_succeeds(tmp_path, shell):
+    """Straight into a virgin shell: the zsh one runs before compinit as well.
+
+    It cannot register itself that early and does not try, but it must still end
+    on a zero status, or every prompt that shows $? reports a failed startup.
+    """
+    if not shutil.which(shell):
+        pytest.skip(f"{shell} is not installed")
+    script = tmp_path / f"completion.{shell}"
+    script.write_text(console.completion(shell, COMMANDS, GLOBAL_FLAGS))
+    run = subprocess.run([shell, "-f", "-c", f"source {shlex.quote(str(script))}"],
+                         capture_output=True, text=True)
+    assert (run.returncode, run.stdout, run.stderr) == (0, "", "")
+
+
+@pytest.mark.parametrize("commands", [COMMANDS, {}], ids=["commands", "none"])
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_generated_scripts_pass_their_shell_syntax_check(tmp_path, shell, commands):
+    """A parser whose commands take no flags of their own leaves an empty case."""
+    if not shutil.which(shell):
+        pytest.skip(f"{shell} is not installed")
+    script = tmp_path / f"completion.{shell}"
+    script.write_text(console.completion(shell, commands, GLOBAL_FLAGS))
+    checked = subprocess.run([shell, "-n", str(script)],
+                             capture_output=True, text=True)
+    assert checked.returncode == 0, checked.stderr

@@ -60,6 +60,15 @@ check 1 "punctuation-only query matches nothing"  -- $RETRUST search -- -
 check 1 "LIKE wildcards are not wildcards"        -- $RETRUST search '%'
 
 echo
+echo "== vendor dossier =="
+check 0 "a known manufacturer"                    -- $RETRUST vendor Moxa
+check 1 "an unknown one exits 1"                  -- $RETRUST vendor Nobodyatall
+contains "similar name" "a typo gets a shortlist" -- $RETRUST vendor Siemems
+contains "not a verdict" "counts are not a grade" -- $RETRUST vendor Siemens
+contains "covered list" "screening shows on the dossier" -- $RETRUST vendor Hikvision
+check 1 "punctuation-only name is not a vendor"   -- $RETRUST vendor -- -
+
+echo
 echo "== scoring =="
 check 0 "score by order number"                   -- $RETRUST score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
 check 0 "score by vendor and product"             -- $RETRUST score --vendor ABB --product "AC 800M"
