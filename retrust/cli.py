@@ -4,6 +4,7 @@
     retrust search  QUERY                             find vendors, products, order numbers
     retrust vendor  NAME                              what the index knows about a maker
     retrust diff    previous.json                     what changed since that run
+    retrust alternatives --vendor V --product P       others in the same family
     retrust ingest  --csaf DIR [--kev F] [--epss F]   build the local index
     retrust stats                                     what is in the index
     retrust score   --vendor V --product P [--version X] [--order-number N]
@@ -27,9 +28,10 @@ import sys
 from pathlib import Path
 
 from .index import normalize_vendor
-from . import (backtest, batch, bootstrap, certification, config, console,
-               diff, dossier, evaluate, index, match, report, score,
-               screenshot, search, sensitivity, snapshot, supplychain)
+from . import (alternatives, backtest, batch, bootstrap, certification,
+               config, console, diff, dossier, evaluate, index, match,
+               report, score, screenshot, search, sensitivity, snapshot,
+               supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -633,6 +635,30 @@ def cmd_search(args):
     return 0 if hits else 1
 
 
+def cmd_alternatives(args):
+    """Other products in the same vendor family, scored the same way."""
+    connection = _open(args.db)
+    context = _context(config_path=args.config)
+    subject, resolution, _ = _assess(
+        connection, args.vendor, args.product, args.version, args.order_number,
+        context=context)
+
+    # Prefer the name the advisory uses: it is the one the family shares.
+    vendor = resolution.matches[0].vendor if resolution.matches else args.vendor
+    name = resolution.matches[0].name if resolution.matches else args.product
+    if not (vendor and name):
+        print(f"{subject.product}: {resolution.reason or 'nothing to compare against'}")
+        return 1
+
+    options, skipped = alternatives.find(
+        connection, vendor, name,
+        lambda v, p: _assess(connection, v, p, None, None, context=context),
+        limit=args.limit)
+    print(alternatives.format_report(subject, options, skipped,
+                                     version=args.version))
+    return 0 if options else 1
+
+
 def cmd_diff(args):
     """Re-score a stored result against today's index and report what moved."""
     document, previous = diff.read(args.previous)
@@ -779,6 +805,12 @@ def build_parser():
     p.add_argument("--vendor", help="restrict a product search to one vendor")
     p.add_argument("--limit", type=int, default=20, help="results to show")
     p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("alternatives", help="other products in the same family")
+    _product_args(p)
+    p.add_argument("--limit", type=int, default=8, help="suggestions to show")
+    p.add_argument("--config", help="scoring configuration file")
+    p.set_defaults(func=cmd_alternatives)
 
     p = sub.add_parser("diff", help="re-score a stored result against today's index")
     p.add_argument("previous", help="JSON written by an earlier score/compare/batch")

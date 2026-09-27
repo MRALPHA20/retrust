@@ -83,6 +83,16 @@ check 1 "batch exits 1 on a disqualified part"    -- $RETRUST batch examples/can
 check 0 "batch exits 0 on a clean list"           -- $RETRUST batch examples/approved-bom.csv --no-sensitivity --fail-on never
 
 echo
+echo "== alternatives =="
+check 0 "a gated product gets suggestions"         -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
+contains "not a recommendation" "the caveat is printed" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"
+contains "not evidence of safety" "unassessable ones are counted, not offered" \
+  -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"
+contains "equal terms" "a version is flagged as unequal" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
+check 1 "a product with no family exits 1"         -- $RETRUST alternatives --vendor Moxa --product EDS-405A
+check 1 "an unresolvable product exits 1"          -- $RETRUST alternatives --vendor Nobody --product Nothing
+
+echo
 echo "== diff: what changed since a stored run =="
 $RETRUST batch examples/candidates.csv --json /tmp/retrust-smoke-before.json \
   --no-sensitivity >/dev/null 2>&1

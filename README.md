@@ -293,6 +293,7 @@ retrust snapshot --restore retrust-snapshot.zip
 | `search QUERY` | find vendors, products or order numbers |
 | `vendor NAME` | what the index holds on one manufacturer |
 | `diff FILE` | re-score a stored result; what changed since |
+| `alternatives` | other products in the same vendor family |
 | `score` | assess one product |
 | `compare` | rank candidates for one decision |
 | `batch FILE` | score a whole bill of materials, with a CI exit code |
@@ -364,6 +365,48 @@ Three details that stop it misleading you:
   a change you made to the config reads as evidence about the corpus. Losing the
   ability to resolve a product is also kept apart from that product getting
   worse: we have not learned it is riskier, only that we can no longer say.
+
+## Then what should we buy?
+
+`score` ends a conversation. A buyer told their chosen PLC is AVOID still has to
+buy something. `retrust alternatives` answers the part of that question ReTrust
+can answer: which neighbouring products in the same vendor's family have a
+better advisory record.
+
+```
+$ retrust alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
+
+ALTERNATIVES TO  Siemens SIMATIC S7-1500 (firmware 3.1.6)
+  AVOID  39.1   Known exploited vulnerability
+
+ReTrust does not know whether any of these will do the same job. It holds
+advisory history, not specifications: no I/O counts, no form factors, no
+safety integrity levels, nothing about fitness for purpose. These are
+candidates for an engineer to evaluate, not a recommendation to substitute.
+
+CANDIDATE                                     VERDICT      SCORE  CVES  SHARED NAME
+Siemens SIMATIC S7-1500 CPU family (incl. re  PREFER        72.1    24  SIMATIC S7-1500 CPU family
+Siemens SIMATIC S7-1500 CPU 1516T-3 PN/DP (6  PREFER        70.5    18  SIMATIC S7-1500 CPU
+
+2 further family member(s) could not be assessed and are not listed. Absence
+of advisories is not evidence of safety.
+```
+
+**A product ReTrust could not assess is never suggested.** This is the inversion
+the command exists not to make: every pillar reads "no CVEs found" as good news,
+so ranking on score alone would put the products nobody has published about at
+the very top. They are counted and reported, never offered as safer.
+
+**Suggestions stay inside one vendor's family.** Crossing vendors would need
+equivalence data this tool does not have. The `SHARED NAME` column shows exactly
+how much of the catalogue name a candidate has in common, so you can judge the
+claim rather than trust it.
+
+**A supplied firmware version is flagged as an unequal comparison.** The version
+you gave belongs to the product you asked about and means nothing on another, so
+candidates are scored without one. That makes the two columns answer slightly
+different questions, and the report says so instead of letting the gap read as
+the alternatives being cleaner.
 
 ## Automation
 
