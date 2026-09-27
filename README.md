@@ -377,7 +377,7 @@ CISA's repository already mirrors most of their advisories.
 ## Development
 
 ```bash
-python3 -m pytest tests/ -q      # 214 tests, no network needed
+python3 -m pytest tests/ -q      # 224 tests, no network needed
 ```
 
 Layout:
@@ -408,6 +408,24 @@ count, the KEV and EPSS capture dates, and the weights used. `retrust snapshot`
 bundles the index and both auxiliary lists into one checksummed zip, so a
 result can be regenerated months later and shown to be the same result. Restore
 verifies every SHA-256 and refuses a modified bundle.
+
+## Extending it
+
+Adding a scoring pillar is one entry in `score.PILLARS`:
+
+```python
+PillarSpec("supply_chain", "Supply chain", 0.10,
+           lambda findings, advisories, certificates, vendor_key:
+               Pillar("Supply chain", score, coverage, ["evidence line"]))
+```
+
+The default weights, the config file's accepted keys, the report's weight column
+and the sensitivity sampler all derive from that list, so nothing else needs
+editing. A test asserts they stay in step.
+
+Adding a data source means a loader that writes into `data/`, a `load()` that
+reads it, and wiring it into the pillar that uses it — `certification.py` is the
+smallest complete example to copy.
 
 ## Limitations
 
