@@ -1,5 +1,6 @@
 """Command line interface.
 
+    retrust setup                                     fetch everything, build the index
     retrust ingest  --csaf DIR [--kev F] [--epss F]   build the local index
     retrust stats                                     what is in the index
     retrust score   --vendor V --product P [--version X] [--order-number N]
@@ -23,8 +24,9 @@ import sys
 from pathlib import Path
 
 from .index import normalize_vendor
-from . import (backtest, batch, certification, config, evaluate, index, match,
-               report, score, screenshot, sensitivity, snapshot, supplychain)
+from . import (backtest, batch, bootstrap, certification, config, evaluate,
+               index, match, report, score, screenshot, sensitivity, snapshot,
+               supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -594,6 +596,29 @@ def cmd_refresh(args):
     return 0
 
 
+def cmd_setup(args):
+    """Fetch everything and build the index, in one command."""
+    print("Setting ReTrust up. Each step is skipped if it is already done,\n"
+          "so re-running after an interruption resumes where it stopped.\n")
+    results = bootstrap.run(
+        data_dir=args.data, db_path=args.db, force=args.force,
+        offline=args.offline, skip_refresh=args.skip_refresh, progress=print)
+
+    if failed := [(name, r["detail"]) for name, r in results.items() if not r["ok"]]:
+        name, detail = failed[0]
+        sys.exit(f"\nSetup stopped at the {name} step.\n  {detail}")
+
+    connection = _open(args.db)
+    print("\nReady. The index holds:")
+    for key, value in index.stats(connection).items():
+        print(f"  {key:<15} {value:,}")
+    print("\nTry:\n"
+          "  retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6\n"
+          "  retrust compare --candidate 'ABB|AC 800M' --candidate 'Moxa|EDS-405A'\n"
+          "  retrust eval")
+    return 0
+
+
 def cmd_eval(args):
     connection = _open(args.db)
     print("Measuring against the local index. This is the number ReTrust publishes;")
@@ -633,6 +658,16 @@ def build_parser():
         description="Score OT hardware for cyber risk before you buy it.")
     parser.add_argument("--db", default=DEFAULT_DB, help=f"index path (default {DEFAULT_DB})")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("setup", help="fetch everything and build the index")
+    p.add_argument("--data", default="data", help="data directory (default data)")
+    p.add_argument("--force", action="store_true",
+                   help="re-fetch sources that are already present")
+    p.add_argument("--offline", action="store_true",
+                   help="build from data already downloaded; fetch nothing")
+    p.add_argument("--skip-refresh", action="store_true",
+                   help="skip the certification and sanctions lists")
+    p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("ingest", help="build the index from CSAF advisories")
     p.add_argument("--csaf", required=True, help="directory of CSAF JSON files")

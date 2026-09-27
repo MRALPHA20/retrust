@@ -87,49 +87,84 @@ commercial state of the art is around 83%. Different question, different number.
 
 ## Install
 
-Python 3.10+ and no third-party runtime dependencies, so there is nothing to
-resolve and nothing to pin.
+ReTrust needs Python 3.10+ and nothing else. No third-party packages, so there
+is nothing to resolve, nothing to pin, and no virtualenv to create.
+
+**Two commands from nothing to a working tool:**
 
 ```bash
 git clone https://github.com/<you>/retrust.git && cd retrust
+python3 -m retrust.cli setup
+```
+
+`setup` fetches CISA's OT advisory corpus, the KEV and EPSS exploitation feeds,
+and the certification and sanctions lists, then builds the local index — about
+165 MB, a couple of minutes on a normal connection. It prints what it is doing
+at each step and finishes by telling you what to run next.
+
+Then score something:
+
+```bash
+python3 -m retrust.cli score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
+```
+
+That is the whole installation. Everything after this point is optional.
+
+**If it is interrupted, run it again.** Each step is skipped when its output is
+already there, so a dropped connection costs you only the step it dropped on.
+Downloads are written to a temporary file and moved into place, so a half-fetched
+feed is never mistaken for a complete one.
+
+| Flag | |
+|---|---|
+| `--offline` | Build from data already downloaded; fetch nothing |
+| `--force` | Re-fetch sources even if they are present |
+| `--skip-refresh` | Skip the certification and sanctions lists |
+| `--data DIR` | Keep the data somewhere other than `data/` |
+
+`setup` stops rather than finishing on an index it knows is incomplete. If KEV
+or EPSS is missing, the exploitation gate cannot fire, and a product with a
+known exploited vulnerability would score as merely mediocre — so it says so
+instead of handing you a plausible-looking index.
+
+### Installing the `retrust` command (optional)
+
+The steps above run the tool straight from the clone. To get `retrust` on your
+PATH instead of typing `python3 -m retrust.cli`:
+
+```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
 The virtualenv is not optional on Debian, Ubuntu or Kali: those ship Python as
 an externally managed environment, and `pip install -e .` outside a venv fails
-with a PEP 668 error.
+with a PEP 668 error. Both forms are equivalent — `retrust <command>` below is
+the same as `python3 -m retrust.cli <command>`.
 
-**Or skip installing entirely.** Every command works straight from a clone:
+### Doing it by hand (optional)
 
-```bash
-python3 -m retrust.cli --help
-```
-
-Both forms are equivalent — `retrust <command>` below is the same as
-`python3 -m retrust.cli <command>`. If you did not install the package, use the
-longer form.
-
-## Build the index
-
-ReTrust works offline against a local SQLite index, so results are reproducible
-and a demo never depends on the network.
+`setup` is these four steps. Run them individually if you want the corpus
+somewhere specific, or if you are scripting a build:
 
 ```bash
-# 1. CISA's OT advisories in CSAF format (~134 MB, 3,937 advisories)
-git clone --depth 1 --filter=blob:none --sparse https://github.com/cisagov/CSAF.git
-cd CSAF && git sparse-checkout set csaf_files/OT && cd ..
+# 1. CISA's OT advisories in CSAF format (~148 MB, 3,937 advisories)
+git clone --depth 1 --filter=blob:none --no-checkout \
+  https://github.com/cisagov/CSAF.git data/CSAF
+cd data/CSAF && git sparse-checkout set --cone csaf_files/OT && git checkout && cd ../..
 
 # 2. Exploitation signals
-curl -sLo kev.json  https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
-curl -sL https://epss.empiricalsecurity.com/epss_scores-current.csv.gz | gunzip > epss.csv
+curl -sLo data/kev.json https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+curl -sL https://epss.empiricalsecurity.com/epss_scores-current.csv.gz | gunzip > data/epss.csv
 
 # 3. Build (takes about two seconds)
-retrust ingest --csaf CSAF/csaf_files/OT --kev kev.json --epss epss.csv
+retrust ingest --csaf data/CSAF/csaf_files/OT --kev data/kev.json --epss data/epss.csv
 
 # 4. Certification (ISASecure, Common Criteria) and sanctions screening
 retrust refresh
 ```
+
+`make all` does the same thing through the Makefile.
 
 ## Use
 
