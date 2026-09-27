@@ -1,0 +1,475 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ReTrust User Guide</title>
+<style>
+/* ReTrust "control room" identity, adapted for paper. ISA-101 asks for a
+   low-chroma field on a screen; on paper the sheet is the field, so panels
+   carry the grey instead and colour stays reserved for state. */
+:root{
+  --field:#ffffff; --panel:#f2f4f5; --sunk:#e4e8ea; --rule:#b5bcc2;
+  --ink:#1a2026; --soft:#58626c; --faint:#7d8792;
+  --prefer:#1c7a4a; --caution:#a86e00; --avoid:#b02a20; --inert:#7d8792;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  --sans:ui-sans-serif,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@page{size:A4;margin:16mm 15mm 14mm}
+*{box-sizing:border-box}
+body{margin:0;background:var(--field);color:var(--ink);
+     font:11.5pt/1.55 var(--sans);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+h1{font-size:25pt;letter-spacing:-.02em;margin:0 0 2mm;font-weight:650}
+h2{font-size:14pt;letter-spacing:-.01em;margin:9mm 0 3mm;padding-bottom:1.5mm;
+   border-bottom:1.5px solid var(--ink);font-weight:650;page-break-after:avoid}
+h3{font-size:11.5pt;margin:6mm 0 2mm;font-weight:650;page-break-after:avoid}
+p{margin:0 0 3mm;max-width:62em}
+ul,ol{margin:0 0 3mm;padding-left:5mm} li{margin:0 0 1.5mm}
+code,.id{font-family:var(--mono);font-size:.88em}
+a{color:inherit}
+
+/* Panel legend: the engraved label on control gear. */
+.legend{font-family:var(--mono);font-size:7.5pt;letter-spacing:.14em;
+        text-transform:uppercase;color:var(--faint);margin:0 0 1.5mm}
+
+/* Nameplate */
+.plate{border:1.5px solid var(--ink);padding:7mm 8mm;margin:0 0 7mm;background:var(--panel)}
+.plate .sub{font-size:12pt;color:var(--soft);margin:0}
+.plate dl{display:grid;grid-template-columns:26mm 1fr;gap:1mm 4mm;margin:5mm 0 0;
+          font-size:9.5pt}
+.plate dt{font-family:var(--mono);font-size:7.5pt;letter-spacing:.14em;
+          text-transform:uppercase;color:var(--faint);padding-top:.6mm}
+.plate dd{margin:0}
+
+/* Terminal transcripts */
+pre{font-family:var(--mono);font-size:8.6pt;line-height:1.45;background:var(--panel);
+    border:1px solid var(--rule);border-left:3px solid var(--ink);
+    padding:3.5mm 4mm;margin:0 0 4mm;overflow:hidden;white-space:pre-wrap;
+    page-break-inside:avoid}
+pre.cmd{border-left-color:var(--prefer)}
+pre b{font-weight:650}
+
+table{border-collapse:collapse;width:100%;margin:0 0 4mm;font-size:9.5pt;
+      page-break-inside:avoid}
+th{background:var(--sunk);text-align:left;font-family:var(--mono);font-size:7.5pt;
+   letter-spacing:.12em;text-transform:uppercase;color:var(--soft);
+   padding:2mm 2.5mm;border:1px solid var(--rule);font-weight:500}
+td{padding:2mm 2.5mm;border:1px solid var(--rule);vertical-align:top}
+td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;
+     white-space:nowrap}
+tbody tr:nth-child(even) td{background:var(--panel)}
+
+/* State stripe: the panel indicator lamp. */
+.state{border-left:3px solid var(--rule);background:var(--panel);
+       padding:3mm 4mm;margin:0 0 4mm;font-size:10pt;page-break-inside:avoid}
+.state.prefer{border-left-color:var(--prefer)}
+.state.caution{border-left-color:var(--caution)}
+.state.avoid{border-left-color:var(--avoid)}
+.state b{display:block;font-family:var(--mono);font-size:7.5pt;letter-spacing:.14em;
+         text-transform:uppercase;color:var(--faint);margin:0 0 1mm;font-weight:500}
+.v-prefer{color:var(--prefer);font-weight:650}
+.v-caution{color:var(--caution);font-weight:650}
+.v-avoid{color:var(--avoid);font-weight:650}
+.v-inert{color:var(--inert);font-weight:650}
+
+.page-break{page-break-before:always}
+figure{margin:0 0 5mm;page-break-inside:avoid}
+figcaption{font-size:8.5pt;color:var(--faint);margin-top:2mm}
+footer{margin-top:9mm;padding-top:3mm;border-top:1px solid var(--rule);
+       font-size:8.5pt;color:var(--faint)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:0 6mm}
+</style>
+
+<div class="plate">
+  <h1>ReTrust</h1>
+  <p class="sub">Score OT hardware for cyber risk before you buy it.</p>
+  <dl>
+    <dt>Guide</dt><dd>How it works, how to run it, how to use it</dd>
+    <dt>Version</dt><dd>0.1.0 &middot; Apache-2.0 &middot; Python 3.10+</dd>
+    <dt>Corpus</dt><dd>3,937 CISA OT advisories &middot; 27,234 product entries &middot; 814 vendors</dd>
+  </dl>
+</div>
+
+<h2>1 &nbsp; What it is for</h2>
+
+<p>Every other OT security tool analyses equipment you already own. Asset inventory
+platforms fingerprint what is on the wire; firmware tools take apart images you
+already have. ReTrust answers a different question, at the one moment a security
+decision is still cheap: <b>of these candidate PLCs, which one should go on the
+purchase order?</b></p>
+
+<p>It reads public advisory data, keys on the manufacturer order number a purchase
+requisition already contains, and shows the evidence behind every number it
+prints. It runs entirely offline against a local database, so a result is
+reproducible and a demonstration never depends on the network.</p>
+
+<h3>Why order numbers, and not CPE</h3>
+
+<p>Every conventional vulnerability tool joins products to CVEs through CPE strings.
+Measured across all 27,234 product entries in CISA's OT advisory corpus:</p>
+
+<table>
+  <thead><tr><th>Identifier on the product entry</th><th>Entries</th><th>Share</th></tr></thead>
+  <tbody>
+    <tr><td><b>CPE</b>, the join key conventional scanners use</td><td class="n">26</td><td class="n">0.10%</td></tr>
+    <tr><td>Order number the advisory declares</td><td class="n">8,204</td><td class="n">30.12%</td></tr>
+    <tr><td>Order number ReTrust recovers from the product name</td><td class="n">1,384</td><td class="n">5.08%</td></tr>
+    <tr><td><b>Order number, either</b> &mdash; what ReTrust keys on</td><td class="n">9,588</td><td class="n">35.21%</td></tr>
+    <tr><td>Vendor name</td><td class="n">27,231</td><td class="n">99.99%</td></tr>
+  </tbody>
+</table>
+
+<p>CPE is effectively absent from industrial advisory data, which is why
+general-purpose tooling performs so badly on OT gear. Declared order numbers are
+<b>316&times;</b> more available, and <span class="id">6ES7518-4AX00-1AB0</span>
+is what a buyer types onto a requisition in the first place. Run
+<code>retrust eval</code> to recompute that table from your own database.</p>
+
+<h2>2 &nbsp; How it works</h2>
+
+<figure>
+<svg viewBox="0 4 700 152" role="img" aria-label="Five stages: fetch sources, build index, resolve the request, score against five pillars and hard gates, print a verdict with its evidence" style="width:100%;height:auto;display:block">
+  <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+    <path d="M0 0 L8 4 L0 8 z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.2">
+    <rect x="4" y="46" width="118" height="62"/>
+    <rect x="160" y="46" width="118" height="62"/>
+    <rect x="316" y="46" width="118" height="62"/>
+    <rect x="472" y="26" width="118" height="46"/>
+    <rect x="472" y="88" width="118" height="46"/>
+    <rect x="628" y="46" width="68" height="62"/>
+  </g>
+  <g stroke="currentColor" stroke-width="1.2" marker-end="url(#a)" fill="none">
+    <path d="M122 77 H152"/><path d="M278 77 H308"/>
+    <path d="M434 77 H452 V49 H464"/><path d="M434 77 H452 V111 H464"/>
+    <path d="M590 49 H610 V77 H620"/><path d="M590 111 H610 V77"/>
+  </g>
+  <g font-family="ui-monospace,monospace" font-size="8" letter-spacing="1.4" fill="#7d8792">
+    <text x="12" y="40">SOURCES</text><text x="168" y="40">INDEX</text>
+    <text x="324" y="40">RESOLVE</text><text x="480" y="20">SCORE</text>
+    <text x="480" y="148">GATE</text><text x="636" y="40">OUTPUT</text>
+  </g>
+  <g font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5" fill="currentColor">
+    <text x="12" y="70">CISA CSAF</text><text x="12" y="85">KEV, EPSS</text><text x="12" y="100">ISASecure, CSL</text>
+    <text x="168" y="70">SQLite,</text><text x="168" y="85">keyed on order</text><text x="168" y="100">numbers</text>
+    <text x="324" y="70">order no. &rarr;</text><text x="324" y="85">exact name &rarr;</text><text x="324" y="100">tokens &rarr; abstain</text>
+    <text x="480" y="46">five pillars,</text><text x="480" y="61">weighted</text>
+    <text x="480" y="108">KEV, sanctions,</text><text x="480" y="123">covered list</text>
+    <text x="636" y="70">verdict</text><text x="636" y="85">+ evidence</text>
+  </g>
+</svg>
+<figcaption>The pipeline. Gates sit outside the weighted score, so a disqualifying fact
+cannot be averaged away by good scores elsewhere.</figcaption>
+</figure>
+
+<h3>The four-rung resolution ladder</h3>
+
+<p>A buyer asks about "Siemens SIMATIC S7-1500, firmware 3.1.6". ReTrust decides
+which advisory products that refers to, strongest strategy first, and reports
+which rung answered.</p>
+
+<table>
+  <thead><tr><th>Rung</th><th>Method</th><th>Confidence</th><th>Measured accuracy</th></tr></thead>
+  <tbody>
+    <tr><td class="n">1</td><td>Manufacturer order number</td><td class="n">0.98</td><td class="n">100%</td></tr>
+    <tr><td class="n">2</td><td>Vendor + product name</td><td class="n">0.90</td><td class="n">99.8%</td></tr>
+    <tr><td class="n">3</td><td>Vendor + all query words present</td><td class="n">0.70</td><td class="n">100%</td></tr>
+    <tr><td class="n">4</td><td>Abstain, with a typed reason</td><td class="n">&mdash;</td><td class="n">&mdash;</td></tr>
+  </tbody>
+</table>
+
+<p>A wrong answer about whether a PLC is vulnerable costs more than "needs review",
+so abstention is a feature rather than a failure.</p>
+
+<h3>The five pillars</h3>
+
+<table>
+  <thead><tr><th>Pillar</th><th>Weight</th><th>What it reads</th></tr></thead>
+  <tbody>
+    <tr><td>Exploitation</td><td class="n">0.30</td><td>CISA KEV, ransomware linkage, peak EPSS</td></tr>
+    <tr><td>Severity</td><td class="n">0.20</td><td>worst CVSS, and how many flaws are critical</td></tr>
+    <tr><td>Patch availability</td><td class="n">0.20</td><td>a fix, a workaround, or nothing</td></tr>
+    <tr><td>Vendor practice</td><td class="n">0.15</td><td>whether advisories carry CVSS and CWE, own CSAF feed</td></tr>
+    <tr><td>Certification</td><td class="n">0.15</td><td>IEC 62443 (ISASecure) and Common Criteria</td></tr>
+  </tbody>
+</table>
+
+<p>The weighted result is reported as a band: <span class="v-prefer">PREFER</span>
+at 70 or above, <span class="v-caution">CONDITIONAL</span> at 40 or above,
+<span class="v-avoid">AVOID</span> below. Weights and thresholds are yours to
+change &mdash; run <code>retrust config --init</code>.</p>
+
+<div class="state">
+  <b>Reported, but deliberately not scored</b>
+  <b style="display:inline">Evidence confidence.</b> The share of findings whose version range parsed
+  cleanly and which carry CVSS and EPSS data. Folding it into the score would
+  mean "we have good data about how bad this is" <i>raises</i> the score, which
+  is backwards. It tells you how far to trust the verdict, not how safe the
+  product is.
+</div>
+
+<div class="page-break"></div>
+<h2>3 &nbsp; Installing and running it</h2>
+
+<p>ReTrust needs Python 3.10 or newer and nothing else. There are no third-party
+packages, so there is nothing to resolve, nothing to pin, and no virtual
+environment to create.</p>
+
+<p class="legend">Two commands, from nothing to a working tool</p>
+<pre class="cmd">$ git clone https://github.com/&lt;you&gt;/retrust.git &amp;&amp; cd retrust
+$ python3 -m retrust.cli setup</pre>
+
+<p><code>setup</code> fetches CISA's OT advisory corpus, the KEV and EPSS
+exploitation feeds, and the certification and sanctions lists, then builds the
+local database. That is about 165 MB and a couple of minutes on a normal
+connection.</p>
+
+<pre>  [1/4] CISA OT advisories (~148 MB) ...
+        3,938 advisory files
+  [2/4] CISA Known Exploited Vulnerabilities ...
+        1.8 MB
+  [3/4] FIRST EPSS scores ...
+        11.5 MB
+  [4/4] Build the local index ...
+        3,937 advisories, 27,234 products, KEV 1,726, EPSS 12,031
+
+Ready.</pre>
+
+<p><b>If it is interrupted, run it again.</b> Each step is skipped when its output
+is already there, so a dropped connection costs you only the step it dropped on.
+Downloads go to a temporary file and move into place once complete, so a
+half-fetched feed is never mistaken for a whole one.</p>
+
+<table>
+  <thead><tr><th>Flag</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>--offline</code></td><td>Build from data already downloaded; fetch nothing</td></tr>
+    <tr><td><code>--force</code></td><td>Re-fetch sources even if they are present</td></tr>
+    <tr><td><code>--skip-refresh</code></td><td>Skip the certification and sanctions lists</td></tr>
+    <tr><td><code>--data DIR</code></td><td>Keep the data somewhere other than <code>data/</code></td></tr>
+  </tbody>
+</table>
+
+<div class="state avoid">
+  <b>It refuses to finish on an incomplete database</b>
+  If KEV or EPSS is missing, the exploitation gate cannot fire, and a product
+  with a known exploited vulnerability would score as merely mediocre. Setup
+  stops and says so rather than handing you a plausible-looking result.
+</div>
+
+<h3>Getting the <code>retrust</code> command on your PATH</h3>
+
+<p>Optional. Everything above runs straight from the clone. To type
+<code>retrust</code> instead of <code>python3 -m retrust.cli</code>:</p>
+
+<pre class="cmd">$ python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+$ pip install -e .</pre>
+
+<p>The virtual environment is not optional on Debian, Ubuntu or Kali: those ship
+Python as an externally managed environment, and <code>pip install -e .</code>
+outside one fails with a PEP 668 error. Both forms are equivalent throughout this
+guide.</p>
+
+<h2>4 &nbsp; Using it</h2>
+
+<p>There are two ways to drive ReTrust, and they do the same things. Commands with
+flags suit a script or a pipeline. A menu suits somebody who would rather be
+asked.</p>
+
+<h3>The menu</h3>
+
+<pre class="cmd">$ retrust shell</pre>
+<pre>┌─────┬────────────────────────────────────────────────────────────────────┐
+│   1 │ Search the corpus       find a vendor, product or order number     │
+│   2 │ Score one product       verdict, pillars and the evidence          │
+│   3 │ Compare candidates      rank several for one decision              │
+│   4 │ Vendor profile          what the index holds on a manufacturer     │
+│   5 │ Score a BOM file        a CSV or JSON list of candidates           │
+│   6 │ Likely exploited        NIST LEV, has it probably happened already │
+│   7 │ SSVC decisions          what buying this commits you to            │
+│   8 │ What changed            re-score a saved result against today      │
+│   s │ Save the last result    HTML, JSON or CSV                          │
+├─────┼────────────────────────────────────────────────────────────────────┤
+│   q │ Quit                                                               │
+└─────┴────────────────────────────────────────────────────────────────────┘</pre>
+
+<p>Two things make it more than a wrapper. Every choice <b>prints the command line
+it is equivalent to</b> before it runs, so anyone using the menu graduates to
+scripting without being taught. And the last result is <b>held</b>, so saving is
+a separate decision from producing: press <code>s</code> once you have seen the
+answer and choose HTML, JSON or CSV then.</p>
+
+<p>Blank always means go back. A wrong answer costs the answer, not the session.
+Ctrl-C returns to the menu.</p>
+
+<h3>Finding the name to type</h3>
+
+<p>The database holds 27,234 product entries under 814 vendor spellings, and
+scoring needs the spelling the advisory used.</p>
+
+<pre class="cmd">$ retrust search S7-1500</pre>
+<pre>4 products matching 'S7-1500', strongest match first:
+
+  Siemens / SIMATIC S7-1500 Software Controller
+    tokens        --                      20 advisories
+  Siemens / SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES75...
+    tokens        6ES7518-4AX00-1AB0      16 advisories</pre>
+
+<p>Every hit says which test matched it: <code>exact</code>, <code>prefix</code>,
+<code>tokens</code>, <code>substring</code>, or <code>similar 0.86</code> for an
+edit-distance match. A misspelling gets a shortlist rather than nothing, and
+<code>score</code> falls back to the same suggestions when it cannot resolve
+what you typed.</p>
+
+<div class="page-break"></div>
+<h3>Scoring one product</h3>
+
+<pre class="cmd">$ retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6</pre>
+<pre>AVOID  39.1/100   Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP
+  matched by order_number (confidence 0.98), 32 advisory product(s), 1011 CVE(s)
+
+  HARD GATE: Known exploited vulnerability
+    8 CVE(s) in CISA KEV catalogue
+    source: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
+
+  Exploitation         0.0   coverage 100%
+      - 8 CVE(s) in CISA KEV
+      - peak EPSS 1.000
+  Severity            41.0   coverage 100%
+      - highest CVSS 9.8
+      - 21/1011 rated critical (9.0+), 264 high</pre>
+
+<h3>Comparing candidates for one decision</h3>
+
+<pre class="cmd">$ retrust compare --candidate "ABB|AC 800M" \
+      --candidate "Schneider Electric|Modicon M340" \
+      --candidate "Hikvision|IP Camera" --html decision.html</pre>
+<pre>CANDIDATE                          VERDICT       SCORE  CVES  ROBUST  NOTES
+ABB AC 800M                        PREFER         81.5    10    91%
+Schneider Electric Modicon M340    PREFER         77.2    21    77%
+Hikvision IP Camera                AVOID           --      -     -    Named on a covered list</pre>
+
+<p>The candidate string is pipe-separated: <span class="id">Vendor|Product|Version|OrderNumber</span>,
+and everything after the vendor is optional.</p>
+
+<h3>Reading the result</h3>
+
+<table>
+  <thead><tr><th>Column</th><th>What it means</th></tr></thead>
+  <tbody>
+    <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;70, <span class="v-caution">CONDITIONAL</span> &ge;40, <span class="v-avoid">AVOID</span> below, <span class="v-inert">NOT ASSESSED</span> when it could not resolve the product</td></tr>
+    <tr><td>SCORE</td><td>The weighted composite, 0&ndash;100, higher is better</td></tr>
+    <tr><td>CVES</td><td>Findings in scope. Never scored directly &mdash; see the rules below</td></tr>
+    <tr><td>ROBUST</td><td>The share of random weightings giving the same verdict</td></tr>
+    <tr><td>NOTES</td><td>The gate that decided it, if one did</td></tr>
+  </tbody>
+</table>
+
+<div class="state caution">
+  <b>ROBUST is the column most worth reading</b>
+  The usual objection to any composite score is that its weights were invented.
+  ReTrust measures that rather than arguing about it: it samples hundreds of
+  weightings from across the whole simplex and reports how often the verdict
+  survives. A verdict holding under 91% of weightings is a result. One holding
+  under 77% is a judgement call, and the tool says so instead of handing you a
+  false precision.
+</div>
+
+<h3>A whole bill of materials</h3>
+
+<pre class="cmd">$ retrust batch bom.csv --json results.json --csv results.csv --html review.html</pre>
+
+<p>Column names are matched loosely, so <code>Manufacturer</code>,
+<code>Part Number</code> and <code>Firmware Version</code> all work without
+reshaping a procurement export. <b>The exit code is the point</b>: it makes this
+a gate rather than a report somebody has to read.</p>
+
+<table>
+  <thead><tr><th><code>--fail-on</code></th><th>Exits non-zero when</th></tr></thead>
+  <tbody>
+    <tr><td><code>avoid</code> (default)</td><td>a candidate is disqualified</td></tr>
+    <tr><td><code>unassessed</code></td><td>also when a candidate could not be assessed at all</td></tr>
+    <tr><td><code>never</code></td><td>never; just report</td></tr>
+  </tbody>
+</table>
+
+<h2>5 &nbsp; The rules that keep it honest</h2>
+
+<ul>
+<li><b>Raw CVE counts are never scored.</b> A vendor that discloses diligently
+    would rank below one that stays quiet &mdash; exactly backwards.</li>
+<li><b>A product it cannot resolve gets no score at all.</b> Every pillar reads
+    "no CVEs found" as good news, so an unresolvable product would otherwise
+    score near 100 and top the comparison. <span class="v-inert">NOT ASSESSED</span>
+    sorts below <span class="v-avoid">AVOID</span>.</li>
+<li><b>Missing certification is never a penalty.</b> Most OT products are never
+    submitted, so absence says nothing. A certificate can only add.</li>
+<li><b>Unparseable version ranges stay in scope and are flagged</b>, never
+    assumed safe.</li>
+<li><b>Sanctions screening never fuzzy-matches.</b> Wrongly flagging a real
+    manufacturer is the worst error this tool could make, so it matches exact
+    identity-preserving names only.</li>
+<li><b>No advisories is not evidence of safety.</b> It may simply mean nobody has
+    published.</li>
+</ul>
+
+<h2>6 &nbsp; Going further</h2>
+
+<table>
+  <thead><tr><th>Question</th><th>Command</th></tr></thead>
+  <tbody>
+    <tr><td>What does the index hold on this supplier?</td><td><code>retrust vendor "Moxa"</code></td></tr>
+    <tr><td>This scored AVOID &mdash; what else is in the family?</td><td><code>retrust alternatives --vendor V --product P</code></td></tr>
+    <tr><td>What buying it commits me to operationally</td><td><code>retrust ssvc --vendor V --product P --exposure open --automatable yes --human-impact high</code></td></tr>
+    <tr><td>Has this probably been exploited already?</td><td><code>retrust lev --vendor V --product P</code></td></tr>
+    <tr><td>What changed since we approved this list?</td><td><code>retrust diff approved.json</code></td></tr>
+    <tr><td>How much does the verdict depend on the weights?</td><td><code>retrust sensitivity --vendor V --product P</code></td></tr>
+    <tr><td>Reproduce the published accuracy figures</td><td><code>retrust eval --sample 4000</code></td></tr>
+    <tr><td>Does the score predict anything?</td><td><code>retrust backtest</code></td></tr>
+    <tr><td>Pin the data for a reproducible result</td><td><code>retrust snapshot --note "Q4 review"</code></td></tr>
+    <tr><td>Tab completion</td><td><code>eval "$(retrust completion bash)"</code></td></tr>
+  </tbody>
+</table>
+
+<h3>Accuracy, and checking it yourself</h3>
+
+<p>Every figure below is recomputed from your own database by
+<code>retrust eval</code>. None of them has to be taken on trust.</p>
+
+<table>
+  <thead><tr><th>Measurement</th><th>Result</th></tr></thead>
+  <tbody>
+    <tr><td>Version ranges decided deterministically</td><td class="n">93.1% of 26,958</td></tr>
+    <tr><td>&hellip; of ranges that <i>can</i> be decided from a version string</td><td class="n">94.7%</td></tr>
+    <tr><td>Product resolution precision (n = 4,000)</td><td class="n">99.9%</td></tr>
+    <tr><td>Product resolution recall (n = 4,000)</td><td class="n">99.9%</td></tr>
+    <tr><td>Resolution by order number</td><td class="n">100% (1,428 / 1,428)</td></tr>
+  </tbody>
+</table>
+
+<p>These measure resolving a <i>named</i> product to its advisories. They are not
+device-fingerprinting accuracy; identifying equipment from passive network
+traffic is a much harder problem and a different question.</p>
+
+<h3>Where the data comes from</h3>
+
+<table>
+  <thead><tr><th>Source</th><th>What it provides</th></tr></thead>
+  <tbody>
+    <tr><td>CISA ICS advisories (CSAF 2.0)</td><td>authoritative product&rarr;CVE mappings</td></tr>
+    <tr><td>CISA KEV</td><td>confirmed exploitation, ransomware linkage</td></tr>
+    <tr><td>FIRST EPSS</td><td>exploitation probability, and the history LEV composes</td></tr>
+    <tr><td>ISASecure / Common Criteria</td><td>IEC 62443 and CC certificates</td></tr>
+    <tr><td>Consolidated Screening List, FCC Covered List</td><td>sanctions and covered entities</td></tr>
+    <tr><td>CERT/CC SSVC, NIST CSWP 41</td><td>the deployer decision tree, and the LEV metric</td></tr>
+  </tbody>
+</table>
+
+<p>ReTrust redistributes no vendor data. It reads these at build time and cites
+each one in every report footer, so a result stays interpretable months later.
+Screening and certification results are reproductions of what those sources
+publish: decision support for a buyer, not a legal determination. Verify any gate
+against the cited source before acting on it.</p>
+
+<footer>
+ReTrust 0.1.0 &middot; Apache-2.0 &middot; No third-party runtime dependencies &middot;
+Figures measured against 3,937 CISA OT advisories captured 2026-09-27 &middot;
+Run <code>retrust eval</code> to recompute them.
+</footer>
