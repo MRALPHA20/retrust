@@ -50,6 +50,21 @@ check 0 "stats"                                   -- $RETRUST stats
 contains "27,234" "stats counts the whole corpus" -- $RETRUST stats
 
 echo
+echo "== interactive shell =="
+printf 'q\n' | $RETRUST shell >/dev/null 2>&1 \
+  && { echo "  ok    the menu opens and quits"; pass=$((pass+1)); } \
+  || { echo "  FAIL  the menu opens and quits"; fail=$((fail+1)); failed+=("shell quit"); }
+printf '4\nMoxa\nq\n' | $RETRUST shell 2>&1 | grep -q "VENDOR DOSSIER" \
+  && { echo "  ok    a menu choice runs its action"; pass=$((pass+1)); } \
+  || { echo "  FAIL  a menu choice runs its action"; fail=$((fail+1)); failed+=("shell action"); }
+printf '4\nMoxa\nq\n' | $RETRUST shell 2>&1 | grep -q 'retrust vendor Moxa' \
+  && { echo "  ok    it prints the equivalent command"; pass=$((pass+1)); } \
+  || { echo "  FAIL  it prints the equivalent command"; fail=$((fail+1)); failed+=("shell echo"); }
+printf '9\nq\n' | $RETRUST shell 2>&1 | grep -q "not on the menu" \
+  && { echo "  ok    a wrong choice does not end it"; pass=$((pass+1)); } \
+  || { echo "  FAIL  a wrong choice does not end it"; fail=$((fail+1)); failed+=("shell bad choice"); }
+
+echo
 echo "== search =="
 check 0 "product search finds a known PLC"        -- $RETRUST search S7-1500
 check 0 "vendor search"                           -- $RETRUST search --vendors siemens

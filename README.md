@@ -167,6 +167,56 @@ retrust refresh
 
 `make all` does the same thing through the Makefile.
 
+## Two ways to drive it
+
+Every command below takes flags, which is what a pipeline wants. If you would
+rather not learn them, `retrust shell` asks instead.
+
+```
+$ retrust shell
+
+ReTrust interactive. Pick a number, or q to quit.
+3,937 advisories, 27,234 product entries, 814 vendors.
+
+   1  Search the corpus          find a vendor, product or order number
+   2  Score one product          verdict, pillars and the evidence
+   3  Compare candidates         rank several for one decision
+   4  Vendor profile             what the index holds on a manufacturer
+   5  Score a BOM file           a CSV or JSON list of candidates
+   6  Likely exploited           NIST LEV, has it probably happened already
+   7  SSVC decisions             what buying this commits you to
+   8  What changed               re-score a saved result against today
+   s  Save the last result       HTML, JSON or CSV
+   q  Quit
+
+> 3
+Add candidates one at a time. Blank vendor when you are done.
+Candidate 1 vendor: ABB
+  Product: AC 800M
+  Firmware version (optional):
+Candidate 2 vendor: Siemens
+  Product: SIMATIC S7-1500
+  Firmware version (optional): 3.1.6
+Candidate 3 vendor:
+
+  $ retrust compare --candidate "ABB|AC 800M" --candidate "Siemens|SIMATIC S7-1500|3.1.6"
+
+CANDIDATE                                 VERDICT      SCORE  NOTES
+ABB AC 800M                               PREFER        81.5
+Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID         39.1  Known exploited vulnerability
+```
+
+**It prints the command it just ran.** The menu is not meant to hide the flags
+forever: anyone running the same comparison a third time should be able to paste
+that line into a script, and they can only do that having seen it.
+
+**Saving is a separate choice from producing.** The last result is held, so `s`
+offers HTML, JSON or CSV after you have seen the answer. Nobody has to decide in
+advance which format they wanted.
+
+Blank always means go back, a wrong answer costs the answer rather than the
+session, and Ctrl-C returns to the menu.
+
 ## Find what you are looking for
 
 The corpus names 27,234 product entries under 814 vendor spellings, and scoring
@@ -289,6 +339,7 @@ retrust snapshot --restore retrust-snapshot.zip
 | Command | |
 |---|---|
 | `retrust` | what the index holds, and what to try next |
+| `shell` | interactive menu; no flags to remember |
 | `setup` | fetch every source and build the index |
 | `search QUERY` | find vendors, products or order numbers |
 | `vendor NAME` | what the index holds on one manufacturer |

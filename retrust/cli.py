@@ -1,6 +1,6 @@
 """Command line interface.
 
-    retrust setup                                     fetch everything, build the index
+    retrust shell                                     interactive menu, no flags needed\n    retrust setup                                     fetch everything, build the index
     retrust search  QUERY                             find vendors, products, order numbers
     retrust vendor  NAME                              what the index knows about a maker
     retrust diff    previous.json                     what changed since that run
@@ -33,7 +33,7 @@ from .index import normalize_vendor
 from . import (alternatives, backtest, batch, bootstrap, certification,
                config, console, diff, dossier, evaluate, index, match,
                lev, report, score, screenshot, search, sensitivity,
-               snapshot, ssvc, supplychain)
+               shell, snapshot, ssvc, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -121,6 +121,51 @@ def _emit_json(path, payload):
     return destination
 
 
+def _render_one(assessment, resolution, findings, context=None):
+    """One assessment as text: the verdict, its gates, and every pillar.
+
+    Shared by `score` and the interactive menu, so the two cannot drift into
+    describing the same result differently.
+    """
+    score_text = "no score" if assessment.score is None else f"{assessment.score}/100"
+    lines = [f"{assessment.verdict}  {score_text}   {assessment.product}"]
+    if resolution.resolved:
+        lines.append(f"  matched by {resolution.method} "
+                     f"(confidence {resolution.confidence:.2f}), "
+                     f"{len(resolution.matches)} advisory product(s), "
+                     f"{len(findings)} CVE(s)")
+    elif assessment.verdict == "NOT ASSESSED":
+        lines += [f"  reason: {resolution.reason}",
+                  "\n  ReTrust abstains rather than guessing."]
+    for gate in assessment.gates:
+        lines.append(f"\n  HARD GATE: {gate['gate']}\n    {gate['detail']}"
+                     f"\n    source: {gate['source']}")
+    if assessment.pillars:
+        lines.append("")
+    for pillar in assessment.pillars:
+        lines.append(f"  {pillar.name:<18} {pillar.score:5.1f}   "
+                     f"coverage {pillar.coverage:4.0%}")
+        lines += [f"      - {line}" for line in pillar.evidence]
+    lines += [f"\n  NOTE: {note}" for note in assessment.notes]
+    return "\n".join(lines)
+
+
+def _print_table(records):
+    """The ranked candidate table, shared by `batch` and the menu."""
+    width = min(46, max((len(r["product"]) for r in records), default=10))
+    print(f"{'CANDIDATE':<{width}}  {'VERDICT':<12} SCORE  NOTES")
+    for record in records:
+        note = (record["gates"][0] if record["gates"] else record["reason"])
+        gate = note if isinstance(note, str) else note.get("gate", "")
+        shown = "  --  " if record["score"] is None else f"{record['score']:>5}"
+        print(f"{record['product'][:width]:<{width}}  {record['verdict']:<12} "
+              f"{shown}  {str(gate)[:40]}")
+    counts = {}
+    for record in records:
+        counts[record["verdict"]] = counts.get(record["verdict"], 0) + 1
+    print("\n  " + ", ".join(f"{v}: {c}" for v, c in sorted(counts.items())))
+
+
 def _write_html(path, markup):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -189,22 +234,7 @@ def cmd_score(args):
               "order number, or check the vendor spelling with `retrust stats`.")
         return 2
 
-    score_text = "no score" if assessment.score is None else f"{assessment.score}/100"
-    print(f"{assessment.verdict}  {score_text}   {assessment.product}")
-    if resolution.resolved:
-        print(f"  matched by {resolution.method} (confidence {resolution.confidence:.2f}), "
-              f"{len(resolution.matches)} advisory product(s), {len(findings)} CVE(s)")
-
-    for gate in assessment.gates:
-        print(f"\n  HARD GATE: {gate['gate']}\n    {gate['detail']}\n    source: {gate['source']}")
-
-    print()
-    for pillar in assessment.pillars:
-        print(f"  {pillar.name:<18} {pillar.score:5.1f}   coverage {pillar.coverage:4.0%}")
-        for line in pillar.evidence:
-            print(f"      - {line}")
-    for note in assessment.notes:
-        print(f"\n  NOTE: {note}")
+    print(_render_one(assessment, resolution, findings))
 
     if args.html:
         _write_html(args.html, report.render(
@@ -393,18 +423,7 @@ def cmd_batch(args):
     rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
     records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
 
-    width = min(46, max(len(r["product"]) for r in records))
-    print(f"{'CANDIDATE':<{width}}  {'VERDICT':<12} SCORE  NOTES")
-    for record in records:
-        note = (record["gates"][0] if record["gates"] else record["reason"])
-        shown = "  --  " if record["score"] is None else f"{record['score']:>5}"
-        print(f"{record['product'][:width]:<{width}}  {record['verdict']:<12} "
-              f"{shown}  {note[:40]}")
-
-    counts = {}
-    for record in records:
-        counts[record["verdict"]] = counts.get(record["verdict"], 0) + 1
-    print("\n  " + ", ".join(f"{v}: {c}" for v, c in sorted(counts.items())))
+    _print_table(records)
 
     meta = {"candidates": len(candidates), "weights": context["weights"],
             "config": context["config_source"],
@@ -654,6 +673,238 @@ def _store_lev(connection):
                               in_kev=bool(r["in_kev"]), current_epss=r["epss"])
                  for r in rows if history.get(r["cve"])]
     return index.store_lev(connection, estimates)
+
+
+def _shell_actions(connection, context, args):
+    """The interactive menu, built over the same functions the flags call.
+
+    Each entry echoes its command line before running, so the menu teaches the
+    flags rather than replacing them.
+    """
+    def _ask_product(reader, need_name=True):
+        """Vendor and product, with search offered when nothing resolves."""
+        vendor = shell.ask("Vendor", required=True, reader=reader)
+        if vendor is shell.CANCELLED:
+            return None
+        product = shell.ask("Product", required=need_name, reader=reader)
+        if product is shell.CANCELLED:
+            return None
+        version = shell.ask("Firmware version (optional)", reader=reader)
+        return vendor, product, (None if version is shell.CANCELLED else version)
+
+    def do_search(result, reader):
+        query = shell.ask("Search for", required=True, reader=reader)
+        if query is shell.CANCELLED:
+            return None
+        shell.echo_command(["search", query])
+        hits = search.products(connection, query, limit=10)
+        print(search.format_products(hits, query))
+        if not hits and (vendors := search.vendors(connection, query, limit=5)):
+            print()
+            print(search.format_vendors(vendors, query, lead="Vendors matching that:"))
+        return None
+
+    def do_score(result, reader):
+        if not (asked := _ask_product(reader)):
+            return None
+        vendor, product, version = asked
+        shell.echo_command(["score", "--vendor", vendor, "--product", product]
+                           + (["--version", version] if version else []))
+        assessment, resolution, findings = _assess(
+            connection, vendor, product, version, None, context=context)
+        print(_render_one(assessment, resolution, findings))
+        if not resolution.resolved:
+            print()
+            print(search.format_suggestions(
+                search.suggest(connection, vendor=vendor, product=product)))
+            return None
+        return shell.Result(
+            kind="score", blocks=[(assessment, resolution, findings)],
+            records=[batch.to_record(assessment, resolution)],
+            title=f"ReTrust assessment: {assessment.product}",
+            meta={"weights": context["weights"],
+                  "provenance": index.provenance(connection)})
+
+    def do_compare(result, reader):
+        print("Add candidates one at a time. Blank vendor when you are done.")
+        blocks, records, names = [], [], []
+        while True:
+            vendor = shell.ask(f"Candidate {len(blocks) + 1} vendor", reader=reader)
+            if vendor is shell.CANCELLED:
+                break
+            product = shell.ask("  Product", reader=reader)
+            version = shell.ask("  Firmware version (optional)", reader=reader)
+            product = None if product is shell.CANCELLED else product
+            version = None if version is shell.CANCELLED else version
+            block = _assess(connection, vendor, product, version, None, context=context)
+            blocks.append(block)
+            records.append(batch.to_record(block[0], block[1], query={
+                "vendor": vendor, "product": product, "version": version,
+                "order_number": None}))
+            names.append("|".join(filter(None, [vendor, product, version])))
+        if not blocks:
+            return None
+        shell.echo_command(["compare"] + [a for n in names for a in ("--candidate", n)])
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+        blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
+        records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
+        print()
+        _print_table(records)
+        return shell.Result(kind="compare", blocks=blocks, records=records,
+                            title="Procurement comparison",
+                            meta={"candidates": len(records),
+                                  "weights": context["weights"],
+                                  "provenance": index.provenance(connection)})
+
+    def do_vendor(result, reader):
+        name = shell.ask("Manufacturer", required=True, reader=reader)
+        if name is shell.CANCELLED:
+            return None
+        shell.echo_command(["vendor", name])
+        profile = dossier.build(connection, name, screening=context["screening"],
+                                certificates=context["certificates"])
+        print(dossier.format_report(profile))
+        if not profile.known and (hits := search.suggest(connection, vendor=name)["vendors"]):
+            print()
+            print(search.format_vendors(hits, name, lead="Closest names in the corpus:"))
+        return None
+
+    def do_batch(result, reader):
+        path = shell.ask("CSV or JSON file of candidates", reader=reader)
+        if path is shell.CANCELLED:
+            return None
+        shell.echo_command(["batch", path])
+        rows = batch.read_candidates(str(path))
+        blocks, records = [], []
+        for row in rows:
+            block = _assess(connection, row["vendor"], row["product"],
+                            row["version"], row["order_number"], context=context)
+            blocks.append(block)
+            records.append(batch.to_record(block[0], block[1], query=row))
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+        records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
+        print()
+        _print_table(records)
+        return shell.Result(kind="batch", blocks=blocks, records=records,
+                            title="Bill of materials review",
+                            meta={"candidates": len(records),
+                                  "weights": context["weights"],
+                                  "provenance": index.provenance(connection)})
+
+    def do_lev(result, reader):
+        if not index.has_epss_history(connection):
+            print(_NO_HISTORY)
+            return None
+        if not (asked := _ask_product(reader)):
+            return None
+        vendor, product, version = asked
+        shell.echo_command(["lev", "--vendor", vendor, "--product", product])
+        assessment, resolution, findings = _assess(
+            connection, vendor, product, version, None, context=context)
+        if not resolution.resolved:
+            print(f"{assessment.product}: {resolution.reason}")
+            return None
+        cves = sorted({f.cve for f in findings})
+        history = index.epss_history(connection, cves)
+        signals = {f.cve: f for f in findings}
+        cached = index.lev_estimates(connection)
+        estimates = [lev.estimate(c, history.get(c, []), in_kev=signals[c].in_kev,
+                                  current_epss=signals[c].epss) for c in cves]
+        print(lev.format_report(assessment.product, estimates,
+                                corpus_share=lev.baseline(cached)["share"] if cached else None))
+        return None
+
+    def do_ssvc(result, reader):
+        if not (asked := _ask_product(reader)):
+            return None
+        vendor, product, version = asked
+        print("\nThese three describe your plant. ReTrust cannot know them.")
+        exposure = shell.ask(f"System exposure ({'/'.join(ssvc.EXPOSURE)})",
+                             "controlled", reader=reader)
+        automatable = shell.ask("Can an attacker automate it? (yes/no)", "yes",
+                                reader=reader)
+        impact = shell.ask(f"Human impact ({'/'.join(ssvc.HUMAN_IMPACT)})", "medium",
+                           reader=reader)
+        if shell.CANCELLED in (exposure, automatable, impact):
+            return None
+        shell.echo_command(["ssvc", "--vendor", vendor, "--product", product,
+                            "--exposure", exposure, "--automatable", automatable,
+                            "--human-impact", impact])
+        assessment, resolution, findings = _assess(
+            connection, vendor, product, version, None, context=context)
+        if not resolution.resolved:
+            print(f"{assessment.product}: {resolution.reason}")
+            return None
+        decisions = ssvc.assess(findings, str(exposure), str(automatable), str(impact))
+        print(ssvc.format_report(assessment.product, decisions, exposure,
+                                 automatable, impact,
+                                 undecided=sum(1 for f in findings if not f.decided)))
+        return None
+
+    def do_diff(result, reader):
+        path = shell.ask("Saved JSON result to compare against", reader=reader)
+        if path is shell.CANCELLED:
+            return None
+        shell.echo_command(["diff", path])
+        document, previous = diff.read(str(path))
+        current = []
+        for record in previous:
+            query = record.get("query") or {}
+            assessment, resolution, _ = _assess(
+                connection, query.get("vendor"), query.get("product"),
+                query.get("version"), query.get("order_number"), context=context)
+            current.append(batch.to_record(assessment, resolution, query=query))
+        print(diff.format_report(diff.compare(previous, current), document,
+                                 context["weights"]))
+        return None
+
+    def do_save(result, reader):
+        shell.save(result, _shell_writers(context), reader)
+        return None
+
+    return {
+        "1": ("Search the corpus", "find a vendor, product or order number", do_search),
+        "2": ("Score one product", "verdict, pillars and the evidence", do_score),
+        "3": ("Compare candidates", "rank several for one decision", do_compare),
+        "4": ("Vendor profile", "what the index holds on a manufacturer", do_vendor),
+        "5": ("Score a BOM file", "a CSV or JSON list of candidates", do_batch),
+        "6": ("Likely exploited", "NIST LEV, has it probably happened already", do_lev),
+        "7": ("SSVC decisions", "what buying this commits you to", do_ssvc),
+        "8": ("What changed", "re-score a saved result against today", do_diff),
+        "s": ("Save the last result", "HTML, JSON or CSV", do_save),
+    }
+
+
+def _shell_writers(context):
+    """How the interactive session saves whatever it last produced."""
+    def write_html(result, path):
+        # Not _write_html: that announces the file itself, and the menu already
+        # reports what it saved. Two lines for one file reads like two files.
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(report.render(
+            result.blocks, title=result.title, weights=context["weights"],
+            provenance=result.meta.get("provenance"),
+            config_source=context["config_source"]), encoding="utf-8")
+        return path
+
+    return {"html": write_html,
+            "json": lambda result, path: batch.write_json(
+                result.records, path, result.meta),
+            "csv": lambda result, path: batch.write_csv(result.records, path)}
+
+
+def cmd_shell(args):
+    """Menu-driven session, for people who would rather not learn the flags."""
+    connection = _open(args.db)
+    context = _context(config_path=args.config)
+    counts = index.stats(connection)
+    shell.run(_shell_actions(connection, context, args),
+              _shell_writers(context),
+              greet=f"{counts['advisories']:,} advisories, "
+                    f"{counts['products']:,} product entries, "
+                    f"{counts['vendors']:,} vendors.")
+    return 0
 
 
 def cmd_lev(args):
@@ -937,6 +1188,10 @@ def build_parser():
     # Not required: bare `retrust` shows what the index holds and what to run
     # next, which is a better first contact than an argparse usage error.
     sub = parser.add_subparsers(dest="command")
+
+    p = sub.add_parser("shell", help="interactive menu, no flags to remember")
+    p.add_argument("--config", help="scoring configuration file")
+    p.set_defaults(func=cmd_shell)
 
     p = sub.add_parser("search", help="find vendors, products or order numbers")
     p.add_argument("query", nargs="+", help="what to look for")

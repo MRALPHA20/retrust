@@ -84,6 +84,8 @@ def pad(text, width, align="left"):
 
 HEADER = "ReTrust scores OT hardware for cyber risk before you buy it."
 NEXT_STEPS = """\
+Not sure where to start?  retrust shell   picks the options for you.
+
 Examples:
   retrust search S7-1500
   retrust score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
