@@ -96,7 +96,7 @@ usable on a real purchase order.
 | Category (secondary) | Vulnerability Assessment / Supply Chain |
 | Open source | Yes, Apache-2.0 |
 | Source repository | **TODO: must be public before submitting** |
-| Documentation | `README.md`, well past Arsenal's three-page minimum, plus `docs/build-plan.html` |
+| Documentation | `docs/ReTrust-Guide.pdf`, an 11-page printable user guide, plus a long `README.md` and `docs/build-plan.html`. Arsenal's minimum is three pages |
 | Runtime dependencies | None beyond Python 3.10+ |
 | Install | `git clone` then `python3 -m retrust.cli setup` |
 | Network required at demo time | No; runs offline against a pinned snapshot |
@@ -155,6 +155,11 @@ memorable rather than a demo they watched.
 `python3 -m retrust.cli setup`. No pip, no virtualenv, no dependencies to
 resolve. Worth saying out loud at the station, because "I'll try it later"
 usually means never.
+
+Print `docs/ReTrust-Guide.pdf` to hand out. Its first page is a quick start that
+takes somebody from a clone to a scored comparison in three steps, so a visitor
+who runs out of time at the station still leaves able to use the tool. The rest
+covers the pipeline, both ways of driving it, and how to read a verdict.
 
 **Fallback.** `retrust demo` runs the whole sequence end to end in one command,
 and `retrust snapshot --restore` pins the exact data, so a station with no
@@ -219,6 +224,12 @@ security tooling would undercut that on sight.
 - [x] **Every command documented.** A check reads the live argument parser and
       confirms the README names every command, invents none, and shows no flag on
       a command that does not take it.
+- [x] **Documentation clears the three-page minimum several times over.** An
+      11-page printable guide (`docs/ReTrust-Guide.pdf`), a README covering every
+      command, and the build plan. The guide is printed from `docs/user-guide.html`
+      by `make guide`, so it is rebuilt from source rather than hand-maintained
+      and cannot drift from the figures it quotes.
+- [ ] Print 30 to 50 copies of the guide for the station.
 - [ ] Confirm the corpus snapshot date cited in reports is current.
 - [x] **LEV checked before being relied on.** `retrust lev --audit` over all
       12,003 corpus CVEs with EPSS history: median LEV 1.000 for KEV-listed
@@ -254,4 +265,8 @@ security tooling would undercut that on sight.
   and a smoke script covering every command path.
 - **It has a visual identity of its own**, derived from the standard its own
   users work in front of rather than borrowed from another tool. Screenshots
-  read as an instrument, which is what a station wants.
+  read as an instrument, which is what a station wants, and the printed guide is
+  set in the same language so the handout looks like the product.
+- **A visitor can leave able to use it.** The guide opens on a three-step quick
+  start, so somebody who only gets four minutes at the station still walks away
+  with something they can run.
