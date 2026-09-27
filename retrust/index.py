@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS product (
     helper_order_number INTEGER DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS order_number (
-    number_key TEXT, product_rowid INTEGER);
+    number_key TEXT,        -- punctuation stripped; what we match on
+    number TEXT,            -- as the vendor printed it; what a buyer reads
+    product_rowid INTEGER);
 
 CREATE TABLE IF NOT EXISTS affected (
     advisory_id TEXT, product_id TEXT, cve TEXT, cvss REAL, cwe TEXT,
@@ -131,9 +133,9 @@ def build(db_path, csaf_root, progress=None):
                 )
                 counts["products"] += 1
                 connection.executemany(
-                    "INSERT INTO order_number VALUES (?,?)",
-                    [(normalize_order_number(n), cursor.lastrowid)
-                     for n in product.order_numbers if normalize_order_number(n)],
+                    "INSERT INTO order_number VALUES (?,?,?)",
+                    [(key, n, cursor.lastrowid) for n in product.order_numbers
+                     if (key := normalize_order_number(n))],
                 )
 
             rows = [

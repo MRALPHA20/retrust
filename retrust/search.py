@@ -133,11 +133,11 @@ def _numbers_for(connection, rows):
     wanted = {(row["vendor_key"], row["name_key"]) for row in rows}
     found = {}
     for row in connection.execute(
-        "SELECT p.vendor_key, p.name_key, o.number_key FROM order_number o"
+        "SELECT p.vendor_key, p.name_key, o.number FROM order_number o"
         " JOIN product p ON p.rowid_ = o.product_rowid"
         f" WHERE p.name_key IN ({','.join('?' * len(names))})", names):
         if (group := (row["vendor_key"], row["name_key"])) in wanted:
-            found.setdefault(group, set()).add(row["number_key"])
+            found.setdefault(group, set()).add(row["number"])
     return {group: tuple(sorted(numbers)) for group, numbers in found.items()}
 
 
@@ -155,7 +155,7 @@ def order_numbers(connection, query, limit=20):
     # the vendor at its order-number rung -- so every product carrying it is
     # listed rather than collapsed into a single row.
     rows = connection.execute(
-        f"SELECT {rank} rung, o.number_key number, MIN(p.vendor) vendor,"
+        f"SELECT {rank} rung, MIN(o.number) number, MIN(p.vendor) vendor,"
         "        MIN(p.name) name, COUNT(DISTINCT p.advisory_id) advisories"
         "   FROM order_number o JOIN product p ON p.rowid_ = o.product_rowid"
         f"  WHERE {narrow}"
@@ -235,8 +235,9 @@ def _heading(kind, query, hits, lead):
     """A heading for the hits, or the plain sentence when there are none."""
     if not hits:
         return f"No {kind} in the corpus matches {query!r}."
-    return (lead or f"{kind}s matching {query!r} -- "
-            f"{len(hits)} shown, closest first") + "\n"
+    plural = "" if len(hits) == 1 else "s"
+    return (lead or f"{len(hits)} {kind}{plural} matching {query!r}, "
+            "closest first:") + "\n"
 
 
 def format_vendors(hits, query, lead=None):

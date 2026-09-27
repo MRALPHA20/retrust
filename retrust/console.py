@@ -85,11 +85,11 @@ def pad(text, width, align="left"):
 HEADER = "ReTrust scores OT hardware for cyber risk before you buy it."
 
 NEXT_STEPS = """\
-Try one of these:
+Examples:
+  retrust search S7-1500
   retrust score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
   retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"
-  retrust batch candidates.csv --html review.html
-  retrust eval"""
+  retrust batch candidates.csv --html review.html"""
 
 BUILD_STEPS = """\
 Build one, and every command after it runs offline:

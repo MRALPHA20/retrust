@@ -24,9 +24,9 @@ import sys
 from pathlib import Path
 
 from .index import normalize_vendor
-from . import (backtest, batch, bootstrap, certification, config, evaluate,
-               index, match, report, score, screenshot, sensitivity, snapshot,
-               supplychain)
+from . import (backtest, batch, bootstrap, certification, config, console,
+               evaluate, index, match, report, score, screenshot, search,
+               sensitivity, snapshot, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -596,6 +596,45 @@ def cmd_refresh(args):
     return 0
 
 
+def cmd_search(args):
+    """Look through the corpus by vendor, product name or order number."""
+    connection = _open(args.db)
+    query = " ".join(args.query)
+
+    if args.order_number:
+        hits = search.order_numbers(connection, query, limit=args.limit)
+        print(search.format_order_numbers(hits, query))
+    elif args.vendors:
+        hits = search.vendors(connection, query, limit=args.limit)
+        print(search.format_vendors(hits, query))
+    else:
+        hits = search.products(connection, query, vendor=args.vendor,
+                               limit=args.limit)
+        print(search.format_products(hits, query))
+        # A product search that finds nothing is usually a vendor the user
+        # spelled differently, so show where to look rather than stopping.
+        if not hits and not args.vendor:
+            if vendors := search.vendors(connection, query, limit=5):
+                print()
+                print(search.format_vendors(vendors, query,
+                                            lead="Vendors matching that:"))
+    return 0 if hits else 1
+
+
+def cmd_completion(args):
+    """Emit a completion script listing the real parser's commands and flags.
+
+    Read off the parser rather than written out by hand, so the completions
+    cannot drift out of step with the commands that actually exist.
+    """
+    parser = build_parser()
+    subparsers = next(action for action in parser._actions
+                      if isinstance(action, argparse._SubParsersAction))
+    flags = [option for action in parser._actions for option in action.option_strings]
+    print(console.completion(args.shell, sorted(subparsers.choices), flags))
+    return 0
+
+
 def cmd_setup(args):
     """Fetch everything and build the index, in one command."""
     print("Setting ReTrust up. Each step is skipped if it is already done,\n"
@@ -657,7 +696,23 @@ def build_parser():
         prog="retrust",
         description="Score OT hardware for cyber risk before you buy it.")
     parser.add_argument("--db", default=DEFAULT_DB, help=f"index path (default {DEFAULT_DB})")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--no-color", action="store_true", help="never colour the output")
+    # Not required: bare `retrust` shows what the index holds and what to run
+    # next, which is a better first contact than an argparse usage error.
+    sub = parser.add_subparsers(dest="command")
+
+    p = sub.add_parser("search", help="find vendors, products or order numbers")
+    p.add_argument("query", nargs="+", help="what to look for")
+    p.add_argument("--vendors", action="store_true", help="search vendor names")
+    p.add_argument("--order-number", action="store_true",
+                   help="search manufacturer order numbers")
+    p.add_argument("--vendor", help="restrict a product search to one vendor")
+    p.add_argument("--limit", type=int, default=20, help="results to show")
+    p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("completion", help="print a shell completion script")
+    p.add_argument("shell", choices=["bash", "zsh"])
+    p.set_defaults(func=cmd_completion)
 
     p = sub.add_parser("setup", help="fetch everything and build the index")
     p.add_argument("--data", default="data", help="data directory (default data)")
@@ -771,6 +826,11 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    if args.no_color:
+        console.disable()
+    if not args.command:
+        print(console.overview(args.db))
+        return 0
     return args.func(args) or 0
 
 
