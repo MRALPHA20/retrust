@@ -11,6 +11,7 @@
     retrust demo                                      run everything end to end
     retrust batch  candidates.csv --json out.json     score a whole BOM, CI-friendly
     retrust screenshot report.html --both-themes      render a report to PNG
+    retrust backtest --cutoff 2022-01-01              did the score predict the future?
     retrust eval                                      reproduce the accuracy figures
 
 Every command works offline against the index built by `ingest`, so results are
@@ -22,8 +23,8 @@ import sys
 from pathlib import Path
 
 from .index import normalize_vendor
-from . import (batch, certification, config, evaluate, index, match, report,
-               score, screenshot, sensitivity, snapshot, supplychain)
+from . import (backtest, batch, certification, config, evaluate, index, match,
+               report, score, screenshot, sensitivity, snapshot, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -530,6 +531,41 @@ def cmd_screenshot(args):
     return 0
 
 
+def cmd_backtest(args):
+    """Does the score predict what actually happened next?"""
+    connection = _open(args.db)
+    quiet = args.json == "-"          # stdout must stay parseable
+    if not quiet:
+        print(f"Scoring every product on advisories published before {args.cutoff},")
+        print("then measuring against what was disclosed after it.\n")
+
+    result = backtest.run(connection, cutoff=args.cutoff,
+                          min_history=args.min_history, limit=args.limit,
+                          permutations=args.permutations)
+    if not quiet:
+        print(backtest.format_report(result))
+
+    if args.json:
+        payload = batch.envelope(
+            [vars(o) for o in result.outcomes],
+            {"backtest": {
+                "cutoff": result.cutoff,
+                "cohort": result.cohort,
+                "permutations": result.permutations,
+                "rho_score_vs_future_cves": round(result.rho_future, 4),
+                "rho_score_vs_past_cves": round(result.rho_past, 4),
+                "rho_past_vs_future_cves": round(result.rho_persistence, 4),
+                "p_value": round(result.p_value, 4),
+                "kev_products": result.kev_products,
+                "kev_vendors": result.kev_vendors,
+                "kev_outcome_measurable": result.kev_is_measurable,
+                "by_band": result.by_band,
+                "interpretation": backtest.interpretation(result)}})
+        if written := _emit_json(args.json, payload):
+            print(f"\nJSON written to {written}")
+    return 0
+
+
 def cmd_refresh(args):
     """Fetch the supplementary sources that are not part of the CSAF corpus."""
     print("Refreshing certification lists (ISASecure, Common Criteria) ...")
@@ -656,6 +692,18 @@ def build_parser():
     p = sub.add_parser("refresh", help="fetch certification and sanctions sources")
     p.add_argument("--data", default="data", help="directory to cache into")
     p.set_defaults(func=cmd_refresh)
+
+    p = sub.add_parser("backtest",
+                       help="did the score predict later vulnerabilities?")
+    p.add_argument("--cutoff", default="2022-01-01",
+                   help="score on advisories before this date (default 2022-01-01)")
+    p.add_argument("--min-history", type=int, default=backtest.MIN_HISTORY,
+                   help="advisories a product needs before the cutoff to qualify")
+    p.add_argument("--limit", type=int, help="cap the cohort, for a quick run")
+    p.add_argument("--permutations", type=int, default=1000,
+                   help="shuffles for the significance control (default 1000)")
+    p.add_argument("--json", metavar="FILE", help='write results as JSON; "-" for stdout')
+    p.set_defaults(func=cmd_backtest)
 
     p = sub.add_parser("eval", help="reproduce the published accuracy figures")
     p.add_argument("--sample", type=int, default=400,

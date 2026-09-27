@@ -1,7 +1,7 @@
 # Bootstrap everything from nothing. Requires git, curl and python3.
 DATA ?= data
 
-.PHONY: all data ingest refresh test eval demo docs batch snapshot ci clean
+.PHONY: all data ingest refresh test eval backtest demo docs batch snapshot ci clean
 
 all: ingest refresh test
 
@@ -31,6 +31,9 @@ test:
 
 eval:
 	python3 -m retrust.cli eval --sample 4000
+
+backtest:
+	python3 -m retrust.cli backtest --cutoff 2022-01-01
 
 snapshot:
 	python3 -m retrust.cli snapshot --note "offline demo bundle"

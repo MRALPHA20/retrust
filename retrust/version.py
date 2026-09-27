@@ -180,11 +180,20 @@ def _in_interval(group, version):
 
     A lower and an upper bound together bracket it, so both must hold. Bounds
     of a single kind are alternatives: "<2.0 | <3.1" means either.
+
+    An exact version listed beside a window is always an alternative too:
+    ">=13.0.0 | <=13.0.2 | 13.1.0" means the window OR that one release.
+    ANDing it with the bounds made the group unsatisfiable, so a version
+    genuinely inside the window came back as a confident "not affected" and the
+    CVE vanished from the buyer's report. Twelve corpus ranges have this shape.
     """
     lowers = [c for c in group if c[0] in (">", ">=")]
     uppers = [c for c in group if c[0] in ("<", "<=")]
-    check = all if (lowers and uppers) else any
-    return check(_holds(op, version, bound) for op, bound in group)
+    exact = [c for c in group if c[0] == "="]
+    if lowers and uppers:
+        within = all(_holds(op, version, bound) for op, bound in lowers + uppers)
+        return within or any(_holds(op, version, bound) for op, bound in exact)
+    return any(_holds(op, version, bound) for op, bound in group)
 
 
 def is_determinate(range_text):

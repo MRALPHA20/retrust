@@ -377,7 +377,7 @@ CISA's repository already mirrors most of their advisories.
 ## Development
 
 ```bash
-python3 -m pytest tests/ -q      # 224 tests, no network needed
+python3 -m pytest tests/ -q      # 250 tests, no network needed
 ```
 
 Layout:
@@ -397,6 +397,7 @@ retrust/
   snapshot.py      portable, checksummed data bundles
   batch.py         bulk scoring, the shared JSON/CSV schema, CI exit codes
   screenshot.py    headless-Chrome report capture
+  backtest.py      does the score predict later disclosure?
   evaluate.py   the reproducible accuracy harness
   cli.py        command line interface
 ```
@@ -408,6 +409,52 @@ count, the KEV and EPSS capture dates, and the weights used. `retrust snapshot`
 bundles the index and both auxiliary lists into one checksummed zip, so a
 result can be regenerated months later and shown to be the same result. Restore
 verifies every SHA-256 and refuses a modified bundle.
+
+## Does the score predict anything?
+
+`retrust backtest` scores every product using only advisories published before a
+cutoff date, then measures against what was disclosed afterwards. Run it and you
+get this, on CISA's own corpus:
+
+```
+BACK-TEST AT 2022-01-01
+  products scored on pre-cutoff data only     5,839
+
+  correlation                                rho
+  score vs CVEs after the cutoff          +0.432   p=0.001 (1,000 shuffles)
+  score vs CVEs before the cutoff         -0.049   (is the score just re-reading history?)
+  CVEs before vs CVEs after               +0.183   (how much does volume persist?)
+```
+
+**That positive number is the interesting part, and it is not a validation.** A
+higher score went with *more* later CVEs — the opposite of what a risk score
+should do, if CVE count were the right yardstick.
+
+It is not the right yardstick. The score rewards vendors who run a real
+disclosure programme, and those vendors publish more CVEs. The extreme case here
+is a Siemens CPU with 2 CVEs before the cutoff and **1,029 after**, because one
+advisory bundled hundreds of upstream Linux CVEs. Counting CVEs measures how much
+a vendor discloses — precisely what the scoring rules refuse to penalise.
+
+The decomposition is printed for exactly this reason. The score barely tracks
+*past* CVE count (−0.049), so it is not simply re-reading history; it tracks
+*future* count (+0.432) because it tracks disclosure maturity. The sign is stable
+across every cutoff from 2019 to 2024, so it is a property of the outcome
+variable rather than of one date.
+
+The sound outcome would be confirmed exploitation — a product later appearing in
+CISA's KEV catalogue unambiguously went badly, whatever its vendor's disclosure
+habits. On this corpus only **29 products across 2 vendors** qualify, so the tool
+reports that sparsity rather than computing a rate from it.
+
+This is what a back-test is for: not to award the score a pass mark, but to show
+which outcome variables are usable and which are confounded. Nothing leaks across
+the cutoff — a test asserts that adding post-cutoff advisories cannot move a
+pre-cutoff score.
+
+```bash
+retrust backtest --cutoff 2022-01-01 --json results.json
+```
 
 ## Extending it
 

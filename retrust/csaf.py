@@ -119,7 +119,10 @@ def _parse(path):
     advisory = Advisory(
         advisory_id=tracking.get("id") or Path(path).stem,
         title=meta.get("title", ""),
-        released=tracking.get("initial_release_date", "")[:10],
+        # .get(key, "") returns None when the key is present and JSON-null, and
+        # None[:10] raises -- which parse()'s catch-all swallowed, silently
+        # dropping the whole advisory and every CVE in it.
+        released=(tracking.get("initial_release_date") or "")[:10],
         source=str(path),
     )
 
