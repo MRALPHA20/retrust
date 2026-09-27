@@ -83,6 +83,17 @@ check 1 "batch exits 1 on a disqualified part"    -- $RETRUST batch examples/can
 check 0 "batch exits 0 on a clean list"           -- $RETRUST batch examples/approved-bom.csv --no-sensitivity --fail-on never
 
 echo
+echo "== ssvc =="
+SSVC="--exposure controlled --automatable yes --human-impact high"
+check 1 "a KEV finding demands out-of-cycle work"  -- $RETRUST ssvc --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6 $SSVC
+contains "Carnegie Mellon" "the table is attributed" -- $RETRUST ssvc --vendor ABB --product "AC 800M" $SSVC
+contains "describe your plant" "the context is the buyer's" -- $RETRUST ssvc --vendor ABB --product "AC 800M" $SSVC
+contains "understates" "the exploitation limit is stated" -- $RETRUST ssvc --vendor ABB --product "AC 800M" $SSVC
+check 2 "an unresolvable product cannot be placed"  -- $RETRUST ssvc --vendor Nobody --product Nothing $SSVC
+check 2 "a missing context flag is refused"         -- $RETRUST ssvc --vendor ABB --product "AC 800M" --exposure open
+check 2 "an invalid context value is refused"       -- $RETRUST ssvc --vendor ABB --product "AC 800M" --exposure everywhere --automatable yes --human-impact high
+
+echo
 echo "== alternatives =="
 check 0 "a gated product gets suggestions"         -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 contains "not a recommendation" "the caveat is printed" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"

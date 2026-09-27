@@ -294,6 +294,7 @@ retrust snapshot --restore retrust-snapshot.zip
 | `vendor NAME` | what the index holds on one manufacturer |
 | `diff FILE` | re-score a stored result; what changed since |
 | `alternatives` | other products in the same vendor family |
+| `ssvc` | place findings on CERT/CC's SSVC deployer tree |
 | `score` | assess one product |
 | `compare` | rank candidates for one decision |
 | `batch FILE` | score a whole bill of materials, with a CI exit code |
@@ -407,6 +408,52 @@ you gave belongs to the product you asked about and means nothing on another, so
 candidates are scored without one. That makes the two columns answer slightly
 different questions, and the report says so instead of letting the gap read as
 the alternatives being cleaner.
+
+## SSVC: what buying this commits you to
+
+A score ranks candidates. It does not say what the purchase will cost in
+operational work, which is the question the week after the order is signed.
+`retrust ssvc` places each of a product's findings on CERT/CC's SSVC deployer
+tree: defer, scheduled, out-of-cycle, or immediate.
+
+```bash
+retrust ssvc --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6 \
+             --exposure controlled --automatable yes --human-impact high
+```
+
+```
+WHAT BUYING THIS COMMITS YOU TO
+  out-of-cycle      5   act sooner than the next maintenance window
+  scheduled       937   fix during regular scheduled maintenance
+
+CVE                OUTCOME        EXPLOITATION    EPSS  CVSS
+CVE-2023-44487     out-of-cycle   active         1.000   7.5
+CVE-2023-4911      out-of-cycle   active         0.814   7.8
+CVE-2024-6387      scheduled      none           0.995   8.1
+```
+
+**Three of the four decision points are yours, and the tool will not guess
+them.** System exposure, whether an attacker can automate the attack, and what a
+compromise does to people and mission all describe your plant, not the product.
+They have no defaults: SSVC is stakeholder-specific by design, and a tool that
+filled them in would be misrepresenting the method rather than applying it.
+
+**ReTrust supplies exploitation, and its "none" is an understatement.** A finding
+in CISA KEV is `active`. Everything else is `none`, because ReTrust has no feed
+of public proof-of-concept code and so can never reach SSVC's middle value. The
+report says so, and names the findings where it matters most: in the run above,
+eight sit at `none` with an EPSS above 0.5, topping out at 0.995. EPSS is a
+model, not evidence of a public exploit, so it cannot move the tree, and those
+need checking by hand.
+
+**One decision per CVE, not per finding.** A CVE reaches the tool once for each
+product entry an advisory names, and the same vulnerability listed eight times
+would read as eight things to fix.
+
+The decision table is CERT/CC's published deployer tree v1.0.0, reproduced from
+their repository rather than rewritten, and a test checks all 72 rows still
+agree with it. `--json` emits the decisions for a pipeline, and the exit code is
+non-zero when anything demands action before the next maintenance window.
 
 ## Automation
 
@@ -796,6 +843,9 @@ cites each one in every report footer:
 - [FIRST EPSS](https://www.first.org/epss/), used under FIRST's terms.
 - [ISASecure](https://isasecure.org/) certified product listings.
 - [Common Criteria](https://www.commoncriteriaportal.org/) certified products.
+- [CERT/CC SSVC](https://github.com/CERTCC/SSVC) deployer decision table
+  v1.0.0, Copyright 2026 Carnegie Mellon University, MIT (SEI)-style
+  licence. Reproduced in `retrust/ssvc.py` with its notice.
 - [trade.gov Consolidated Screening List](https://www.trade.gov/consolidated-screening-list)
   and the [FCC Covered List](https://www.fcc.gov/supplychain/coveredlist).
 

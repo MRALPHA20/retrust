@@ -5,6 +5,7 @@
     retrust vendor  NAME                              what the index knows about a maker
     retrust diff    previous.json                     what changed since that run
     retrust alternatives --vendor V --product P       others in the same family
+    retrust ssvc    --vendor V --product P --exposure open   SSVC deployer decisions
     retrust ingest  --csaf DIR [--kev F] [--epss F]   build the local index
     retrust stats                                     what is in the index
     retrust score   --vendor V --product P [--version X] [--order-number N]
@@ -31,7 +32,7 @@ from .index import normalize_vendor
 from . import (alternatives, backtest, batch, bootstrap, certification,
                config, console, diff, dossier, evaluate, index, match,
                report, score, screenshot, search, sensitivity, snapshot,
-               supplychain)
+               ssvc, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -635,6 +636,43 @@ def cmd_search(args):
     return 0 if hits else 1
 
 
+def cmd_ssvc(args):
+    """Place a product's findings on CERT/CC's SSVC deployer tree."""
+    connection = _open(args.db)
+    context = _context(config_path=args.config)
+    assessment, resolution, findings = _assess(
+        connection, args.vendor, args.product, args.version, args.order_number,
+        context=context)
+
+    if not resolution.resolved:
+        print(f"{assessment.product}: {resolution.reason}")
+        print("SSVC needs findings to place on the tree, and there are none.")
+        return 2
+
+    decisions = ssvc.assess(findings, args.exposure, args.automatable,
+                            args.human_impact)
+    print(ssvc.format_report(assessment.product, decisions, args.exposure,
+                             args.automatable, args.human_impact,
+                             undecided=sum(1 for f in findings if not f.decided)))
+
+    if args.json:
+        written = _emit_json(args.json, batch.envelope(
+            [{"cve": d.cve, "outcome": d.outcome, "exploitation": d.exploitation,
+              "in_kev": d.in_kev, "epss": d.epss, "cvss": d.cvss}
+             for d in decisions],
+            {"product": assessment.product, "findings": len(decisions),
+             "context": {"exposure": args.exposure, "automatable": args.automatable,
+                         "human_impact": args.human_impact},
+             "tree": "CERT/CC SSVC Deployer Patch Application Priority v1.0.0",
+             "provenance": index.provenance(connection)}))
+        if written:
+            print(f"\nJSON written to {written}")
+
+    # Non-zero when anything demands action before the next maintenance window.
+    return 1 if any(d.outcome in ("immediate", "out-of-cycle")
+                    for d in decisions) else 0
+
+
 def cmd_alternatives(args):
     """Other products in the same vendor family, scored the same way."""
     connection = _open(args.db)
@@ -805,6 +843,21 @@ def build_parser():
     p.add_argument("--vendor", help="restrict a product search to one vendor")
     p.add_argument("--limit", type=int, default=20, help="results to show")
     p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("ssvc", help="place findings on CERT/CC's SSVC tree")
+    _product_args(p)
+    # No defaults: these describe the buyer's plant, and guessing them would
+    # invent the stakeholder context that SSVC exists to make explicit.
+    p.add_argument("--exposure", required=True, choices=list(ssvc.EXPOSURE),
+                   help="how reachable the system is")
+    p.add_argument("--automatable", required=True, choices=list(ssvc.AUTOMATABLE),
+                   help="can an attacker automate the attack on your deployment?")
+    p.add_argument("--human-impact", required=True, choices=list(ssvc.HUMAN_IMPACT),
+                   help="safety and mission impact of a compromise")
+    p.add_argument("--json", metavar="FILE",
+                   help='write the decisions as JSON; "-" for stdout')
+    p.add_argument("--config", help="scoring configuration file")
+    p.set_defaults(func=cmd_ssvc)
 
     p = sub.add_parser("alternatives", help="other products in the same family")
     _product_args(p)
