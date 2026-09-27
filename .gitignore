@@ -1,0 +1,45 @@
+# Generated data. All of it is rebuilt by `make ingest` and `retrust refresh`
+# from public sources, so none of it belongs in the repository -- together it
+# is about 32 MB, and the advisory corpus is a separate upstream project.
+data/CSAF/
+data/retrust.db
+data/screening.json
+data/certifications.json
+data/kev.json
+data/epss.csv
+data/epss.csv.gz
+
+# Portable snapshots (~4 MB each). Ship these as release assets, not commits.
+*-snapshot.zip
+retrust-snapshot.zip
+
+# Generated output.
+reports/
+docs/screenshots/
+
+# A user's own scoring weights are theirs, not the project's default.
+retrust.config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

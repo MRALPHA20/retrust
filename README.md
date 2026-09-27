@@ -1,0 +1,433 @@
+# ReTrust
+
+**Score OT hardware for cyber risk before you buy it.**
+
+Existing tools tell you about equipment you already own. ReTrust answers the
+question a procurement team actually asks: *of these candidate PLCs, which one
+should we put on the purchase order?* It works from public advisory data, keys
+on the manufacturer order number a purchase requisition already contains, and
+shows the evidence behind every number.
+
+```
+$ retrust compare \
+    --candidate "Siemens|SIMATIC S7-1500|3.1.6" \
+    --candidate "Rockwell Automation|ControlLogix" \
+    --candidate "Schneider Electric|Modicon M340" \
+    --candidate "Moxa|EDS-405A"
+
+CANDIDATE                                 VERDICT       SCORE  CVES  NOTES
+Schneider Electric Modicon M340           PREFER         70.0    21
+Moxa EDS-405A                             CONDITIONAL    62.5    10
+Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          31.3  1011  Known exploited vulnerability
+Hikvision IP Camera                       AVOID           --      -   Named on a covered list
+ABB RTU500                                NOT ASSESSED    --      -   no product of 'ABB' matched 'RTU500'
+```
+
+---
+
+## Why order numbers, not CPE
+
+Every conventional vulnerability tool joins products to CVEs through CPE
+strings. Measured across all 27,234 product entries in CISA's OT advisory
+corpus:
+
+| Identifier on the product entry | Entries | Share |
+|---|---:|---:|
+| **CPE** — what conventional scanners join on | 26 | **0.1%** |
+| Manufacturer order number (`model_numbers` / `skus`) | 8,202 | 30.1% |
+| Vendor name | 27,231 | 100.0% |
+| Product name | 27,063 | 99.4% |
+
+CPE is effectively absent from ICS advisory data, which is why general-purpose
+tooling performs so poorly on OT gear. Order numbers are ~315× more available —
+and `6ES7518-4AX00-1AB0` is exactly what a buyer types onto a requisition.
+ReTrust keys on those instead.
+
+## Accuracy, and how to check it yourself
+
+Run `retrust eval`. It recomputes every figure below from your own index, so you
+never have to take these numbers on trust.
+
+| Measurement | Result |
+|---|---|
+| Version ranges decided deterministically | **93.1%** of 26,958 |
+| ...of ranges that *can* be decided from a version string | **94.7%** |
+| Product resolution precision (n = 4,000) | **99.9%** |
+| Product resolution recall (n = 4,000) | **99.9%** |
+| Resolution by order number | **100%** (1,428 / 1,428) |
+
+Two things that keep these honest:
+
+- **The round-trip test does not feed the corpus string back verbatim.** It
+  strips the parenthetical order number, drops punctuation and case, and keeps
+  only the first four words — roughly what a buyer types. Testing exact strings
+  against themselves reports a meaningless 100%.
+- **Ranges that cannot be decided are counted separately, not hidden.** A range
+  pinned to a serial number or a board revision (`<= first 5 digits of serial
+  number 26061`) is undecidable for any version-based tool. ReTrust abstains and
+  says why.
+
+**What this does not claim.** These figures measure resolving a *named* product
+to its advisories. They are not device-fingerprinting accuracy — identifying
+equipment from passive network traffic is a much harder problem where the
+commercial state of the art is around 83%. Different question, different number.
+
+## Install
+
+Python 3.10+ and no third-party runtime dependencies, so there is nothing to
+resolve and nothing to pin.
+
+```bash
+git clone https://github.com/<you>/retrust.git && cd retrust
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+```
+
+The virtualenv is not optional on Debian, Ubuntu or Kali: those ship Python as
+an externally managed environment, and `pip install -e .` outside a venv fails
+with a PEP 668 error.
+
+**Or skip installing entirely.** Every command works straight from a clone:
+
+```bash
+python3 -m retrust.cli --help
+```
+
+Both forms are equivalent — `retrust <command>` below is the same as
+`python3 -m retrust.cli <command>`. If you did not install the package, use the
+longer form.
+
+## Build the index
+
+ReTrust works offline against a local SQLite index, so results are reproducible
+and a demo never depends on the network.
+
+```bash
+# 1. CISA's OT advisories in CSAF format (~134 MB, 3,937 advisories)
+git clone --depth 1 --filter=blob:none --sparse https://github.com/cisagov/CSAF.git
+cd CSAF && git sparse-checkout set csaf_files/OT && cd ..
+
+# 2. Exploitation signals
+curl -sLo kev.json  https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+curl -sL https://epss.empiricalsecurity.com/epss_scores-current.csv.gz | gunzip > epss.csv
+
+# 3. Build (takes about two seconds)
+retrust ingest --csaf CSAF/csaf_files/OT --kev kev.json --epss epss.csv
+
+# 4. Certification (ISASecure, Common Criteria) and sanctions screening
+retrust refresh
+```
+
+## Use
+
+Not installed? Replace `retrust` with `python3 -m retrust.cli` throughout.
+
+```bash
+# Assess one product by its manufacturer order number
+retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
+
+# Or by vendor and name
+retrust score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
+
+# Compare candidates and write a report to send with the requisition
+retrust compare --candidate "Siemens|SIMATIC S7-1500|3.1.6" \
+                --candidate "Schneider Electric|Modicon M340" \
+                --html decision.html
+
+# Reproduce the accuracy figures
+retrust eval --sample 4000
+
+# How much does a verdict actually depend on the weights?
+retrust sensitivity --vendor "Moxa" --product "EDS-405A"
+
+# Edit the weights to match your own risk appetite
+retrust config --init
+
+# Pin all the data into one file for an offline demo or a reproducible result
+retrust snapshot --note "Q4 procurement review"
+retrust snapshot --restore retrust-snapshot.zip
+```
+
+## Automation
+
+**Score a whole bill of materials.** Point it at a CSV or JSON export from your
+procurement system — column names are matched loosely, so `Manufacturer`,
+`Part Number` and `Firmware Version` all work without reshaping.
+
+```bash
+retrust batch candidates.csv --json results.json --csv results.csv --html review.html
+```
+
+```
+CANDIDATE                              VERDICT      SCORE  NOTES
+ABB AC 800M                            PREFER        81.5
+Schneider Electric Modicon M340        PREFER        77.2
+Rockwell Automation ControlLogix       CONDITIONAL   56.4
+Moxa EDS-405A                          CONDITIONAL   55.9
+Siemens SIMATIC S7-1500 (fw 3.1.6)     AVOID         39.1  Known exploited vulnerability
+Hikvision IP Camera                    AVOID          --   Named on a covered list
+Acme Widgets Nonexistent 9000          NOT ASSESSED   --   vendor not in the advisory corpus
+
+  AVOID: 2, CONDITIONAL: 2, NOT ASSESSED: 1, PREFER: 2
+  exit 1: a candidate is disqualified
+```
+
+**The exit code is the point.** It makes this a gate rather than a report
+somebody has to read:
+
+| `--fail-on` | Non-zero when |
+|---|---|
+| `avoid` (default) | a candidate is disqualified |
+| `unassessed` | also when a candidate could not be assessed at all |
+| `never` | never — just report |
+
+```yaml
+# In CI, block a merge that introduces a disqualified component
+- run: retrust batch bom.csv --fail-on unassessed --json results.json
+```
+
+**Run everything end to end.** One command that scores, checks robustness,
+writes the report, captures screenshots and re-measures accuracy — so a station
+demo cannot half-fail in front of an audience:
+
+```bash
+retrust demo
+```
+
+**JSON from any command.** `score`, `compare` and `batch` all take `--json`.
+Pass a filename, or `-` to write to stdout — the human table is suppressed then,
+so the output pipes cleanly:
+
+```bash
+retrust score --vendor Moxa --product EDS-405A --json - | jq '.results[0].verdict'
+retrust compare --candidate "ABB|AC 800M" --candidate "Siemens|SIMATIC S7-1500|3.1.6" --json -
+```
+
+All three share one envelope and one record shape, so a single parser reads any
+of them:
+
+```json
+{
+  "generated_by": "retrust",
+  "schema": 1,
+  "weights":    { "exploitation": 0.3, "severity": 0.2, ... },
+  "provenance": [ { "source": "CISA KEV", "detail": "1,726 entries",
+                    "captured": "2026-09-27" } ],
+  "results": [ { "product": "Moxa EDS-405A", "verdict": "CONDITIONAL",
+                 "score": 55.9, "robust": 0.897, "gates": [], ... } ]
+}
+```
+
+`score --json` returns a superset of the same record: the evidence line behind
+every pillar, the citation behind every gate, and the most significant CVEs with
+their EPSS, KEV and remediation status. Anything trimmed is counted rather than
+silently dropped (`findings_truncated`). The envelope carries the weights and
+the data provenance, so a stored result stays interpretable months later.
+
+`score` and `compare` also take `--fail-on`, defaulting to `never` because they
+are interactive; `batch` defaults to `avoid` because it is a gate.
+
+**Screenshots.** Uses whatever Chrome or Chromium is already on the machine; it
+is not a dependency, and its absence costs you screenshots and nothing else.
+
+```bash
+retrust screenshot reports/comparison.html --both-themes
+```
+
+Documentation screenshots are regenerated by `make docs`, so they are always
+produced by the current code rather than hand-updated and left to drift.
+
+## How the score is built
+
+Three layers, evaluated in this order.
+
+**1. Hard gates.** A disqualifying fact ends the assessment. A vulnerability in
+CISA's Known Exploited Vulnerabilities catalogue forces `AVOID` regardless of
+everything else. Gates are not weighted terms, because a weighted disqualifier
+can be averaged away by good scores elsewhere.
+
+**1. Hard gates** also cover supply chain. A vendor on the FCC Covered List, the
+BIS Entity List or an OFAC sanctions list is `AVOID` outright. Screening runs on
+the vendor name alone, so it fires even for a vendor absent from the advisory
+corpus — otherwise the gate would only protect you from suppliers you were
+already going to hear about.
+
+**2. Five risk pillars**, each 0–100 where higher is better:
+
+| Pillar | Weight | What it reads |
+|---|---:|---|
+| Exploitation | 0.30 | CISA KEV, ransomware linkage, peak EPSS |
+| Severity | 0.20 | worst CVSS, count of 9.0+ |
+| Patch availability | 0.20 | CSAF remediation status: a fix, a workaround, or nothing |
+| Vendor practice | 0.15 | whether advisories carry CVSS and CWE |
+| Certification | 0.15 | IEC 62443 (ISASecure) and Common Criteria certificates |
+
+**3. A weighted composite**, reported as a band: `PREFER` (≥70),
+`CONDITIONAL` (≥40), `AVOID`. Weights and thresholds live in an editable config
+file — run `retrust config --init`.
+
+### Do the weights actually matter?
+
+The usual objection to any composite score is that its weights were invented.
+That is fair, and the honest answer is to measure it rather than argue about it.
+`retrust sensitivity` samples hundreds of weightings from across the whole
+simplex and reports how often the verdict survives:
+
+```
+$ retrust sensitivity --vendor "Rockwell Automation" --product ControlLogix
+
+CONDITIONAL under 100% of weightings -- the verdict does not hinge on the weights
+  score across 500 random weightings: 39.4 to 74.1 (median 56.4)
+```
+
+A verdict that holds under 96% of weightings is not a matter of opinion. One
+that holds under 72% is a judgement call, and the tool says so instead of
+handing you a false precision. `compare` prints this as a **ROBUST** column and
+flags anything below 90%.
+
+Reported alongside, but deliberately **not** part of the score: **evidence
+confidence**, the share of findings whose version range parsed cleanly and which
+carry CVSS and EPSS data. Folding it into the composite would mean "we have good
+data about how bad this is" *raises* the score, which is backwards. It tells you
+how much to trust the verdict, not how safe the product is.
+
+### Rules that keep this defensible
+
+- **Raw CVE counts are never scored.** A vendor that discloses diligently would
+  rank below one that stays quiet — exactly backwards.
+- **Weights are configurable and printed.** Disagree with them without having to
+  distrust the whole result.
+- **Every figure cites its source.** The tool reports what CISA and the vendors
+  themselves published.
+- **Unparseable version ranges stay in scope and are flagged**, never assumed
+  safe.
+- **A product we cannot resolve gets no score at all.** Every pillar reads "no
+  CVEs found" as good news, so an unresolvable product would otherwise score
+  near 100 and rank top of a comparison. `NOT ASSESSED` sorts below `AVOID`.
+- **Missing certification is never a penalty.** Most OT products are never
+  submitted, so absence says nothing; a certificate can only add.
+- **A pillar that cannot discriminate is a bug, not a feature.** Sensitivity
+  analysis caught two: severity scored ~0 for every OT product (nearly all have
+  a 9.8+, so `100 - peak × 10` saturated), and vendor practice scored ~100 for
+  everyone (CISA normalises the advisories it republishes, so advisory quality
+  is near-constant). Both were silently adding fixed offsets rather than
+  ranking anything. Severity now also weighs how *many* flaws are critical, and
+  vendor practice reads whether the vendor runs its own CSAF feed.
+- **Some facts cannot be outvoted.** A critical, likely-exploited flaw with no
+  vendor fix is a gate. Weighted scoring alone could not reach AVOID for one —
+  pillars the vendor did well on offset the one that made the product
+  unbuyable.
+- **Sanctions screening never fuzzy-matches.** Wrongly flagging a real
+  manufacturer is the worst error this tool could make, so screening matches
+  exact identity-preserving names only. Using the looser vendor normaliser here
+  matched *Schneider Electric* against *Schneider GMBH* on the BIS Entity List —
+  the test suite now pins that case.
+
+### A note on convergent validity
+
+CISA KEV records exploitation confirmed in the wild; FIRST's EPSS is an
+independent statistical model. On this corpus they agree sharply — OT CVEs
+listed in KEV have a median EPSS of **0.70** against **0.0073** for OT CVEs
+overall, roughly a 97× separation. Two independently built sources pointing the
+same way is the empirical footing for the exploitation pillar.
+
+## Resolution ladder
+
+Four strategies, strongest first. Each rung reports its own confidence, and
+below the floor ReTrust returns nothing rather than a weak guess.
+
+| Rung | Method | Confidence | Round-trip accuracy |
+|---|---|---:|---:|
+| 1 | Manufacturer order number | 0.98 | 100% |
+| 2 | Vendor + product name, including longer family variants | 0.90 | 99.8% |
+| 3 | Vendor + all query words present in the name | 0.70 | 100% |
+| 4 | Abstain, with a typed reason | — | — |
+
+A wrong answer about whether a PLC is vulnerable costs more than "needs review",
+so abstention is a feature rather than a failure.
+
+## Data sources
+
+| Source | What it provides | Access |
+|---|---|---|
+| CISA ICS advisories (CSAF 2.0) | authoritative product→CVE mappings | `cisagov/CSAF` on GitHub |
+| CISA KEV | confirmed exploitation, ransomware linkage | JSON feed |
+| FIRST EPSS | exploitation probability, covers 99.7% of OT CVEs | daily CSV |
+| Siemens ProductCERT | 841 signed CSAF advisories | ROLIE feed |
+| Schneider, ABB, Hitachi Energy | vendor CSAF | BSI CSAF aggregator |
+| Consolidated Screening List | 26,144 sanctioned/restricted entities | trade.gov CSV |
+| FCC Covered List / NDAA §889 | named covered entities | curated, cited in-repo |
+| ISASecure | 155 IEC 62443-4-1/4-2/3-3 certificates | isasecure.org |
+| Common Criteria | 2,122 certified products | official CSV |
+
+## Development
+
+```bash
+python3 -m pytest tests/ -q      # 151 tests, no network needed
+```
+
+Layout:
+
+```
+retrust/
+  version.py    version-range parsing   (the accuracy-critical component)
+  csaf.py       reads CSAF advisories
+  index.py      SQLite build and normalisation
+  match.py      the resolution ladder
+  score.py      gates, pillars, verdict
+  report.py     self-contained HTML output
+  supplychain.py   sanctions and covered-list screening
+  certification.py IEC 62443 and Common Criteria evidence
+  config.py        editable weights and band thresholds
+  sensitivity.py   how much the verdict depends on the weights
+  snapshot.py      portable, checksummed data bundles
+  batch.py         bulk scoring, the shared JSON/CSV schema, CI exit codes
+  screenshot.py    headless-Chrome report capture
+  evaluate.py   the reproducible accuracy harness
+  cli.py        command line interface
+```
+
+## Reproducibility
+
+Every report footer records which data snapshot produced it — the advisory
+count, the KEV and EPSS capture dates, and the weights used. `retrust snapshot`
+bundles the index and both auxiliary lists into one checksummed zip, so a
+result can be regenerated months later and shown to be the same result. Restore
+verifies every SHA-256 and refuses a modified bundle.
+
+## Limitations
+
+- **Common Criteria barely covers OT.** Of nine major OT vendors checked against
+  its 2,122 certified products, only two appear; the list is dominated by smart
+  cards. ISASecure is the OT-relevant scheme and is small (155 certificates).
+- Country-of-origin screening is not implemented. No authoritative public
+  product-level source exists, and corporate domicile is a weak proxy that would
+  need labelling as such.
+- Vendor normalisation covers the common cases; the long tail of 814 vendor
+  spellings will need community contributions.
+- Firmware binary analysis is out of scope by design. ReTrust is the decision
+  layer above tools like EMBA and FACT, not a replacement for them.
+- **No advisories for a product is not evidence it is secure.** It may simply
+  mean nobody has published. ReTrust says so rather than scoring it clean.
+
+## Data sources and attribution
+
+ReTrust redistributes no vendor data. It reads public sources at build time and
+cites each one in every report footer:
+
+- CISA ICS advisories, from the [cisagov/CSAF](https://github.com/cisagov/CSAF)
+  repository (US Government work).
+- [CISA Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog).
+- [FIRST EPSS](https://www.first.org/epss/), used under FIRST's terms.
+- [ISASecure](https://isasecure.org/) certified product listings.
+- [Common Criteria](https://www.commoncriteriaportal.org/) certified products.
+- [trade.gov Consolidated Screening List](https://www.trade.gov/consolidated-screening-list)
+  and the [FCC Covered List](https://www.fcc.gov/supplychain/coveredlist).
+
+Screening and certification results are reproductions of what those sources
+publish. They are decision support for a buyer, not a legal determination —
+verify any gate against the cited source before acting on it.
+
+## Licence
+
+Apache-2.0. See [LICENSE](LICENSE).

@@ -1,0 +1,106 @@
+"""Tests for version-range parsing.
+
+Each case below is a real string taken from the CISA OT advisory corpus, so the
+suite doubles as documentation of the grammars vendors actually publish.
+"""
+
+import pytest
+
+from retrust.version import affects, is_determinate, parse_version
+
+# (affected range, firmware version, expected answer)
+CASES = [
+    # VERS spec -- about 46% of the corpus
+    ("vers:intdot/<4.3.8", "4.3.7", True),
+    ("vers:intdot/<4.3.8", "4.3.8", False),
+    ("vers:intdot/<4.3.8", "4.3.9", False),
+    ("vers:all/*", "1.2.3", True),
+    ("vers:intdot/>=3.0|<3.0.2", "3.0.1", True),
+    ("vers:intdot/>=3.0|<3.0.2", "3.0.2", False),
+    ("vers:intdot/>=3.0|<3.0.2", "2.9", False),
+
+    # Plain comparators
+    ("<V2.9.7", "V2.9.6", True),
+    ("<V2.9.7", "V2.9.7", False),
+    ("4.5", "4.5", True),
+    ("4.5", "4.6", False),
+
+    # Bounded intervals, with and without a separator
+    (">=V3.1.0|<V3.1.2", "V3.1.1", True),
+    (">=V3.1.0|<V3.1.2", "V3.1.2", False),
+    (">=V3.1.0|<V3.1.2", "V3.0.9", False),
+    (">=V6.2<V7.1", "V6.5", True),
+    (">=V6.2<V7.1", "V7.5", False),
+
+    # Service packs and updates sort after the base version
+    ("<V17_Update_5", "V17_Update_4", True),
+    ("<V17_Update_5", "V17_Update_6", False),
+    ("<V17_Update_5", "V17", True),
+
+    # A component name before the operator or the number
+    ("NMC2 <= 6.9.6", "6.9.5", True),
+    ("NMC2 <= 6.9.6", "6.9.7", False),
+    ("<firmware_SP473", "SP472", True),
+    ("<firmware_SP473", "SP474", False),
+    ("<=SW_v4.4.1.19", "4.4.1.18", True),
+    ("<=SW_v4.4.1.19", "4.4.2", False),
+    ("vers:generic/<SV3.70", "SV3.69", True),
+    ("vers:generic/<SV3.70", "SV3.71", False),
+
+    # Build numbers in parentheses become another component
+    ("< 02.07.07(10)", "02.07.07.9", True),
+    ("<= 15.2(6)E0a", "15.2.5", True),
+    ("<= 15.2(6)E0a", "15.3", False),
+    ("<= 3.4.4 Build 16102416", "3.4.3", True),
+
+    # Shorter and longer versions compare as if zero-padded
+    ("<V4.5", "4.5.0", False),
+    ("<V4.5.1", "4.5", True),
+]
+
+# Ranges nothing version-based can settle. These must abstain, never guess:
+# answering "not affected" here would quietly understate risk.
+MUST_ABSTAIN = [
+    "<= with_the_first_5_digits_of_serial_number_2408",
+    '<=The_first_5_digits_of_serial_No._"26061"',
+    "<BIOS_V1.0.212N",
+    "<with_U-Boot_V2016.05RS09",
+    "distributed  < april 1, 2018",
+    "<=LJ",
+    "Rev._1",
+]
+
+
+@pytest.mark.parametrize("range_text,version,expected", CASES)
+def test_affects(range_text, version, expected):
+    assert affects(range_text, version) is expected
+
+
+@pytest.mark.parametrize("range_text", MUST_ABSTAIN)
+def test_abstains_when_undecidable(range_text):
+    assert affects(range_text, "1.0") is None
+
+
+def test_unknown_never_reads_as_safe():
+    """None must be distinguishable from False by callers."""
+    assert affects("<=LJ", "1.0") is not False
+
+
+def test_parse_version_rejects_non_versions():
+    for text in ["", None, "Rev", "unknown", "TBD"]:
+        assert parse_version(text) is None
+
+
+def test_version_ordering():
+    assert parse_version("4.5") < parse_version("4.5.1")
+    assert parse_version("V17") < parse_version("V17 Update 5")
+    assert parse_version("2.9.7") > parse_version("2.9.6")
+
+
+def test_is_determinate_matches_affects():
+    """Anything we call determinate must actually produce an answer."""
+    for range_text, version, _ in CASES:
+        assert is_determinate(range_text)
+        assert affects(range_text, version) is not None
+    for range_text in MUST_ABSTAIN:
+        assert not is_determinate(range_text)

@@ -1,0 +1,158 @@
+"""Tests for ingest, matching and scoring, using a small hand-built advisory.
+
+These run without the real corpus so they stay fast and deterministic.
+"""
+
+import json
+
+import pytest
+
+from retrust import csaf, index, match, score
+
+ADVISORY = {
+    "document": {
+        "title": "Test PLC vulnerabilities",
+        "tracking": {"id": "ICSA-26-001-01", "initial_release_date": "2026-01-01T00:00:00Z"},
+    },
+    "product_tree": {
+        "branches": [{
+            "category": "vendor", "name": "Testco Electric",
+            "branches": [{
+                "category": "product_name", "name": "TestPLC 9000 (TC-9000-A1)",
+                "branches": [
+                    {"category": "product_version_range", "name": "vers:intdot/<2.0",
+                     "product": {"product_id": "P1", "name": "TestPLC 9000 < 2.0",
+                                 "product_identification_helper": {"model_numbers": ["TC-9000-A1"]}}},
+                    {"category": "product_version_range", "name": ">=2.0|<3.0",
+                     "product": {"product_id": "P2", "name": "TestPLC 9000 2.x"}},
+                ],
+            }],
+        }],
+    },
+    "vulnerabilities": [
+        {"cve": "CVE-2026-0001", "cwe": {"id": "CWE-79"},
+         "product_status": {"known_affected": ["P1"]},
+         "scores": [{"cvss_v3": {"baseScore": 9.8}, "products": ["P1"]}]},
+        {"cve": "CVE-2026-0002", "cwe": {"id": "CWE-22"},
+         "product_status": {"known_affected": ["P1", "P2"]},
+         "scores": [{"cvss_v3": {"baseScore": 5.3}, "products": ["P1", "P2"]}]},
+    ],
+}
+
+
+@pytest.fixture
+def db(tmp_path):
+    advisory_dir = tmp_path / "csaf"
+    advisory_dir.mkdir()
+    (advisory_dir / "icsa-26-001-01.json").write_text(json.dumps(ADVISORY))
+    connection, _ = index.build(str(tmp_path / "t.db"), str(advisory_dir))
+    with connection:
+        connection.execute(
+            "INSERT INTO exploitation (cve, epss, in_kev, ransomware) VALUES (?,?,?,?)",
+            ("CVE-2026-0001", 0.87, 1, 1))
+    return connection
+
+
+def test_ingest_reads_products_and_cves(db):
+    stats = index.stats(db)
+    assert stats["advisories"] == 1
+    assert stats["products"] == 2
+    assert stats["cves"] == 2
+
+
+def test_order_number_is_extracted_from_the_name():
+    assert "TC-9000-A1" in csaf.find_order_numbers("TestPLC 9000 (TC-9000-A1)")
+
+
+def test_ratings_are_not_mistaken_for_order_numbers():
+    """A wrong order-number match is worse than none, so these must be rejected."""
+    for text in ["Power supply (54VDC)", "Module (2 GB)", "Widget (V2.1)"]:
+        assert csaf.find_order_numbers(text) == set()
+
+
+def test_vendor_spellings_collapse():
+    assert index.normalize_vendor("Testco Electric") == index.normalize_vendor("Testco")
+    assert index.normalize_vendor("Johnson Controls, Inc.") == index.normalize_vendor(
+        "Johnson Controls Inc")
+
+
+def test_resolve_by_order_number(db):
+    resolution = match.resolve(db, order_number="tc9000a1")
+    assert resolution.resolved
+    assert resolution.method == "order_number"
+    assert resolution.confidence >= 0.95
+
+
+def test_resolve_by_vendor_and_name(db):
+    resolution = match.resolve(db, vendor="Testco", product="TestPLC 9000")
+    assert resolution.resolved
+    assert len(resolution.matches) == 2       # both version branches of the family
+
+
+def test_abstains_on_unknown_vendor(db):
+    resolution = match.resolve(db, vendor="Nobody Ltd", product="Whatever")
+    assert not resolution.resolved
+    assert "does not appear" in resolution.reason
+
+
+def test_abstains_on_unknown_product(db):
+    resolution = match.resolve(db, vendor="Testco", product="zzzz not a product")
+    assert not resolution.resolved
+
+
+def test_version_filter_excludes_unaffected(db):
+    """Firmware 2.5 is outside "<2.0", so CVE-2026-0001 must drop out."""
+    resolution = match.resolve(db, vendor="Testco", product="TestPLC 9000")
+    cves = {f.cve for f in match.findings(db, resolution, version="2.5")}
+    assert "CVE-2026-0001" not in cves
+    assert "CVE-2026-0002" in cves
+
+
+def test_version_filter_includes_affected(db):
+    resolution = match.resolve(db, vendor="Testco", product="TestPLC 9000")
+    cves = {f.cve for f in match.findings(db, resolution, version="1.9")}
+    assert "CVE-2026-0001" in cves
+
+
+def test_kev_is_a_hard_gate(db):
+    resolution = match.resolve(db, vendor="Testco", product="TestPLC 9000")
+    findings = match.findings(db, resolution, version="1.9")
+    assessment = score.assess("TestPLC 9000", findings, {"ICSA-26-001-01"})
+    assert assessment.verdict == "AVOID"
+    assert any("Known exploited" in g["gate"] for g in assessment.gates)
+
+
+def test_gate_cannot_be_averaged_away(db):
+    """Even with otherwise strong pillars, a gate still forces AVOID."""
+    resolution = match.resolve(db, vendor="Testco", product="TestPLC 9000")
+    findings = match.findings(db, resolution, version="1.9")
+    assessment = score.assess("TestPLC 9000", findings, {"ICSA-26-001-01"},
+                              weights={"exploitation": 0.01, "severity": 0.01,
+                                       "vendor_practice": 0.98})
+    assert assessment.verdict == "AVOID"
+
+
+def test_clean_product_scores_well(db):
+    """Version 2.5 avoids the KEV CVE and should not be gated."""
+    resolution = match.resolve(db, vendor="Testco", product="TestPLC 9000")
+    findings = match.findings(db, resolution, version="2.5")
+    assessment = score.assess("TestPLC 9000", findings, {"ICSA-26-001-01"})
+    assert assessment.gates == []
+    assert assessment.verdict in ("PREFER", "CONDITIONAL")
+
+
+def test_evidence_quality_is_not_in_the_score(db):
+    """Confidence must not inflate the risk score, whatever the weights are."""
+    resolution = match.resolve(db, vendor="Testco", product="TestPLC 9000")
+    findings = match.findings(db, resolution, version="2.5")
+    assessment = score.assess("TestPLC 9000", findings, {"ICSA-26-001-01"})
+
+    weights = list(score.DEFAULT_WEIGHTS.values())
+    risk = [p for p in assessment.pillars if p.name != "Evidence quality"]
+    assert len(risk) == len(weights)
+    expected = sum(p.score * w for p, w in zip(risk, weights)) / sum(weights)
+    assert assessment.score == pytest.approx(expected, abs=0.1)
+
+    # Evidence quality is present in the output but carries no weight key.
+    assert any(p.name == "Evidence quality" for p in assessment.pillars)
+    assert "evidence_quality" not in score.DEFAULT_WEIGHTS

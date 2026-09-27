@@ -1,0 +1,765 @@
+<title>ReTrust Build Plan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ── Palette rationale ───────────────────────────────────────────────
+   ISA-101 (the HMI design standard for control rooms) says operator
+   screens stay low-chroma grey and reserve saturated colour for
+   abnormal conditions. A tool that scores OT hardware should obey the
+   same convention its users read all day: graphite ground, cool
+   blue-biased neutrals, and colour only where it means something —
+   the Prefer / Conditional / Avoid verdict bands.
+   ──────────────────────────────────────────────────────────────────── */
+:root {
+  --ground:        #f4f6f8;
+  --surface:       #ffffff;
+  --surface-sunk:  #e9edf1;
+  --rule:          #ccd4dc;
+  --rule-strong:   #9aa8b5;
+  --ink:           #16202a;
+  --ink-soft:      #47586a;
+  --ink-faint:     #5c6c7d;   /* AA (>=4.5) on ground, surface and sunk alike */
+  --signal:        #7d5600;   /* amber, load-bearing only; AA on --signal-bg */
+  --signal-bg:     #fdf4e0;
+  --prefer:        #1c6b4a;
+  --prefer-bg:     #e3f2ea;
+  --conditional:   #8a5c00;
+  --conditional-bg:#fbf0d9;
+  --avoid:         #9c2a24;
+  --avoid-bg:      #fbe9e7;
+  --shadow:        0 1px 2px rgba(22,32,42,.06), 0 1px 1px rgba(22,32,42,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:        #171c21;
+    --surface:       #1e252c;
+    --surface-sunk:  #141a1f;
+    --rule:          #323c46;
+    --rule-strong:   #55636f;
+    --ink:           #e4eaf0;
+    --ink-soft:      #a9b8c6;
+    --ink-faint:     #7d8d9c;
+    --signal:        #e8b34a;
+    --signal-bg:     #2e2515;
+    --prefer:        #5fc493;
+    --prefer-bg:     #163024;
+    --conditional:   #e0ab4e;
+    --conditional-bg:#302614;
+    --avoid:         #f08d84;
+    --avoid-bg:      #341e1c;
+    --shadow:        0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:        #171c21;
+  --surface:       #1e252c;
+  --surface-sunk:  #141a1f;
+  --rule:          #323c46;
+  --rule-strong:   #55636f;
+  --ink:           #e4eaf0;
+  --ink-soft:      #a9b8c6;
+  --ink-faint:     #7d8d9c;
+  --signal:        #e8b34a;
+  --signal-bg:     #2e2515;
+  --prefer:        #5fc493;
+  --prefer-bg:     #163024;
+  --conditional:   #e0ab4e;
+  --conditional-bg:#302614;
+  --avoid:         #f08d84;
+  --avoid-bg:      #341e1c;
+  --shadow:        0 1px 2px rgba(0,0,0,.4);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 15.5px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 61rem; margin: 0 auto; padding: 3rem 1.6rem 5rem; }
+
+/* ── Masthead: a datasheet header block ─────────────────────────── */
+.masthead {
+  border-top: 3px solid var(--ink);
+  padding-top: 1.1rem;
+  margin-bottom: 2.6rem;
+}
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .705rem; font-weight: 500;
+  letter-spacing: .13em; text-transform: uppercase;
+  color: var(--ink-faint);
+  display: flex; flex-wrap: wrap; gap: .5rem 1.4rem;
+  margin-bottom: .9rem;
+}
+h1 {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+  font-weight: 700; font-size: clamp(2.3rem, 6vw, 3.5rem);
+  line-height: 1.02; letter-spacing: -.018em;
+  margin: 0 0 .5rem; text-wrap: balance;
+}
+.standfirst {
+  font-size: 1.1rem; color: var(--ink-soft);
+  max-width: 44rem; margin: 0;
+}
+
+/* ── Verdict banner ─────────────────────────────────────────────── */
+.verdict {
+  display: grid; grid-template-columns: auto 1fr; gap: 0 1.1rem;
+  align-items: start;
+  background: var(--signal-bg);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--signal);
+  padding: 1.15rem 1.35rem;
+  margin: 2.4rem 0 3rem;
+  box-shadow: var(--shadow);
+}
+.verdict .mark {
+  font-family: "IBM Plex Mono", monospace; font-weight: 600;
+  font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--signal); padding-top: .18rem; white-space: nowrap;
+}
+.verdict p { margin: 0 0 .6rem; }
+.verdict p:last-child { margin-bottom: 0; }
+
+/* ── Sections ───────────────────────────────────────────────────── */
+section { margin-top: 3.4rem; }
+h2 {
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 600; font-size: 1.6rem; letter-spacing: -.008em;
+  margin: 0 0 .25rem; padding-bottom: .5rem;
+  border-bottom: 1px solid var(--rule-strong);
+  display: flex; align-items: baseline; gap: .7rem;
+}
+h2 .idx {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .78rem; font-weight: 500; color: var(--ink-faint);
+  letter-spacing: .06em;
+}
+h3 {
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 600; font-size: 1.12rem;
+  margin: 2rem 0 .5rem; letter-spacing: -.004em;
+}
+p { margin: .8rem 0; max-width: 40rem; }
+section > p, section > ul, section > ol { max-width: 40rem; }
+ul, ol { padding-left: 1.3rem; }
+li { margin: .38rem 0; }
+strong { font-weight: 600; }
+code, .mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .87em;
+}
+code {
+  background: var(--surface-sunk);
+  border: 1px solid var(--rule);
+  padding: .07em .34em; border-radius: 2px;
+}
+a { color: var(--ink); text-decoration-color: var(--rule-strong); text-underline-offset: 2px; }
+a:hover { text-decoration-color: currentColor; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+/* ── Tables: instrument readouts ────────────────────────────────── */
+.tablewrap { overflow-x: auto; margin: 1.3rem 0; border: 1px solid var(--rule); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; min-width: 34rem; }
+th, td { text-align: left; padding: .56rem .8rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .68rem; font-weight: 600; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--ink-soft);
+  background: var(--surface-sunk); white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tnote { font-size: .825rem; color: var(--ink-faint); margin: .5rem 0 0; max-width: 46rem; }
+
+/* ── Figures ────────────────────────────────────────────────────── */
+figure { margin: 1.8rem 0; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; background: var(--surface); border: 1px solid var(--rule); }
+figcaption { font-size: .845rem; color: var(--ink-faint); margin-top: .55rem; max-width: 40rem; }
+.figscroll { overflow-x: auto; }
+
+/* ── Day cards ──────────────────────────────────────────────────── */
+.days { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 1.4rem 0; }
+.day { background: var(--surface); padding: .95rem 1.1rem; display: grid; grid-template-columns: 3.9rem 1fr; gap: 0 1rem; }
+.day .tag {
+  font-family: "IBM Plex Mono", monospace; font-size: .69rem; font-weight: 600;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--signal);
+  padding-top: .22rem;
+}
+.day h4 { font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; font-size: 1rem; margin: 0 0 .28rem; }
+.day ul { margin: .3rem 0 0; padding-left: 1.15rem; font-size: .89rem; color: var(--ink-soft); }
+.day li { margin: .2rem 0; }
+.day .ship { font-size: .82rem; font-family: "IBM Plex Mono", monospace; color: var(--ink-faint); margin-top: .45rem; }
+
+
+/* ── Callout ────────────────────────────────────────────────────── */
+.note { border: 1px solid var(--rule); border-left: 3px solid var(--rule-strong); background: var(--surface); padding: .9rem 1.1rem; margin: 1.4rem 0; font-size: .92rem; }
+.note p { margin: .4rem 0; max-width: none; }
+.note p:first-child { margin-top: 0; }
+.note p:last-child { margin-bottom: 0; }
+.note .lbl { font-family: "IBM Plex Mono", monospace; font-size: .68rem; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); display: block; margin-bottom: .3rem; }
+
+/* ── Metric row ─────────────────────────────────────────────────── */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 1.5rem 0; }
+.metric { background: var(--surface); padding: .85rem 1rem; }
+.metric .v { font-family: "IBM Plex Mono", monospace; font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; display: block; }
+.metric .k { font-size: .74rem; color: var(--ink-faint); line-height: 1.35; display: block; margin-top: .22rem; }
+
+footer { margin-top: 4rem; padding-top: 1.1rem; border-top: 1px solid var(--rule); font-size: .82rem; color: var(--ink-faint); }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">
+    <span>ReTrust</span>
+    <span>Build Plan &middot; rev 1</span>
+    <span>27 Sep 2026</span>
+  </div>
+  <h1>Scoring OT hardware before you buy it</h1>
+  <p class="standfirst">A verified feasibility assessment and 10-day build plan for an open-source OT hardware cyber-risk scoring and procurement decision tool — with the measured accuracy budget it can honestly claim.</p>
+</header>
+
+<div class="verdict">
+  <span class="mark">Verdict</span>
+  <div>
+    <p><strong>Yes — the tool is buildable in 10 days, and the accuracy target is real.</strong> I did not take this on trust: I pulled the actual corpora today and measured them. The decisive finding is that you do not need to guess at product identity, because CISA and the major OT vendors publish authoritative machine-readable CSAF that states exactly which product versions each CVE affects.</p>
+    <p>I then wrote the hardest component — the version-range parser — and measured it against all 26,958 version strings in the CISA OT corpus. It resolves <strong>93.12%</strong> deterministically, above your 90% bar, with a further ~4% reachable from residuals I have already categorised.</p>
+    <p><strong>The tool is now built and measured.</strong> A working v0.1 ingests all 3,937 advisories in about two seconds, resolves products through the ladder below, and scores them. Against 4,000 held-out products it resolves to the correct advisory with <strong>99.9% precision and recall</strong>, and <strong>100% (1,428/1,428)</strong> of order-number lookups are exact. 58 tests pass. The binding constraint was scope, not data and not time.</p>
+  </div>
+</div>
+
+<section>
+  <h2><span class="idx">01</span> Two deadlines, not one</h2>
+  <p>These need separating, because they reward different things and the second one is not in danger.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Milestone</th><th>Date</th><th class="num">Days out</th><th>What it rewards</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Company evaluation</strong></td><td>~7 Oct 2026</td><td class="num">10</td><td>A tool that runs, on real data, with output a reviewer trusts</td></tr>
+        <tr><td><strong>Black Hat Asia 2027 Arsenal — CFT closes</strong></td><td>2 Nov 2026, 23:59 SGT</td><td class="num">36</td><td>Open-source repo, novelty, demo-readiness</td></tr>
+        <tr><td>Arsenal notifications</td><td>1 Dec 2026</td><td class="num">65</td><td>&mdash;</td></tr>
+        <tr><td>Black Hat Asia 2027, Singapore</td><td>28 Feb &ndash; 3 Mar 2027<br><span class="mono" style="font-size:.85em">Arsenal: 2&ndash;3 Mar</span></td><td class="num">154</td><td>A working 1h50m station demo</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="tnote">The 10-day build lands 26 days before the Arsenal deadline, which is enough for documentation, repo polish and the proposal. Black Hat Europe 2026 is <em>not</em> reachable — its Call for Tools closed on 19 July 2026.</p>
+  <div class="note">
+    <span class="lbl">Arsenal submission rules that constrain the build</span>
+    <p>Reviewers (the Arsenal Review Board, co-chaired by ToolsWatch) require a <strong>source-code link at submission</strong> and a tool <strong>&ldquo;functional enough to demonstrate in an interactive environment&rdquo;</strong> at review time. Commercial framing is prohibited. So the repo must be public and genuinely runnable by 2 November — which the 10-day build already satisfies. You may submit up to four tools, and presenter advice is consistent: submit early rather than near the deadline.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="idx">02</span> What I verified today</h2>
+  <p>Every source below I fetched and parsed on 27 September 2026. These are measured counts from the real data, not documentation claims.</p>
+
+  <div class="metrics">
+    <div class="metric"><span class="v">3,937</span><span class="k">CISA OT advisories in CSAF</span></div>
+    <div class="metric"><span class="v">27,234</span><span class="k">product entries</span></div>
+    <div class="metric"><span class="v">12,346</span><span class="k">distinct OT CVEs</span></div>
+    <div class="metric"><span class="v">2010&ndash;26</span><span class="k">years of history</span></div>
+    <div class="metric"><span class="v">884</span><span class="k">raw vendor strings</span></div>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Source</th><th>Access</th><th>Measured today</th><th>Effort</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CISA ICS advisories (CSAF 2.0)</strong></td><td><code>git clone cisagov/CSAF</code></td><td>3,937 advisories, 134 MB, 100% carry a CVE, 99.9% carry CVSS</td><td>Low</td></tr>
+        <tr><td><strong>CISA KEV</strong></td><td>JSON feed</td><td>1,726 CVEs; 117 are OT; 25 ransomware-linked</td><td>Low</td></tr>
+        <tr><td><strong>EPSS</strong></td><td>Daily gzip CSV</td><td>379,842 CVEs; covers <strong>99.74%</strong> of OT CVEs</td><td>Low</td></tr>
+        <tr><td><strong>Siemens ProductCERT CSAF</strong></td><td>ROLIE feed</td><td>841 advisories, each with SHA-512 + PGP signature</td><td>Low</td></tr>
+        <tr><td><strong>Schneider, ABB, Hitachi Energy, SICK, KUNBUS</strong></td><td>BSI CSAF aggregator</td><td>Discoverable from one <code>aggregator.json</code></td><td>Medium</td></tr>
+        <tr><td>Common Criteria certified products</td><td>Official CSV</td><td>Machine-readable</td><td>Low</td></tr>
+        <tr><td>ISASecure IEC 62443-4-1/4-2</td><td>HTML scrape</td><td>Small, low-churn lists</td><td>Medium</td></tr>
+        <tr><td>Consolidated Screening List (BIS/OFAC)</td><td>Daily CSV + API</td><td>Sanctions screening</td><td>Low</td></tr>
+        <tr><td>FCC Covered List / NDAA §889</td><td>Curated JSON</td><td>Small named entity set; no official machine list</td><td>Low</td></tr>
+        <tr><td>NVD CPE matching</td><td>API 2.0</td><td class="mono" style="font-size:.85em">Deliberately NOT the primary join &mdash; see below</td><td>&mdash;</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="tnote">All endpoints returned HTTP 200 on 27 Sep 2026. Vendor CSAF feeds are individually rate-limited; the CISA repo mirrors most vendors and is the reliable bulk fallback.</p>
+</section>
+
+<section>
+  <h2><span class="idx">03</span> The finding the whole tool rests on</h2>
+  <p>I measured how OT products are actually identified across all 27,234 product entries. The result explains why existing vulnerability tooling performs so badly on OT gear, and it hands you your differentiator.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Identifier present on product entry</th><th class="num">Entries</th><th class="num">Share</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CPE</strong> — what every conventional scanner joins on</td><td class="num">26</td><td class="num">0.1%</td></tr>
+        <tr><td><code>model_numbers</code> / <code>skus</code> — manufacturer order numbers</td><td class="num">8,202</td><td class="num">30.1%</td></tr>
+        <tr><td>Part number recoverable from product-name text</td><td class="num">13,348</td><td class="num">49.0%</td></tr>
+        <tr><td><strong>Order number recovered by the shipped extractor</strong></td><td class="num">9,588</td><td class="num">35.2%</td></tr>
+        <tr><td>Vendor branch present</td><td class="num">27,231</td><td class="num">100.0%</td></tr>
+        <tr><td>Product-name branch present</td><td class="num">27,063</td><td class="num">99.4%</td></tr>
+        <tr><td>Version branch present</td><td class="num">26,958</td><td class="num">99.0%</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="tnote">CPE coverage is 0.1%. Manufacturer order numbers are ~315&times; more available in the raw data, and the shipped extractor recovers them for 35.2% of entries after rejecting ratings and version strings that a looser pattern would have mistaken for part numbers.</p>
+
+  <p><strong>CPE is effectively absent from ICS advisory data, so any tool that joins on CPE is blind here.</strong> But Siemens advisories carry MLFB order numbers like <code>6ES7518-4AX00-1AB0</code> — the exact string a buyer types onto a purchase requisition. That reframes the tool: ReTrust matches on <em>procurement identifiers</em>, not scanner identifiers, which is precisely right for a pre-purchase decision tool and is why this niche is open.</p>
+
+  <figure>
+    <div class="figscroll">
+    <svg viewBox="0 0 900 452" role="img" aria-label="Resolution ladder: a procurement request descends through four matching strategies with measured coverage, and anything unresolved is routed to an abstain gate rather than guessed.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="ar-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--signal)"/>
+        </marker>
+      </defs>
+      <g fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="11">
+
+        <!-- input -->
+        <rect x="18" y="16" width="340" height="52" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <text x="32" y="36" font-size="10" opacity=".62">PROCUREMENT REQUEST</text>
+        <text x="32" y="54" font-size="11.5" font-weight="500">Siemens S7-1500 1518-4 · FW 3.1.6</text>
+        <line x1="188" y1="68" x2="188" y2="90" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+
+        <!-- ladder rungs: coverage sits inside each box, so the exit arrow has a clear lane -->
+        <g>
+          <rect x="18" y="92" width="340" height="46" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="32" y="112" font-size="11.5" font-weight="600">1 · Order-number exact</text>
+          <text x="32" y="128" font-size="10" opacity=".7">6ES7518-4AX00-1AB0 → product_id</text>
+          <text x="344" y="114" font-size="14" font-weight="600" text-anchor="end" font-variant-numeric="tabular-nums">35.2%</text>
+          <text x="344" y="129" font-size="9" opacity=".62" text-anchor="end">coverage</text>
+        </g>
+        <line x1="188" y1="138" x2="188" y2="152" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"/>
+        <text x="198" y="150" font-size="9.5" opacity=".62">no part number</text>
+
+        <g>
+          <rect x="18" y="154" width="340" height="46" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="32" y="174" font-size="11.5" font-weight="600">2 · Vendor normalise</text>
+          <text x="32" y="190" font-size="10" opacity=".7">884 raw strings → canonical vendor</text>
+          <text x="344" y="176" font-size="14" font-weight="600" text-anchor="end" font-variant-numeric="tabular-nums">100%</text>
+          <text x="344" y="191" font-size="9" opacity=".62" text-anchor="end">always present</text>
+        </g>
+        <line x1="188" y1="200" x2="188" y2="214" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"/>
+
+        <g>
+          <rect x="18" y="216" width="340" height="46" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="32" y="236" font-size="11.5" font-weight="600">3 · Product-name match</text>
+          <text x="32" y="252" font-size="10" opacity=".7">normalised, then scored fuzzy</text>
+          <text x="344" y="238" font-size="14" font-weight="600" text-anchor="end" font-variant-numeric="tabular-nums">99.4%</text>
+          <text x="344" y="253" font-size="9" opacity=".62" text-anchor="end">name present</text>
+        </g>
+        <line x1="188" y1="262" x2="188" y2="276" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"/>
+
+        <g>
+          <rect x="18" y="278" width="340" height="58" fill="none" stroke="var(--signal)" stroke-width="2"/>
+          <text x="32" y="298" font-size="11.5" font-weight="600" fill="var(--signal)">4 · Version range decide</text>
+          <text x="32" y="314" font-size="10" opacity=".7">VERS · comparator · vendor grammar</text>
+          <text x="32" y="328" font-size="10" opacity=".7">is FW 3.1.6 inside the affected range?</text>
+          <text x="344" y="300" font-size="14" font-weight="600" fill="var(--signal)" text-anchor="end" font-variant-numeric="tabular-nums">93.12%</text>
+          <text x="344" y="315" font-size="9" opacity=".62" text-anchor="end">verified, n=26,958</text>
+        </g>
+
+        <!-- resolved: the lane between x=358 and x=470 is now empty -->
+        <line x1="358" y1="307" x2="466" y2="307" stroke="var(--signal)" stroke-width="2" marker-end="url(#ar-s)"/>
+        <rect x="470" y="276" width="212" height="62" fill="none" stroke="var(--signal)" stroke-width="2"/>
+        <text x="484" y="296" font-size="10" fill="var(--signal)" opacity=".85">RESOLVED</text>
+        <text x="484" y="313" font-size="11.5" font-weight="600">Affected CVE set</text>
+        <text x="484" y="329" font-size="10" opacity=".7">+ evidence chain per CVE</text>
+
+        <!-- abstain -->
+        <line x1="188" y1="336" x2="188" y2="358" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        <text x="198" y="352" font-size="9.5" opacity=".62">below confidence floor</text>
+        <rect x="18" y="360" width="340" height="54" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <text x="32" y="379" font-size="10" opacity=".62">ABSTAIN GATE</text>
+        <text x="32" y="396" font-size="11.5" font-weight="600">&ldquo;Needs review&rdquo; + typed reason</text>
+        <text x="32" y="409" font-size="9.5" opacity=".7">never silently &ldquo;not affected&rdquo;</text>
+
+        <!-- annotation -->
+        <text x="486" y="378" font-size="10.5" opacity=".78">
+          <tspan x="486" dy="0">Each rung is tried in order and only</tspan>
+          <tspan x="486" dy="15">accepts input it fully understands, so</tspan>
+          <tspan x="486" dy="15">adding a rung can never regress an</tspan>
+          <tspan x="486" dy="15">earlier one. Precision is bought with</tspan>
+          <tspan x="486" dy="15">abstention, not confident guesses.</tspan>
+        </text>
+      </g>
+    </svg>
+    </div>
+    <figcaption>The resolution ladder. Percentages are measured against the CISA OT corpus on 27 Sep 2026, not estimated. The dashed path is the one that protects the accuracy claim: unresolved input is reported as needing review rather than scored.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="idx">04</span> The accuracy budget, measured</h2>
+  <p>I wrote the version-range parser and ran it over every version string in the corpus. The honest history of that component is worth recording, because it shaped the design.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Parser approach</th><th class="num">Determinate</th><th>What it taught</th></tr></thead>
+      <tbody>
+        <tr><td>v1 — VERS + simple comparators</td><td class="num">85.10%</td><td>Baseline; compound ranges all missed</td></tr>
+        <tr><td>v2 — added <code>|</code>-splitting</td><td class="num">89.59%</td><td>Compound ranges are most of the gap</td></tr>
+        <tr><td>v3 — one aggressive global normaliser</td><td class="num" style="color:var(--avoid)">87.70%</td><td><strong>Regressed.</strong> Fixing vendor grammars broke comparators v2 already handled</td></tr>
+        <tr><td><strong>v4 — layered, conservative, ordered <em>(shipped)</em></strong></td><td class="num" style="color:var(--prefer);font-weight:600">93.12%</td><td>Each layer accepts only what it fully parses, so layers cannot fight</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="tnote">Measured over 26,958 version strings. The v3 regression is the reason the shipped parser is layered rather than clever: a single normaliser cannot serve three different grammars at once.</p>
+
+  <h3>Where the remaining 7.81% sits</h3>
+  <p>I categorised every unresolved string. The distinction that matters is between strings the parser <em>should</em> learn and strings it <em>should refuse</em>.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Residual class</th><th>Example</th><th>Disposition</th></tr></thead>
+      <tbody>
+        <tr><td>Component-prefixed version</td><td><code>&lt;BIOS_V1.0.212N</code></td><td>Fixable — strip known component prefixes</td></tr>
+        <tr><td>Prefix before operator</td><td><code>NMC2 &lt;= 6.9.6</code></td><td>Fixable — reorder tokenisation</td></tr>
+        <tr><td>Service-pack notation</td><td><code>&lt;V17_Update_5</code></td><td>Fixable — already modelled as sub-ordinal</td></tr>
+        <tr><td>Bare hardware revision</td><td><code>Rev._1</code></td><td>Abstain — not a firmware version</td></tr>
+        <tr><td>Serial-number scoped</td><td><code>first 5 digits of serial no. 26061</code></td><td><strong>Must abstain</strong> — undecidable from a version</td></tr>
+        <tr><td>Date scoped</td><td><code>distributed &lt; april 1, 2018</code></td><td>Abstain — needs a ship date, not a version</td></tr>
+        <tr><td>Malformed vendor VERS</td><td><code>&gt;=vers:/_V5.4&lt;V5.5_SP1</code></td><td>Abstain and report upstream</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="tnote">The fixable classes are worth roughly four percentage points, putting ~96% in reach. The abstain classes are genuinely undecidable and must stay abstentions — claiming them would be the dishonest way to reach 99%.</p>
+
+  <div class="note">
+    <span class="lbl">How to state the claim so it survives scrutiny</span>
+    <p>Do not say &ldquo;ReTrust is 92% accurate.&rdquo; Say: <strong>&ldquo;On the 26,958 affected-version ranges in CISA&rsquo;s OT advisory corpus, ReTrust resolves 92.19% deterministically and abstains on the rest, with the abstention reason reported. Run <code>retrust eval</code> to reproduce this number.&rdquo;</strong> A figure anyone in the room can regenerate is worth far more than a higher figure they cannot.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="idx">05</span> Two independent sources already agree</h2>
+  <p>A composite risk score invites one predictable objection: that the weights are invented. The strongest available answer is convergent validity — showing that independent signals line up before any weighting is applied. That check passes on this corpus.</p>
+
+  <div class="metrics">
+    <div class="metric"><span class="v">0.70</span><span class="k">Median EPSS of OT CVEs listed in KEV</span></div>
+    <div class="metric"><span class="v">0.0073</span><span class="k">Median EPSS of OT CVEs overall</span></div>
+    <div class="metric"><span class="v">~97&times;</span><span class="k">Separation between the two</span></div>
+    <div class="metric"><span class="v">99.74%</span><span class="k">Of OT CVEs carry an EPSS score</span></div>
+  </div>
+
+  <p>CISA&rsquo;s KEV catalogue is compiled from confirmed exploitation in the wild. EPSS is an independent statistical model. They were built by different organisations from different inputs, and on this corpus they agree sharply. That is a defensible empirical footing for the exploitation pillar, and it is a single slide at Arsenal.</p>
+  <p>It also settles a design question: <strong>KEV alone cannot anchor the score</strong>, because only 117 of 12,346 OT CVEs (0.95%) appear in it. EPSS supplies the density; KEV supplies the confirmation.</p>
+</section>
+
+<section>
+  <h2><span class="idx">06</span> Scoring architecture</h2>
+  <p>Three layers, in this order. The ordering matters: a hard gate must not be reducible to a weighted term, or a sanctioned vendor could average its way to an acceptable score.</p>
+
+  <figure>
+    <div class="figscroll">
+    <svg viewBox="0 0 900 400" role="img" aria-label="Three-layer scoring: hard gates run first and can short-circuit to Avoid; five evidenced pillars each carry a coverage figure; a user-weighted composite produces a banded verdict with a justification trail.">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="ar2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--avoid)"/>
+        </marker>
+      </defs>
+      <g fill="currentColor" font-family="IBM Plex Mono, monospace">
+
+        <!-- resolved product in -->
+        <rect x="16" y="20" width="176" height="42" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <text x="27" y="38" font-size="9.5" opacity=".62">FROM RESOLUTION</text>
+        <text x="27" y="54" font-size="11" font-weight="600">Resolved product</text>
+
+        <!-- LAYER 1 gates -->
+        <text x="16" y="92" font-size="9.5" opacity=".62">LAYER 1 · HARD GATES — evaluated first, not weighted</text>
+        <rect x="16" y="100" width="176" height="86" fill="none" stroke="var(--avoid)" stroke-width="2"/>
+        <text x="27" y="119" font-size="10.5" font-weight="600" fill="var(--avoid)">Disqualifiers</text>
+        <text x="27" y="136" font-size="10" opacity=".8">· FCC Covered List</text>
+        <text x="27" y="151" font-size="10" opacity=".8">· BIS / OFAC sanctions</text>
+        <text x="27" y="166" font-size="10" opacity=".8">· unpatched KEV entry</text>
+        <text x="27" y="180" font-size="9.5" opacity=".62">any hit short-circuits</text>
+        <line x1="104" y1="62" x2="104" y2="98" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+        <line x1="192" y1="171" x2="312" y2="171" stroke="var(--avoid)" stroke-width="2" marker-end="url(#ar2r)"/>
+        <text x="204" y="164" font-size="9.5" fill="var(--avoid)">gate hit</text>
+        <rect x="316" y="150" width="108" height="42" fill="none" stroke="var(--avoid)" stroke-width="2"/>
+        <text x="330" y="176" font-size="12" font-weight="600" fill="var(--avoid)">AVOID</text>
+
+        <!-- LAYER 2 pillars -->
+        <text x="470" y="92" font-size="9.5" opacity=".62">LAYER 2 · FIVE EVIDENCED PILLARS — each 0–100 + coverage</text>
+        <g>
+          <rect x="470" y="100" width="412" height="26" fill="none" stroke="currentColor"/>
+          <text x="481" y="117" font-size="10.5">Vulnerability exposure</text>
+          <text x="742" y="117" font-size="9.5" opacity=".68">CSAF · KEV · EPSS</text>
+
+          <rect x="470" y="126" width="412" height="26" fill="none" stroke="currentColor"/>
+          <text x="481" y="143" font-size="10.5">Vendor security maturity</text>
+          <text x="742" y="143" font-size="9.5" opacity=".68">CSAF · PSIRT · CNA</text>
+
+          <rect x="470" y="152" width="412" height="26" fill="none" stroke="currentColor"/>
+          <text x="481" y="169" font-size="10.5">Certification &amp; assurance</text>
+          <text x="742" y="169" font-size="9.5" opacity=".68">62443 · Common Criteria</text>
+
+          <rect x="470" y="178" width="412" height="26" fill="none" stroke="currentColor"/>
+          <text x="481" y="195" font-size="10.5">Supply chain &amp; origin</text>
+          <text x="742" y="195" font-size="9.5" opacity=".68">CSL · GLEIF <tspan font-style="italic">(proxy)</tspan></text>
+
+          <rect x="470" y="204" width="412" height="26" fill="none" stroke="currentColor"/>
+          <text x="481" y="221" font-size="10.5">Patch &amp; lifecycle posture</text>
+          <text x="742" y="221" font-size="9.5" opacity=".68">remediations · EOL</text>
+        </g>
+        <line x1="192" y1="115" x2="466" y2="115" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)" opacity=".55"/>
+        <text x="206" y="108" font-size="9.5" opacity=".62">no gate hit</text>
+
+        <!-- LAYER 3 -->
+        <text x="470" y="262" font-size="9.5" opacity=".62">LAYER 3 · USER-WEIGHTED COMPOSITE</text>
+        <line x1="676" y1="230" x2="676" y2="268" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+        <rect x="470" y="272" width="412" height="80" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <text x="481" y="291" font-size="10.5" font-weight="600">Banded verdict + justification trail</text>
+        <rect x="481" y="300" width="74" height="20" fill="none" stroke="var(--prefer)" stroke-width="1.5"/>
+        <text x="491" y="314" font-size="9.5" font-weight="600" fill="var(--prefer)">PREFER</text>
+        <rect x="562" y="300" width="112" height="20" fill="none" stroke="var(--conditional)" stroke-width="1.5"/>
+        <text x="572" y="314" font-size="9.5" font-weight="600" fill="var(--conditional)">CONDITIONAL</text>
+        <rect x="681" y="300" width="66" height="20" fill="none" stroke="var(--avoid)" stroke-width="1.5"/>
+        <text x="691" y="314" font-size="9.5" font-weight="600" fill="var(--avoid)">AVOID</text>
+        <text x="481" y="340" font-size="9.5" opacity=".72">weights are user-editable; every figure cites its source</text>
+
+        <!-- side note on why bands -->
+        <text x="16" y="230" font-size="10" opacity=".78">
+          <tspan x="16" dy="0">Bands, not a bare number:</tspan>
+          <tspan x="16" dy="14">a false precision of 73.4</tspan>
+          <tspan x="16" dy="14">invites argument about the</tspan>
+          <tspan x="16" dy="14">decimal. A band plus the</tspan>
+          <tspan x="16" dy="14">evidence invites a decision.</tspan>
+        </text>
+        <text x="16" y="320" font-size="10" opacity=".78">
+          <tspan x="16" dy="0">Never score raw CVE counts:</tspan>
+          <tspan x="16" dy="14">a vendor that discloses</tspan>
+          <tspan x="16" dy="14">diligently would be punished</tspan>
+          <tspan x="16" dy="14">for transparency.</tspan>
+        </text>
+      </g>
+    </svg>
+    </div>
+    <figcaption>Hard gates run before scoring and short-circuit, so a disqualifying fact cannot be diluted by strong scores elsewhere. Each pillar reports coverage alongside its value, so a pillar computed from thin evidence says so rather than defaulting to a confident middle.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2><span class="idx">07</span> Why this is defensible ground</h2>
+  <p>Mapping the field on two axes shows an empty quadrant, and it is the one that matters for procurement.</p>
+
+  <figure>
+    <div class="figscroll">
+    <svg viewBox="0 0 760 400" role="img" aria-label="A two-axis map: open-source versus commercial against post-deployment versus pre-purchase. Existing tools cluster in three quadrants; the open pre-purchase quadrant is empty and is where ReTrust sits.">
+      <g font-family="IBM Plex Mono, monospace" font-size="10.5">
+        <!-- axes -->
+        <line x1="104" y1="336" x2="712" y2="336" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="104" y1="336" x2="104" y2="36" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="104" y1="186" x2="712" y2="186" stroke="currentColor" stroke-width=".75" stroke-dasharray="3 3" opacity=".5"/>
+        <line x1="408" y1="36" x2="408" y2="336" stroke="currentColor" stroke-width=".75" stroke-dasharray="3 3" opacity=".5"/>
+
+        <text x="118" y="360" fill="currentColor" font-size="10" opacity=".7">POST-DEPLOYMENT — needs an asset you already have</text>
+        <text x="432" y="360" fill="currentColor" font-size="10" opacity=".7">PRE-PURCHASE — decides before you buy</text>
+        <text x="96" y="46" fill="currentColor" font-size="9.5" opacity=".7" text-anchor="end" transform="rotate(-90 96 46)">COMMERCIAL  ←  OPEN SOURCE</text>
+
+        <!-- commercial post-deployment -->
+        <g fill="currentColor">
+          <text x="120" y="66" font-size="10" opacity=".9" font-weight="600">Commercial · post-deployment</text>
+          <text x="120" y="84" opacity=".78">Claroty — asset risk scoring</text>
+          <text x="120" y="100" opacity=".78">Nozomi Vantage — NVD-based</text>
+          <text x="120" y="116" opacity=".78">Dragos — OT-corrected CVSS</text>
+        </g>
+        <!-- commercial pre-purchase -->
+        <g fill="currentColor">
+          <text x="424" y="66" font-size="10" opacity=".9" font-weight="600">Commercial · pre-purchase</text>
+          <text x="424" y="84" opacity=".78">aDolus FACT — trust score</text>
+          <text x="424" y="100" opacity=".78">Fortress A2V — vendor catalogue</text>
+          <text x="424" y="116" opacity=".78">Exiger — ownership &amp; sanctions</text>
+          <text x="424" y="132" opacity=".78">NetRise · Finite State — binary</text>
+          <text x="424" y="150" opacity=".6" font-size="9.5">closed, enterprise-priced,</text>
+          <text x="424" y="163" opacity=".6" font-size="9.5">opaque methodology</text>
+        </g>
+        <!-- open post-deployment -->
+        <g fill="currentColor">
+          <text x="120" y="212" font-size="10" opacity=".9" font-weight="600">Open · post-deployment / analysis</text>
+          <text x="120" y="230" opacity=".78">EMBA · FACT_core — firmware</text>
+          <text x="120" y="246" opacity=".78">ICSpector — PLC forensics</text>
+          <text x="120" y="262" opacity=".78">cvemap — CVE plumbing</text>
+          <text x="120" y="278" opacity=".78">Dependency-Track — SBOM</text>
+          <text x="120" y="296" opacity=".6" font-size="9.5">all need an artefact you</text>
+          <text x="120" y="309" opacity=".6" font-size="9.5">already possess</text>
+        </g>
+        <!-- open pre-purchase: ReTrust -->
+        <rect x="418" y="196" width="284" height="124" fill="none" stroke="var(--signal)" stroke-width="2.5"/>
+        <text x="432" y="220" font-size="13" font-weight="600" fill="var(--signal)">ReTrust</text>
+        <text x="432" y="240" fill="currentColor" opacity=".85" font-size="10">Open · pre-purchase</text>
+        <text x="432" y="262" fill="currentColor" opacity=".78" font-size="10">Scores a product you have</text>
+        <text x="432" y="276" fill="currentColor" opacity=".78" font-size="10">not bought yet, from public</text>
+        <text x="432" y="290" fill="currentColor" opacity=".78" font-size="10">evidence, on the part number</text>
+        <text x="432" y="304" fill="currentColor" opacity=".78" font-size="10">a purchase order carries.</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption>Every open-source tool in the space analyses something you already have — a firmware image, an SBOM, a live asset. Nothing open scores a product you are still deciding whether to buy.</figcaption>
+  </figure>
+
+  <p>There is also a ready-made framing. In January 2025 CISA and international partners published <em>Secure by Demand: Priority Considerations for OT Owners and Operators when Selecting Digital Products</em> — which describes this exact workflow, and ships as a PDF checklist. <strong>ReTrust is Secure by Demand made executable.</strong> That line does real work in a submission abstract, and no one has claimed it.</p>
+  <p>Timing helps too: the EU Cyber Resilience Act&rsquo;s vulnerability-reporting obligations took effect on 11 September 2026, with full CE-marking compliance due 11 December 2027. Procurement teams are being asked to evidence supplier diligence right now.</p>
+</section>
+
+<section>
+  <h2><span class="idx">08</span> The 10-day build, subdivided</h2>
+  <p>Each day has one shippable artefact and a check that proves it works. Nothing is left implicit, and the ordering front-loads the parts the accuracy claim depends on, so a slip lands on polish rather than on substance.</p>
+
+  <div class="days">
+    <div class="day"><span class="tag">Day 1</span><div>
+      <h4>Ingest and normalise the corpus</h4>
+      <ul>
+        <li>CSAF parser: walk <code>product_tree</code> branches to leaf products, resolve <code>product_status</code> per CVE</li>
+        <li>SQLite schema: products, part numbers, version ranges, CVEs, advisories, evidence</li>
+        <li>Vendor alias table — collapse the 884 raw strings toward canonical entities</li>
+      </ul>
+      <p class="ship">SHIP <code>retrust ingest</code> → populated DB from 3,937 advisories</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 2</span><div>
+      <h4>Resolution ladder and abstention</h4>
+      <ul>
+        <li>Part-number extraction from <code>model_numbers</code> and from name text</li>
+        <li>Rungs 1–3, each emitting a confidence and a reason</li>
+        <li>Abstain gate with typed reasons — the accuracy claim lives here</li>
+      </ul>
+      <p class="ship">SHIP <code>retrust resolve "..."</code> → product + confidence + evidence</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 3</span><div>
+      <h4>Close the version-parser residuals</h4>
+      <ul>
+        <li>Component prefixes (<code>BIOS_</code>, <code>firmware_</code>, <code>U-Boot</code>), prefix-before-operator</li>
+        <li>Unit tests pinned to the residual classes already catalogued</li>
+        <li>Re-measure; target ~96% determinate</li>
+      </ul>
+      <p class="ship">SHIP parser at ~96%, with a regression test per class</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 4</span><div>
+      <h4>Exploitation signals</h4>
+      <ul>
+        <li>KEV and EPSS loaders with pinned snapshot dates for reproducibility</li>
+        <li>Reproduce the KEV/EPSS convergent-validity check as a committed test</li>
+      </ul>
+      <p class="ship">SHIP exploitation pillar + the validity figure regenerable on demand</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 5</span><div>
+      <h4>The eval harness — build this before the score</h4>
+      <ul>
+        <li>Ground-truth schema and a curated set drawn from vendor CSAF</li>
+        <li>Precision, recall, abstention rate, coverage-versus-risk curve</li>
+        <li><code>retrust eval</code> must be runnable by a stranger from a clean clone</li>
+      </ul>
+      <p class="ship">SHIP <code>retrust eval</code> → the reproducible accuracy table</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 6</span><div>
+      <h4>Hard gates and supply chain</h4>
+      <ul>
+        <li>Consolidated Screening List matcher; curated FCC Covered List / §889 JSON with citations</li>
+        <li>GLEIF parent-domicile lookup, labelled in the output as a proxy</li>
+        <li>Gates short-circuit before pillar scoring</li>
+      </ul>
+      <p class="ship">SHIP gate layer with a citation behind every disqualification</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 7</span><div>
+      <h4>Remaining pillars</h4>
+      <ul>
+        <li>Vendor maturity from observable behaviour: publishes CSAF, CNA status, advisory latency, remediation completeness</li>
+        <li>Certification pillar: Common Criteria CSV, ISASecure scrape</li>
+        <li>Lifecycle pillar from CSAF remediation categories</li>
+        <li>Every pillar reports its own coverage</li>
+      </ul>
+      <p class="ship">SHIP all five pillars, each with provenance</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 8</span><div>
+      <h4>Composite, bands, and the report</h4>
+      <ul>
+        <li>User-editable weights in a config file; deterministic output</li>
+        <li>Band thresholds with a sensitivity note</li>
+        <li>HTML report: per-factor contribution, evidence citations, abstentions listed openly</li>
+      </ul>
+      <p class="ship">SHIP <code>retrust score</code> and <code>retrust report</code></p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 9</span><div>
+      <h4>Comparison — the demo centrepiece</h4>
+      <ul>
+        <li><code>retrust compare</code> across candidate products for one procurement decision</li>
+        <li>Side-by-side with the deciding factors surfaced</li>
+        <li>Offline snapshot mode, so a demo never depends on conference wifi</li>
+      </ul>
+      <p class="ship">SHIP the comparison view + a pinned offline dataset</p>
+    </div></div>
+
+    <div class="day"><span class="tag">Day 10</span><div>
+      <h4>Harden and package for evaluation</h4>
+      <ul>
+        <li>README with a genuine quickstart; verify it on a clean clone</li>
+        <li>Visual pass over every output surface; fix what looks unfinished</li>
+        <li>Worked example for the evaluation panel: one real procurement question, answered end to end</li>
+      </ul>
+      <p class="ship">SHIP v0.1 — installable, documented, reproducible</p>
+    </div></div>
+  </div>
+
+  <h3>Explicitly out of scope for the 10 days</h3>
+  <p>Naming these protects the schedule. Each is defensible to an evaluator as a considered deferral rather than a gap.</p>
+  <ul>
+    <li><strong>Firmware analysis.</strong> EMBA takes hours per image and OT firmware is usually licence-restricted. Ship an <em>import</em> path for an existing EMBA or CycloneDX report instead, and position ReTrust as the decision layer above that stack rather than a competitor to it.</li>
+    <li><strong>Live per-vendor CSAF crawling.</strong> The CISA repo already mirrors most vendors. Add Siemens directly because its feed is signed and rich; leave the rest to the aggregator later.</li>
+    <li><strong>A web UI.</strong> A CLI plus a generated HTML report demos better at a station and costs a fraction of the build.</li>
+    <li><strong>Back-testing the score against future advisories.</strong> Genuinely interesting, and the 2010–2026 history makes it possible — but it is a research result, not a v0.1 feature.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="idx">09</span> What will actually threaten this</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Risk</th><th>Why it bites</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Vendor-name normalisation sprawl</strong></td><td>884 raw strings with real duplicates (<code>Mitsubishi Electric</code> vs <code>Mitsubishi Electric Corporation</code>). Chasing perfection here can eat two days.</td><td>Cover the top 50 vendors by advisory volume, which is most of the corpus; leave the tail as an aliases file the community can extend by pull request.</td></tr>
+        <tr><td><strong>Scoring-methodology argument</strong></td><td>The predictable reviewer objection, and the one that sinks composite scores.</td><td>Publish weights as editable config, show per-factor contributions, lead with the KEV/EPSS convergent-validity result, and never score raw CVE counts.</td></tr>
+        <tr><td><strong>Accuracy claim overreach</strong></td><td>A single confident wrong answer on stage costs more than any headline number gains.</td><td>Abstain loudly and specifically. Report coverage next to precision, always.</td></tr>
+        <tr><td><strong>Naming real vendors in a demo</strong></td><td>Invites methodology and legal pushback.</td><td>Every claim traces to a public citation; the tool reports what CISA and the vendor themselves published, and says so on screen.</td></tr>
+        <tr><td><strong>Name collision on &ldquo;FACT&rdquo;</strong></td><td>Both aDolus and Fraunhofer ship a &ldquo;FACT&rdquo;. Avoid inheriting that confusion.</td><td>Keep the name ReTrust; do not name internal components &ldquo;trust score&rdquo; in a way that reads as aDolus&rsquo;s FACT Trust Score.</td></tr>
+        <tr><td><strong>Day-10 crunch on documentation</strong></td><td>Arsenal requires three pages of docs, and evaluators read the README first.</td><td>Write the README on day 1 as a specification and keep it true as you build, rather than authoring it last.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2><span class="idx">10</span> Five things that would make this stand out</h2>
+  <ol>
+    <li><strong>Reproducible accuracy.</strong> <code>retrust eval</code> regenerating the published figure from a clean clone. Almost no submission in this space offers a number a reviewer can verify themselves — this is the single highest-leverage differentiator you have.</li>
+    <li><strong>Procurement identifiers as the join key.</strong> Matching on MLFB and catalogue numbers rather than CPE, backed by the measured finding that CPE covers 0.1% of this corpus. It is a genuine technical result, and it explains why the niche is empty.</li>
+    <li><strong>Abstention as a feature.</strong> A security tool that says &ldquo;I don&rsquo;t know, and here is precisely why&rdquo; reads as credible to exactly the audience you are pitching.</li>
+    <li><strong>Secure by Demand, executable.</strong> A named government framework that currently ships as a PDF, turned into something that runs.</li>
+    <li><strong>Candidate comparison.</strong> Not a scanner report but a decision aid — three products, one requisition, a defensible recommendation with its working shown.</li>
+  </ol>
+</section>
+
+<footer>
+  ReTrust build plan, rev 1 · 27 September 2026 · All corpus figures measured directly from CISA, FIRST and vendor sources on that date; re-run <code>retrust eval</code> to reproduce.
+</footer>
+
+</div>

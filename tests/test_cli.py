@@ -1,0 +1,258 @@
+"""End-to-end tests for the command line and the HTML report.
+
+These are the wiring tests. Every module below has its own unit tests; what
+these catch is the class of bug those cannot -- an argument that is parsed but
+never passed on, a command that works alone and breaks when a flag is combined
+with another, an exit code that does not reach the shell.
+
+Each test drives `main(argv)` exactly as a user would, against a small index
+built in a temporary directory, so nothing here touches the network or the
+real corpus.
+"""
+
+import json
+
+import pytest
+
+from retrust import index, report
+from retrust.cli import main
+
+ADVISORY = {
+    "document": {"title": "Test PLC vulnerabilities", "tracking": {
+        "id": "ICSA-26-001-01", "initial_release_date": "2026-01-01T00:00:00Z"}},
+    "product_tree": {"branches": [{
+        "category": "vendor", "name": "Testco Electric",
+        "branches": [{
+            "category": "product_name", "name": "TestPLC 9000 (TC-9000-A1)",
+            "branches": [{
+                "category": "product_version_range", "name": "vers:intdot/<2.0",
+                "product": {"product_id": "P1", "name": "TestPLC 9000",
+                            "product_identification_helper": {
+                                "model_numbers": ["TC-9000-A1"]}}}]}]}]},
+    "vulnerabilities": [{
+        "cve": "CVE-2026-0001", "cwe": {"id": "CWE-79"},
+        "product_status": {"known_affected": ["P1"]},
+        "scores": [{"cvss_v3": {"baseScore": 9.8}, "products": ["P1"]}],
+        "remediations": [{"category": "vendor_fix", "details": "update",
+                          "product_ids": ["P1"]}]}],
+}
+
+
+@pytest.fixture
+def workspace(tmp_path, monkeypatch):
+    """A temp directory with a built index, as the working directory."""
+    csaf = tmp_path / "csaf"
+    csaf.mkdir()
+    (csaf / "a.json").write_text(json.dumps(ADVISORY))
+    (tmp_path / "data").mkdir()
+    monkeypatch.chdir(tmp_path)
+    assert main(["ingest", "--csaf", str(csaf)]) == 0
+    return tmp_path
+
+
+def run(argv):
+    """Call the CLI, returning its exit code rather than raising."""
+    try:
+        return main(argv)
+    except SystemExit as exit_signal:       # argparse and our own hard errors
+        return exit_signal.code
+
+
+# --- the commands, one by one ----------------------------------------------
+
+def test_ingest_builds_an_index(workspace):
+    assert (workspace / "data" / "retrust.db").exists()
+    connection = index.connect(str(workspace / "data" / "retrust.db"))
+    assert index.stats(connection)["advisories"] == 1
+
+
+def test_stats_runs(workspace, capsys):
+    assert run(["stats"]) == 0
+    assert "advisories" in capsys.readouterr().out
+
+
+def test_score_by_vendor_and_product(workspace, capsys):
+    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000"]) == 0
+    out = capsys.readouterr().out
+    assert "TestPLC 9000" in out
+    assert any(v in out for v in ("PREFER", "CONDITIONAL", "AVOID"))
+
+
+def test_score_by_order_number(workspace, capsys):
+    assert run(["score", "--order-number", "TC-9000-A1"]) == 0
+    assert "Testco" in capsys.readouterr().out
+
+
+def test_score_abstains_with_exit_two(workspace, capsys):
+    """An unknown vendor must not be reported as a clean result."""
+    assert run(["score", "--vendor", "Nobody", "--product", "Nothing"]) == 2
+    assert "NOT ASSESSED" in capsys.readouterr().out
+
+
+def test_score_json_to_stdout_is_parseable(workspace, capsys):
+    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
+                "--json", "-", "--no-sensitivity"]) == 0
+    document = json.loads(capsys.readouterr().out)   # raises if prose leaked in
+    assert document["schema"] == 1
+    assert document["results"][0]["product"].startswith("Testco")
+
+
+def test_score_json_to_file(workspace, capsys):
+    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
+                "--json", "out.json", "--no-sensitivity"]) == 0
+    assert "JSON written to" in capsys.readouterr().out
+    assert json.loads((workspace / "out.json").read_text())["results"]
+
+
+def test_score_html_output(workspace):
+    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
+                "--html", "r.html"]) == 0
+    markup = (workspace / "r.html").read_text()
+    assert markup.startswith("<!doctype html>")
+    assert "TestPLC 9000" in markup
+
+
+def test_compare_ranks_and_reports(workspace, capsys):
+    assert run(["compare", "--candidate", "Testco|TestPLC 9000",
+                "--candidate", "Nobody|Nothing", "--no-sensitivity"]) == 0
+    out = capsys.readouterr().out
+    assert "CANDIDATE" in out
+    assert "NOT ASSESSED" in out
+    # An unresolvable candidate must rank below a real one, never above.
+    assert out.index("TestPLC 9000") < out.index("Nobody Nothing")
+
+
+def test_compare_json_to_stdout_is_parseable(workspace, capsys):
+    assert run(["compare", "--candidate", "Testco|TestPLC 9000",
+                "--json", "-", "--no-sensitivity"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["candidates"] == 1
+
+
+def test_sensitivity_command(workspace, capsys):
+    assert run(["sensitivity", "--vendor", "Testco", "--product", "TestPLC 9000",
+                "--samples", "40"]) == 0
+    out = capsys.readouterr().out
+    assert "weighting" in out or "gate" in out
+    assert "where the points went" in out
+
+
+def test_config_shows_defaults(workspace, capsys):
+    assert run(["config"]) == 0
+    out = capsys.readouterr().out
+    assert "exploitation" in out
+    assert "built-in defaults" in out
+
+
+def test_config_init_then_read_back(workspace, capsys):
+    assert run(["config", "--init", "--file", "c.json"]) == 0
+    assert (workspace / "c.json").exists()
+    document = json.loads((workspace / "c.json").read_text())
+    assert "weights" in document and "bands" in document
+
+
+def test_batch_from_csv_with_exit_code(workspace, capsys):
+    (workspace / "bom.csv").write_text(
+        "Manufacturer,Model\nTestco,TestPLC 9000\nNobody,Nothing\n")
+    code = run(["batch", "bom.csv", "--json", "b.json", "--csv", "b.csv",
+                "--no-sensitivity", "--fail-on", "unassessed"])
+    assert code == 2                      # one candidate could not be assessed
+    assert json.loads((workspace / "b.json").read_text())["candidates"] == 2
+    assert "verdict" in (workspace / "b.csv").read_text().splitlines()[0]
+
+
+def test_batch_clean_list_exits_zero(workspace):
+    (workspace / "ok.csv").write_text("vendor,product\nTestco,TestPLC 9000\n")
+    assert run(["batch", "ok.csv", "--no-sensitivity", "--fail-on", "never"]) == 0
+
+
+def test_eval_command(workspace, capsys):
+    assert run(["eval", "--sample", "5"]) == 0
+    out = capsys.readouterr().out
+    assert "VERSION-RANGE COVERAGE" in out
+    assert "PRODUCT ROUND-TRIP" in out
+
+
+def test_snapshot_round_trip(workspace, capsys):
+    assert run(["snapshot", "--out", "s.zip", "--note", "test"]) == 0
+    assert (workspace / "s.zip").exists()
+    capsys.readouterr()
+    assert run(["snapshot", "--inspect", "s.zip"]) == 0
+    assert "test" in capsys.readouterr().out
+    assert run(["snapshot", "--restore", "s.zip"]) == 0
+    assert "Checksums verified" in capsys.readouterr().out
+
+
+def test_missing_index_fails_with_guidance(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    code = run(["stats"])
+    assert code != 0                       # and the message names the fix
+    assert isinstance(code, str) and "retrust ingest" in code
+
+
+def test_unknown_command_is_rejected(workspace):
+    assert run(["frobnicate"]) == 2         # argparse usage error
+
+
+# --- the HTML report -------------------------------------------------------
+
+def _blocks(connection):
+    from retrust import match, score
+    resolution = match.resolve(connection, vendor="Testco", product="TestPLC 9000")
+    findings = match.findings(connection, resolution)
+    assessment = score.assess("TestPLC 9000", findings, {"ICSA-26-001-01"})
+    return [(assessment, resolution, findings)]
+
+
+def test_report_is_self_contained(workspace):
+    connection = index.connect(str(workspace / "data" / "retrust.db"))
+    markup = report.render(_blocks(connection), title="T")
+    assert "<style>" in markup
+    # No external assets: the report must open offline and survive emailing.
+    for forbidden in ("<script", "http://", "https://fonts", "<img", "@import"):
+        assert forbidden not in markup, forbidden
+
+
+def test_report_defines_both_themes(workspace):
+    connection = index.connect(str(workspace / "data" / "retrust.db"))
+    markup = report.render(_blocks(connection))
+    assert "prefers-color-scheme: dark" in markup or \
+           "prefers-color-scheme:dark" in markup
+    assert "[data-theme=dark]" in markup
+
+
+def test_report_escapes_hostile_text(workspace):
+    """Product names come from vendor data; they are not trusted markup."""
+    from retrust import match, score
+    connection = index.connect(str(workspace / "data" / "retrust.db"))
+    resolution = match.resolve(connection, vendor="Testco", product="TestPLC 9000")
+    findings = match.findings(connection, resolution)
+    assessment = score.assess('<script>alert("x")</script>', findings, {"A"})
+    markup = report.render([(assessment, resolution, findings)])
+    assert "<script>alert" not in markup
+    assert "&lt;script&gt;" in markup
+
+
+def test_report_shows_a_summary_table_only_when_comparing(workspace):
+    connection = index.connect(str(workspace / "data" / "retrust.db"))
+    one = report.render(_blocks(connection))
+    two = report.render(_blocks(connection) * 2)
+    assert "Deciding factor" not in one       # a single product needs no ranking
+    assert "Deciding factor" in two
+
+
+def test_report_marks_unscored_pillars(workspace):
+    connection = index.connect(str(workspace / "data" / "retrust.db"))
+    markup = report.render(_blocks(connection))
+    # Evidence quality is reported but must not read as part of the score.
+    assert "Evidence quality" in markup
+    assert "not scored" in markup
+
+
+def test_report_footer_cites_provenance(workspace):
+    connection = index.connect(str(workspace / "data" / "retrust.db"))
+    markup = report.render(
+        _blocks(connection), provenance=index.provenance(connection),
+        weights={"exploitation": 1.0}, config_source="built-in defaults")
+    assert "How this was produced" in markup
+    assert "CISA OT advisories" in markup
