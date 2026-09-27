@@ -89,17 +89,18 @@ def identifier_coverage(connection):
 
 
 def _identifier_counts(connection):
+    has_order = ("EXISTS(SELECT 1 FROM order_number o"
+                 " WHERE o.product_rowid = p.rowid_)")
     row = connection.execute(
         "SELECT COUNT(*) total,"
         "       SUM(has_cpe) cpe,"
+        "       SUM(helper_order_number) declared_order_number,"
+        f"      SUM(helper_order_number = 0 AND {has_order}) recovered_order_number,"
+        f"      SUM({has_order}) order_number,"
         "       SUM(vendor != '') vendor,"
-        "       SUM(name != '') name,"
-        "       SUM(EXISTS(SELECT 1 FROM order_number o"
-        "                   WHERE o.product_rowid = p.rowid_)) order_number"
+        "       SUM(name != '') name"
         "  FROM product p").fetchone()
-    total = row["total"] or 0
-    return {"total": total, **{key: (row[key] or 0) for key in
-                               ("cpe", "order_number", "vendor", "name")}}
+    return {key: (row[key] or 0) for key in row.keys()}
 
 
 @dataclass
@@ -206,14 +207,19 @@ def format_report(results):
         lines += ["IDENTIFIER COVERAGE   (what the corpus gives us to join on)",
                   f"  product entries              {total:>8,}"]
         for key, label in (("cpe", "CPE -- what scanners join on"),
-                           ("order_number", "manufacturer order number"),
+                           ("declared_order_number", "order number, declared"),
+                           ("recovered_order_number", "order number, recovered by us"),
+                           ("order_number", "order number, either"),
                            ("vendor", "vendor name"),
                            ("name", "product name")):
-            lines.append(f"  {label:<28} {identifiers[key]:>8,}   "
+            lines.append(f"  {label:<30} {identifiers[key]:>8,}   "
                          f"{_share(identifiers[key], total):6.2%}")
         if identifiers["cpe"]:
-            lines.append(f"  order numbers are {identifiers['order_number'] / identifiers['cpe']:,.0f}x "
-                         "more available than CPE")
+            lines.append(
+                f"  declared order numbers are "
+                f"{identifiers['declared_order_number'] / identifiers['cpe']:,.0f}x "
+                f"more available than CPE; all of them, "
+                f"{identifiers['order_number'] / identifiers['cpe']:,.0f}x")
         lines.append("")
     lines += [
         "VERSION-RANGE COVERAGE",

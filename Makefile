@@ -10,8 +10,8 @@ data:
 	@test -d $(DATA)/CSAF || (echo "Fetching CISA OT advisories..." && \
 	  git clone --depth 1 --filter=blob:none --no-checkout -q \
 	    https://github.com/cisagov/CSAF.git $(DATA)/CSAF && \
-	  cd $(DATA)/CSAF && git sparse-checkout init --cone -q && \
-	  git sparse-checkout set csaf_files/OT -q && git checkout -q)
+	  cd $(DATA)/CSAF && git sparse-checkout set --cone csaf_files/OT && \
+	  git checkout -q)
 	@test -f $(DATA)/kev.json || (echo "Fetching CISA KEV..." && \
 	  curl -sLo $(DATA)/kev.json \
 	    https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json)

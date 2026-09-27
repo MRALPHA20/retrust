@@ -282,8 +282,10 @@ def test_identifier_coverage_counts_what_the_corpus_carries(db):
     counts = evaluate.identifier_coverage(db)
     assert counts["total"] == 3
     assert counts["cpe"] == 0               # the fixture gives no CPE, as CISA rarely does
-    # All three inherit "(TC-9000-A1)" from the parent branch name -- which is
-    # the point: order numbers are recoverable even where the helper omits them.
+    assert counts["declared_order_number"] == 1          # only P1's helper gives one
+    # The other two inherit "(TC-9000-A1)" from the parent branch name, which is
+    # the point: order numbers are recoverable where the helper omits them.
+    assert counts["recovered_order_number"] == 2
     assert counts["order_number"] == 3
     assert counts["vendor"] == 3
     assert counts["name"] == 3

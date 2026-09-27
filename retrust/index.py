@@ -22,7 +22,10 @@ CREATE TABLE IF NOT EXISTS product (
     vendor TEXT, vendor_key TEXT,     -- vendor_key is the normalised vendor
     name TEXT, name_key TEXT,         -- name_key is the normalised product name
     version_range TEXT,
-    has_cpe INTEGER DEFAULT 0);       -- did the advisory give a CPE string?
+    -- What the advisory itself declared, versus what we recovered from the
+    -- product name. Both are measured by `retrust eval`.
+    has_cpe INTEGER DEFAULT 0,
+    helper_order_number INTEGER DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS order_number (
     number_key TEXT, product_rowid INTEGER);
@@ -116,12 +119,14 @@ def build(db_path, csaf_root, progress=None):
             for product in advisory.products:
                 cursor = connection.execute(
                     "INSERT INTO product (advisory_id, product_id, vendor, vendor_key,"
-                    " name, name_key, version_range, has_cpe) VALUES (?,?,?,?,?,?,?,?)",
+                    " name, name_key, version_range, has_cpe, helper_order_number)"
+                    " VALUES (?,?,?,?,?,?,?,?,?)",
                     (
                         advisory.advisory_id, product.product_id,
                         product.vendor, normalize_vendor(product.vendor),
                         product.name, normalize_name(product.name),
                         product.version_range, int(product.has_cpe),
+                        int(product.helper_order_number),
                     ),
                 )
                 counts["products"] += 1

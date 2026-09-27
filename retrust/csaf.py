@@ -69,9 +69,11 @@ class Product:
     name: str
     version_range: str
     order_numbers: set = field(default_factory=set)
-    # Whether the advisory gave a CPE string. Recorded so `retrust eval` can
-    # reproduce the coverage figure that justifies keying on order numbers.
+    # What identifiers the advisory itself declared, as opposed to what we
+    # recovered from the product name. Recorded so `retrust eval` can reproduce
+    # the coverage table that justifies keying on order numbers at all.
     has_cpe: bool = False
+    helper_order_number: bool = False
 
 
 @dataclass
@@ -141,7 +143,8 @@ def _parse(path):
             continue
         name = entry.get("name", "")
         helper = entry.get("product_identification_helper") or {}
-        order_numbers = set(helper.get("model_numbers") or []) | set(helper.get("skus") or [])
+        declared = set(helper.get("model_numbers") or []) | set(helper.get("skus") or [])
+        order_numbers = set(declared)
         order_numbers |= find_order_numbers(name)
         order_numbers |= find_order_numbers(attributes.get("product_name", ""))
 
@@ -157,6 +160,7 @@ def _parse(path):
                 ).strip(),
                 order_numbers={o.strip() for o in order_numbers if o and o.strip()},
                 has_cpe=bool(helper.get("cpe")),
+                helper_order_number=bool(declared),
             )
         )
 

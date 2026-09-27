@@ -28,8 +28,9 @@ all 27,234 product entries in CISA's OT advisory corpus, exactly **26 carry a CP
 string — 0.1%**. Every conventional vulnerability tool joins products to CVEs
 through CPE, which is precisely why general-purpose tooling performs so badly on
 industrial gear. Manufacturer order numbers — Siemens MLFB, `6ES7518-4AX00-1AB0`
-— appear on 30.1% of entries: about 315× more available, and exactly what a buyer
-types onto a requisition. ReTrust keys on those instead.
+— are declared on 30.1% of them, **316× more available**, rising to 35.2% once
+ReTrust recovers the ones buried in product names. They are also exactly what a
+buyer types onto a requisition. ReTrust keys on those instead.
 
 The scoring is built to survive a hostile reviewer. Hard gates (CISA KEV, the FCC
 Covered List, the BIS Entity List, OFAC) sit outside the weighted composite,
@@ -130,12 +131,16 @@ still gives the same numbers.
 - [ ] Replace the `<you>` placeholder in the README clone URL.
 - [ ] Presenter name, title, employer, bio and photo — the form wants a complete
       speaker record and reviewers read the bio.
-- [ ] **Re-ingest, then re-run `retrust eval --sample 4000`.** The local index
-      predates the identifier-coverage measurement, so `eval` currently abstains
-      on that block. Re-cloning the CISA corpus (~134 MB) and running `ingest`
-      populates it, and the 0.1% CPE figure that the abstract leads on should be
-      confirmed from that output before the abstract goes in.
-- [ ] Re-run `retrust backtest` and reconcile every correlation quoted above.
+- [x] **Every accuracy figure above re-measured from a fresh ingest**
+      (3,937 advisories, 27,234 products, 2026-09-27): CPE 26 / 27,234 =
+      **0.10%**, declared order numbers 8,204 = **30.12%** (316×), version-range
+      coverage **93.12%**, decidable accuracy **94.71%**, round-trip precision
+      and recall **99.88%** at n=4,000, order-number resolution **100%**
+      (1,428/1,428).
+- [x] **Back-test re-run on the same fresh index**: pooled +0.432, within-vendor
+      **+0.106** (p=0.001), leave-one-out **−0.187**, 9 negative / 10 positive
+      across 21 vendors and 3,814 products. Every correlation quoted above
+      reproduces.
 - [ ] Confirm the corpus snapshot date cited in reports is current.
 
 ---

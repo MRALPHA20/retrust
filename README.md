@@ -34,22 +34,27 @@ Every conventional vulnerability tool joins products to CVEs through CPE
 strings. Measured across all 27,234 product entries in CISA's OT advisory
 corpus:
 
-| Identifier on the product entry | Entries | Share |
+| Identifier available on the product entry | Entries | Share |
 |---|---:|---:|
-| **CPE** — what conventional scanners join on | 26 | **0.1%** |
-| Manufacturer order number (`model_numbers` / `skus`) | 8,202 | 30.1% |
-| Vendor name | 27,231 | 100.0% |
-| Product name | 27,063 | 99.4% |
+| **CPE** — what conventional scanners join on | 26 | **0.10%** |
+| Order number the advisory declares (`model_numbers` / `skus`) | 8,204 | 30.12% |
+| Order number ReTrust recovers from the product name | 1,384 | 5.08% |
+| **Order number, either** — what ReTrust keys on | **9,588** | **35.21%** |
+| Vendor name | 27,231 | 99.99% |
+| Product name | 27,234 | 100.00% |
 
 CPE is effectively absent from ICS advisory data, which is why general-purpose
-tooling performs so poorly on OT gear. Order numbers are ~315× more available —
+tooling performs so poorly on OT gear. Declared order numbers are **316×** more
+available, and the ones ReTrust recovers from product names bring that to 369× —
 and `6ES7518-4AX00-1AB0` is exactly what a buyer types onto a requisition.
 ReTrust keys on those instead.
 
-`retrust eval` recomputes that table from your own index, so it is a measurement
-you can check rather than a claim you have to accept. An index built before this
-was recorded says so instead of reporting zero CPEs — zero measured and zero
-stored would otherwise look identical.
+`retrust eval` recomputes that whole table from your own index, so it is a
+measurement you can check rather than a claim you have to accept. The declared
+and recovered rows are counted apart because they are different claims: one is
+what the vendor published, the other is what this tool inferred. An index built
+before this was recorded says so instead of reporting zero CPEs — zero measured
+and zero stored would otherwise print identically.
 
 ## Accuracy, and how to check it yourself
 
