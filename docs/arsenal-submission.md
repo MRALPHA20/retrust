@@ -95,7 +95,7 @@ usable on a real purchase order.
 | Category (primary) | Embedded / IoT / Hardware (ICS & OT) |
 | Category (secondary) | Vulnerability Assessment / Supply Chain |
 | Open source | Yes, Apache-2.0 |
-| Source repository | **TODO: must be public before submitting** |
+| Source repository | https://github.com/MRALPHA20/retrust |
 | Documentation | `docs/ReTrust-Guide.pdf`, an 11-page printable user guide, plus a long `README.md` and `docs/build-plan.html`. Arsenal's minimum is three pages |
 | Runtime dependencies | None beyond Python 3.10+ |
 | Install | `git clone` then `python3 -m retrust.cli setup` |
@@ -244,10 +244,9 @@ canonical URL and says where it came from.
 
 ## Before you submit
 
-- [ ] **Publish the repository.** It is a local git repo with 26 commits and no
-      remote. Arsenal cannot accept a submission without a public code link, and
-      this is the only hard blocker.
-- [ ] Replace the `<you>` placeholder in the README clone URL.
+- [x] **Repository published**: https://github.com/MRALPHA20/retrust (public,
+      pushed 2026-09-28). The one hard blocker is cleared.
+- [x] The README clone URL names the published account.
 - [ ] Presenter name, title, employer, bio and photo. The form wants a complete
       speaker record, and reviewers read the bio.
 - [x] **Every accuracy figure above re-measured from a fresh ingest**
