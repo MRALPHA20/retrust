@@ -198,6 +198,16 @@ contains "ORIGIN" "origin is reported separately from content" \
 check 1 "a missing corpus is reported"              -- $RETRUST verify --csaf /nonexistent
 
 echo
+echo "== the annex and the timeline =="
+contains "RFQ SECURITY ANNEX" "questions writes the annex" -- $RETRUST questions --vendor Moxa --product EDS-405A
+contains "checkable claims" "a KEV finding draws the version-and-date demand" \
+  -- $RETRUST questions --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
+contains "ADVISORY TIMELINE" "timeline draws a vendor" -- $RETRUST timeline --vendor Moxa
+contains "could not resolve" "an unresolved product gets the resolver-honest annex" \
+  -- $RETRUST questions --vendor Moxa --product "Nonexistent Widget 9000"
+check 1 "timeline abstains with the resolver"       -- $RETRUST timeline --vendor Nobody --product Nothing
+
+echo
 echo "== doctor and the shipped benchmarks =="
 check 0 "doctor passes on this installation"       -- $RETRUST doctor
 contains "BUYER-QUERY SET" "eval runs the buyer-query set" -- $RETRUST eval --sample 5

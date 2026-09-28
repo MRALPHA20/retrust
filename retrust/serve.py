@@ -21,8 +21,9 @@ import http.server
 import urllib.parse
 from datetime import date
 
-from . import alternatives, report, search
+from . import alternatives, questions, report, search, timeline
 from .index import normalize_name
+from .match import _vendor_key
 
 # Bound to loopback by default. Serving to anything else is opt-in, announced,
 # and still read-only -- but it is the user's decision, not a default.
@@ -118,6 +119,7 @@ button{margin-top:.8rem;padding:.5rem 1.4rem;font:inherit;cursor:pointer;
 
 NAV = ('<nav class="nav"><a href="/">Search</a><a href="/score">Score</a>'
        '<a href="/compare">Compare</a><a href="/alternatives">Alternatives</a>'
+       '<a href="/timeline">Timeline</a><a href="/annex">Annex</a>'
        '<a href="/vendor">Vendor</a><a href="/about">About</a></nav>')
 
 
@@ -176,6 +178,10 @@ def _score_page(connection, assess, context, vendor, product, version):
                  f'<a href="/alternatives?{query}'
                  + (f"&amp;version={urllib.parse.quote(version)}" if version else "")
                  + '">Alternatives in this family</a> &middot; '
+                 f'<a href="/timeline?{query}">Advisory timeline</a> &middot; '
+                 f'<a href="/annex?{query}'
+                 + (f"&amp;version={urllib.parse.quote(version)}" if version else "")
+                 + '">RFQ annex</a> &middot; '
                  f'<a href="/compare?c={urllib.parse.quote(candidate)}">'
                  'Start a comparison with this</a></p>')
     if not resolution.resolved:
@@ -296,6 +302,74 @@ def _alternatives_page(connection, assess, vendor, product, version):
                  f"{len(options)} candidate(s)")
 
 
+def _timeline_page(connection, vendor, product):
+    """The advisory record drawn as a shape, exactly as the terminal draws it."""
+    form = (
+        '<form method="get" action="/timeline">'
+        f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
+        f'<label for="p" style="margin-top:.8rem">Product (optional: blank for the whole vendor)</label>'
+        f'<input type="text" id="p" name="product" value="{_esc(product)}">'
+        '<button type="submit">Draw</button></form>')
+    if not vendor:
+        return _page("Timeline", "<h1>Advisory timeline</h1>" + form +
+                     '<p class="empty">When advisories land, how the remediation '
+                     "mix has moved, and how long the record has been quiet. "
+                     "Cadence measures disclosure activity, not safety.</p>")
+
+    from . import match
+    if product:
+        resolution = match.resolve(connection, vendor=vendor, product=product)
+        if not resolution.resolved:
+            return _page("Timeline", "<h1>Advisory timeline</h1>" + form +
+                         f'<p class="empty">{_esc(resolution.reason)}</p>')
+        named = resolution.matches[0]
+        subject = f"{named.vendor} {named.name}".strip()
+        line = timeline.build(connection, [(m.advisory_id, m.product_id)
+                                           for m in resolution.matches])
+    else:
+        key = _vendor_key(connection, vendor)
+        if key is None:
+            return _page("Timeline", "<h1>Advisory timeline</h1>" + form +
+                         f'<p class="empty">vendor {_esc(vendor)} does not '
+                         "appear in the advisory corpus</p>")
+        subject, line = vendor, timeline.for_vendor(connection, key)
+    body = (f"<h1>Advisory timeline</h1>{form}"
+            '<pre class="tw" style="white-space:pre-wrap">'
+            f"{_esc(timeline.format_report(subject, line))}</pre>")
+    return _page(f"Timeline: {subject}", body)
+
+
+def _annex_page(connection, assess, dossier, context, vendor, product, version):
+    """The RFQ security annex, as text a buyer pastes into a request."""
+    form = (
+        '<form method="get" action="/annex">'
+        f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
+        f'<label for="p" style="margin-top:.8rem">Product</label>'
+        f'<input type="text" id="p" name="product" value="{_esc(product)}">'
+        f'<label for="f" style="margin-top:.8rem">Firmware version (optional)</label>'
+        f'<input type="text" id="f" name="version" value="{_esc(version)}">'
+        '<button type="submit">Write the annex</button></form>')
+    if not (vendor or product):
+        return _page("RFQ annex", "<h1>RFQ security annex</h1>" + form +
+                     '<p class="empty">The questions the evidence supports, '
+                     "written to be pasted into a request for quotation. A "
+                     "vendor asked which firmware version fixes a named CVE "
+                     "must answer with a fact or a visible refusal.</p>")
+
+    assessment, resolution, findings = assess(vendor, product, version or None)
+    profile = None
+    if resolution.matches:
+        profile = dossier.build(connection, resolution.matches[0].vendor,
+                                screening=context["screening"],
+                                certificates=context["certificates"])
+    annex = questions.format_report(
+        assessment.product, questions.build(assessment, findings, profile))
+    body = (f"<h1>RFQ security annex</h1>{form}"
+            '<pre class="tw" style="white-space:pre-wrap">'
+            f"{_esc(annex)}</pre>")
+    return _page(f"Annex: {assessment.product}", body)
+
+
 def _vendor_page(connection, dossier, context, name):
     form = ('<form method="get" action="/vendor"><label for="n">Manufacturer</label>'
             f'<input type="text" id="n" name="name" value="{_esc(name)}">'
@@ -310,7 +384,9 @@ def _vendor_page(connection, dossier, context, name):
             f"{_esc(dossier.format_report(profile))}</pre>")
     if profile.known:
         body += (f'<p class="empty"><a href="/?q={urllib.parse.quote(name)}">'
-                 "Search this vendor's products</a></p>")
+                 "Search this vendor's products</a> &middot; "
+                 f'<a href="/timeline?vendor={urllib.parse.quote(name)}">'
+                 "Advisory timeline</a></p>")
     return _page(f"Vendor: {name}", body)
 
 
@@ -364,6 +440,12 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
         if path == "/alternatives":
             return _alternatives_page(connection, assess, first("vendor"),
                                       first("product"), first("version"))
+        if path == "/timeline":
+            return _timeline_page(connection, first("vendor"), first("product"))
+        if path == "/annex":
+            return _annex_page(connection, assess, dossier, context,
+                               first("vendor"), first("product"),
+                               first("version"))
         if path == "/vendor":
             return _vendor_page(connection, dossier, context, first("name"))
         if path == "/about":

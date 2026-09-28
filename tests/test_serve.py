@@ -92,7 +92,10 @@ def _get(handler, path):
 @pytest.mark.parametrize("path", [
     "/", "/?q=test", "/score?vendor=Testco&product=TestPLC",
     "/compare?c=Testco%7CTestPLC", "/vendor?name=Testco", "/about",
-    "/alternatives", "/alternatives?vendor=Testco&product=TestPLC"])
+    "/alternatives", "/alternatives?vendor=Testco&product=TestPLC",
+    "/timeline", "/timeline?vendor=Testco",
+    "/timeline?vendor=Testco&product=TestPLC",
+    "/annex", "/annex?vendor=Testco&product=TestPLC"])
 def test_every_route_answers(handler, path):
     status, _, body = _get(handler, path)
     assert status == 200
@@ -105,6 +108,17 @@ def test_the_landing_counts_come_from_the_index(handler, db):
     _, _, body = _get(handler, "/")
     assert f'{stats["products"]:,} product entries' in body
     assert f'{stats["vendors"]:,} vendor spellings' in body
+
+
+def test_the_timeline_page_keeps_its_caveat(handler):
+    _, _, body = _get(handler, "/timeline?vendor=Testco")
+    assert "not safety" in body
+
+
+def test_the_annex_page_is_pasteable_text(handler):
+    _, _, body = _get(handler, "/annex?vendor=Testco&product=TestPLC")
+    assert "RFQ SECURITY ANNEX" in body
+    assert "<pre" in body                    # the annex is a document, not a widget
 
 
 def test_the_alternatives_page_keeps_the_caveat(handler):

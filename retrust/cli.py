@@ -35,8 +35,9 @@ from pathlib import Path
 from .index import normalize_vendor
 from . import (alternatives, backtest, batch, bootstrap, certification,
                config, console, diff, doctor, dossier, evaluate, index,
-               integrity, lev, match, report, score, screenshot, search,
-               sensitivity, serve, shell, snapshot, ssvc, supplychain)
+               integrity, lev, match, questions, report, score, screenshot,
+               search, sensitivity, serve, shell, snapshot, ssvc, supplychain,
+               timeline)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -1190,6 +1191,64 @@ def _find_alternatives(connection, context, vendor, product, version=None,
     return subject, resolution, options, skipped
 
 
+def cmd_questions(args):
+    """The RFQ security annex: what to ask the vendor, from the evidence."""
+    connection = _open(args.db)
+    context = _context(args.data, config_path=args.config)
+    assessment, resolution, findings = _assess(
+        connection, args.vendor, args.product, args.version, args.order_number,
+        context=context)
+    profile = None
+    if resolution.matches:
+        profile = dossier.build(
+            connection, resolution.matches[0].vendor,
+            screening=context["screening"],
+            certificates=context["certificates"])
+    asked = questions.build(assessment, findings, profile)
+    quiet = args.json == "-"
+    if not quiet:
+        print(questions.format_report(assessment.product, asked))
+    if args.json:
+        from dataclasses import asdict
+        written = _emit_json(args.json, batch.envelope(
+            [asdict(q) for q in asked],
+            {"product": assessment.product, "verdict": assessment.verdict,
+             "provenance": index.provenance(connection)}))
+        if written and not quiet:
+            print(f"\nJSON written to {written}")
+    # An annex is not a gate: it exists to be sent, whatever the verdict.
+    return 0
+
+
+def cmd_timeline(args):
+    """A product's or vendor's advisory history, drawn as a shape."""
+    connection = _open(args.db)
+    if args.product or args.order_number:
+        resolution = match.resolve(connection, vendor=args.vendor,
+                                   product=args.product,
+                                   order_number=args.order_number)
+        if not resolution.resolved:
+            print(f"{' '.join(filter(None, [args.vendor, args.product])) or args.order_number}: "
+                  f"{resolution.reason}")
+            return 1
+        named = resolution.matches[0]
+        subject = f"{named.vendor} {named.name}".strip()
+        line = timeline.build(connection, [(m.advisory_id, m.product_id)
+                                           for m in resolution.matches])
+    elif args.vendor:
+        key = match._vendor_key(connection, args.vendor)
+        if key is None:
+            print(f"vendor {args.vendor!r} does not appear in the advisory corpus")
+            return 1
+        subject = args.vendor
+        line = timeline.for_vendor(connection, key)
+    else:
+        print("Give --vendor (optionally with --product), or --order-number.")
+        return 1
+    print(timeline.format_report(subject, line))
+    return 0
+
+
 def cmd_alternatives(args):
     """Other products in the same vendor family, scored the same way."""
     connection = _open(args.db)
@@ -1458,6 +1517,18 @@ def build_parser():
                    help='write the decisions as JSON; "-" for stdout')
     p.add_argument("--config", help="scoring configuration file")
     p.set_defaults(func=cmd_ssvc)
+
+    p = sub.add_parser("questions", help="the RFQ security annex: what to ask the vendor")
+    _product_args(p)
+    p.add_argument("--config", help=f"scoring weights (default {config.DEFAULT_PATH})")
+    p.add_argument("--data", default="data", help="data directory (default data)")
+    p.add_argument("--json", metavar="FILE",
+                   help='write the annex as JSON; "-" for stdout')
+    p.set_defaults(func=cmd_questions)
+
+    p = sub.add_parser("timeline", help="advisory history drawn as a shape")
+    _product_args(p)
+    p.set_defaults(func=cmd_timeline)
 
     p = sub.add_parser("alternatives", help="other products in the same family")
     _product_args(p)

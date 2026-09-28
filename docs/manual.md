@@ -411,6 +411,8 @@ retrust snapshot --restore retrust-snapshot.zip
 | `vendor NAME` | what the index holds on one manufacturer |
 | `diff FILE` | re-score a stored result; what changed since |
 | `alternatives` | other products in the same vendor family |
+| `questions` | the RFQ security annex: what to ask the vendor, from the evidence |
+| `timeline` | advisory history drawn as a shape: cadence, fix share, quiet time |
 | `ssvc` | place findings on CERT/CC's SSVC deployer tree |
 | `lev` | has this probably been exploited already? (NIST CSWP 41) |
 | `score` | assess one product |

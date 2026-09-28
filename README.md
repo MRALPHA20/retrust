@@ -68,7 +68,7 @@ hard gate that fired — never a bare number.
 |---|---|
 | `retrust score ...` | commands with flags, for engineers and pipelines |
 | `retrust shell` | a menu that asks instead — no flags to remember, prints the equivalent command each time |
-| `retrust serve` | the same assessments as pages on `127.0.0.1`, for whoever signs the purchase order |
+| `retrust serve` | the same assessments, timelines and RFQ annexes as pages on `127.0.0.1`, for whoever signs the purchase order |
 
 Start with `retrust search <anything>` if you don't know the exact spelling —
 misspellings return a shortlist instead of nothing.
@@ -128,6 +128,8 @@ tool that cannot show its own failure mode has not earned its verdicts.
 | `vendor NAME` | what the index holds on one manufacturer |
 | `diff FILE` | re-score a stored result; what changed since |
 | `alternatives` | other products in the same vendor family |
+| `questions` | the RFQ security annex: what to ask the vendor, from the evidence |
+| `timeline` | advisory history drawn as a shape: cadence, fix share, quiet time |
 | `ssvc` | place findings on CERT/CC's SSVC deployer tree |
 | `lev` | has this probably been exploited already? (NIST CSWP 41) |
 | `score` | assess one product |
