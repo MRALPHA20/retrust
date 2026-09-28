@@ -339,6 +339,24 @@ def _timeline_page(connection, vendor, product):
     return _page(f"Timeline: {subject}", body)
 
 
+def _annex_text(connection, assess, dossier, context, vendor, product, version):
+    """The annex as bare text: what actually gets pasted into an RFQ.
+
+    Returned as text/plain so "select all, copy" needs no care about markup,
+    and a procurement template can curl it straight into a document.
+    """
+    if not (vendor or product):
+        return "Give vendor and product: /annex.txt?vendor=...&product=..."
+    assessment, resolution, findings = assess(vendor, product, version or None)
+    profile = None
+    if resolution.matches:
+        profile = dossier.build(connection, resolution.matches[0].vendor,
+                                screening=context["screening"],
+                                certificates=context["certificates"])
+    return questions.format_report(
+        assessment.product, questions.build(assessment, findings, profile))
+
+
 def _annex_page(connection, assess, dossier, context, vendor, product, version):
     """The RFQ security annex, as text a buyer pastes into a request."""
     form = (
@@ -356,18 +374,19 @@ def _annex_page(connection, assess, dossier, context, vendor, product, version):
                      "vendor asked which firmware version fixes a named CVE "
                      "must answer with a fact or a visible refusal.</p>")
 
-    assessment, resolution, findings = assess(vendor, product, version or None)
-    profile = None
-    if resolution.matches:
-        profile = dossier.build(connection, resolution.matches[0].vendor,
-                                screening=context["screening"],
-                                certificates=context["certificates"])
-    annex = questions.format_report(
-        assessment.product, questions.build(assessment, findings, profile))
+    annex = _annex_text(connection, assess, dossier, context,
+                        vendor, product, version)
+    text_query = (f"vendor={urllib.parse.quote(vendor)}"
+                  f"&amp;product={urllib.parse.quote(product)}"
+                  + (f"&amp;version={urllib.parse.quote(version)}" if version
+                     else ""))
     body = (f"<h1>RFQ security annex</h1>{form}"
             '<pre class="tw" style="white-space:pre-wrap">'
-            f"{_esc(annex)}</pre>")
-    return _page(f"Annex: {assessment.product}", body)
+            f"{_esc(annex)}</pre>"
+            f'<p class="empty"><a href="/annex.txt?{text_query}">Plain text,'
+            " for pasting into the request</a></p>")
+    subject = annex.splitlines()[0].replace("RFQ SECURITY ANNEX", "").strip()
+    return _page(f"Annex: {subject or 'RFQ'}", body)
 
 
 def _vendor_page(connection, dossier, context, name):
@@ -408,6 +427,10 @@ def _about_page(stats, provenance, host, port):
 <p class="empty">Serving on {_esc(host)}:{port}. Stop it with Ctrl-C.</p>""")
 
 
+class PlainText(str):
+    """A page that is text, not markup. _send switches the content type on it."""
+
+
 def build_handler(connection, assess, context, dossier, stats, provenance,
                   host, port):
     """The request handler, closed over everything a page needs.
@@ -446,6 +469,10 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             return _annex_page(connection, assess, dossier, context,
                                first("vendor"), first("product"),
                                first("version"))
+        if path == "/annex.txt":
+            return PlainText(_annex_text(connection, assess, dossier, context,
+                                         first("vendor"), first("product"),
+                                         first("version")))
         if path == "/vendor":
             return _vendor_page(connection, dossier, context, first("name"))
         if path == "/about":
@@ -486,8 +513,9 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
 
         def _send(self, status, markup):
             payload = markup.encode("utf-8")
+            kind = ("text/plain" if isinstance(markup, PlainText) else "text/html")
             self.send_response(status)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", f"{kind}; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
             # The pages are self-contained, so the strictest policy that still
             # works is the correct one: nothing may be fetched or executed.

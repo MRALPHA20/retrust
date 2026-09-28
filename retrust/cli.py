@@ -921,6 +921,49 @@ def _shell_actions(connection, context, args):
                                  context["weights"]))
         return None
 
+    def do_timeline(result, reader):
+        vendor = shell.ask("Vendor", required=True, reader=reader)
+        if vendor is shell.CANCELLED:
+            return None
+        product = shell.ask("Product (blank for the whole vendor)", reader=reader)
+        product = None if product is shell.CANCELLED else product
+        shell.echo_command(["timeline", "--vendor", vendor]
+                           + (["--product", product] if product else []))
+        if product:
+            resolution = match.resolve(connection, vendor=vendor, product=product)
+            if not resolution.resolved:
+                print(f"{vendor} {product}: {resolution.reason}")
+                return None
+            named = resolution.matches[0]
+            print(timeline.format_report(
+                f"{named.vendor} {named.name}".strip(),
+                timeline.build(connection, [(m.advisory_id, m.product_id)
+                                            for m in resolution.matches])))
+            return None
+        key = match._vendor_key(connection, vendor)
+        if key is None:
+            print(f"vendor {vendor!r} does not appear in the advisory corpus")
+            return None
+        print(timeline.format_report(vendor, timeline.for_vendor(connection, key)))
+        return None
+
+    def do_annex(result, reader):
+        if not (asked := _ask_product(reader)):
+            return None
+        vendor, product, version = asked
+        shell.echo_command(["questions", "--vendor", vendor, "--product", product]
+                           + (["--version", version] if version else []))
+        assessment, resolution, findings = _assess(
+            connection, vendor, product, version, None, context=context)
+        profile = None
+        if resolution.matches:
+            profile = dossier.build(connection, resolution.matches[0].vendor,
+                                    screening=context["screening"],
+                                    certificates=context["certificates"])
+        print(questions.format_report(
+            assessment.product, questions.build(assessment, findings, profile)))
+        return None
+
     def do_save(result, reader):
         shell.save(result, _shell_writers(context), reader)
         return None
@@ -935,6 +978,8 @@ def _shell_actions(connection, context, args):
         "7": ("Likely exploited", "NIST LEV, has it probably happened already", do_lev),
         "8": ("SSVC decisions", "what buying this commits you to", do_ssvc),
         "9": ("What changed", "re-score a saved result against today", do_diff),
+        "10": ("Advisory timeline", "the record drawn as a shape, per year", do_timeline),
+        "11": ("RFQ annex", "what to ask the vendor, from the evidence", do_annex),
         "s": ("Save the last result", "HTML, JSON or CSV", do_save),
     }
 

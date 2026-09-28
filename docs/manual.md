@@ -248,6 +248,8 @@ $ retrust shell
 │   7 │ Likely exploited        NIST LEV, has it probably happened already │
 │   8 │ SSVC decisions          what buying this commits you to            │
 │   9 │ What changed            re-score a saved result against today      │
+│  10 │ Advisory timeline       the record drawn as a shape, per year      │
+│  11 │ RFQ annex               what to ask the vendor, from the evidence  │
 │   s │ Save the last result    HTML, JSON or CSV                          │
 ├─────┼────────────────────────────────────────────────────────────────────┤
 │   q │ Quit                                                               │

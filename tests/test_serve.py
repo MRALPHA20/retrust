@@ -121,6 +121,15 @@ def test_the_annex_page_is_pasteable_text(handler):
     assert "<pre" in body                    # the annex is a document, not a widget
 
 
+def test_the_annex_text_endpoint_is_plain_text(handler):
+    """What gets pasted into an RFQ must arrive without markup around it."""
+    status, headers, body = _get(handler, "/annex.txt?vendor=Testco&product=TestPLC")
+    assert status == 200
+    assert headers["Content-Type"].startswith("text/plain")
+    assert "RFQ SECURITY ANNEX" in body
+    assert "<" not in body.split("ANNEX")[1][:200]   # no markup leaks into the text
+
+
 def test_the_alternatives_page_keeps_the_caveat(handler):
     """The one paragraph that must survive any restyling."""
     for path in ("/alternatives", "/alternatives?vendor=Testco&product=TestPLC"):
