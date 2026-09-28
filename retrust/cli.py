@@ -195,6 +195,14 @@ def cmd_ingest(args):
     for key, value in index.stats(connection).items():
         print(f"  {key:<15} {value:,}")
 
+    # ingest rebuilds the database from scratch, which takes the EPSS history
+    # and the LEV estimates with it. Saying so beats a later `retrust lev`
+    # abstaining for a reason nobody connects to the rebuild they just ran.
+    if bootstrap.history_files(Path(args.db).parent.name or "data"):
+        print("\n  The EPSS history and LEV estimates were cleared by this "
+              "rebuild.\n  The snapshots are still on disk, so restoring them "
+              "is quick:\n    retrust lev --update")
+
 
 def cmd_stats(args):
     for key, value in index.stats(_open(args.db)).items():
