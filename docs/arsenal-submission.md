@@ -54,17 +54,21 @@ Two published standards are implemented on top of that, and made to disagree in
 public. `retrust ssvc` places every finding on CERT/CC's SSVC deployer tree,
 reproduced from their repository rather than rewritten, with three of its four
 decision points left for the buyer because they describe a plant this tool has
-never seen. `retrust lev` implements NIST CSWP 41, composing a CVE's EPSS scores
-across its whole life. On Delta Electronics DIAEnergie, SSVC returns 72 findings
-all marked *scheduled* because none are in KEV, while LEV estimates **23 of those
-same 72 have probably already been exploited**. The tool prints both, and
-`retrust lev --audit` measures whether LEV discriminates before anyone leans on
-it.
+never seen. `retrust lev` implements NIST CSWP 41. On Delta Electronics DIAEnergie,
+SSVC returns 72 findings all marked *scheduled* because none are in KEV, while
+LEV estimates **23 of those same 72 have probably already been exploited**. The
+tool prints both, and `retrust lev --audit` measures whether LEV discriminates
+before anyone leans on it.
+
+Building it turned up a second measured finding. CISA signs all 3,937 OT
+advisories with one PGP key, and `retrust verify` reports a fingerprint we could
+not obtain from any major public keyserver, the repository, or CISA's CSAF
+provider-metadata URL. If that holds, the signatures on the authoritative OT
+advisory feed cannot today be verified by anyone downstream.
 
 The interface follows ISA-101, the HMI standard for industrial control rooms, and
 a menu sits beside the flags. Python 3.10+, no dependencies, Apache-2.0, offline:
-a clone and one command build it, so a visitor can have it running on their own
-laptop before reaching the next station.
+a clone and one command builds it.
 
 ---
 
@@ -150,8 +154,11 @@ memorable rather than a demo they watched.
    leave-one-out. Walk the confounder down in three commands: hold the vendor
    constant and most of it goes, drop the vendor that is half the sample and
    nothing measurable is left.
-9. **The gate** (2 min). `retrust batch bom.csv --fail-on unassessed` and its
-   exit code blocking a CI job.
+9. **The gate, and where the data came from** (2 min). `retrust batch bom.csv
+   --fail-on unassessed` and its exit code blocking a CI job, then
+   `retrust verify`: 3,937 digests checked, one signer, and a key nobody can
+   fetch. A good note to end on, because it is the question every visitor should
+   be asking of any tool that scores from someone else's feed.
 
 **Takeaway.** Two commands and they have it running: `git clone`, then
 `python3 -m retrust.cli setup`. No pip, no virtualenv, no dependencies to
@@ -205,6 +212,46 @@ security tooling would undercut that on sight.
 
 ---
 
+## A second finding: the advisories cannot be verified downstream
+
+Worth flagging separately, because it is a finding about the ecosystem rather
+than about the tool, and a reviewer may know something we do not.
+
+CISA ships a SHA-512 and a detached PGP signature beside every advisory in its
+CSAF repository. `retrust verify` checks both and keeps them apart, because they
+answer different questions: a digest and the file it describes came from the same
+clone, so it catches corruption after download but not a substituted repository.
+Only the signature survives a hostile mirror.
+
+Sampling the corpus, **one key signed all 3,937 advisories**, fingerprint
+`144A ED0A 57BE 7D4A E835 D9D8 CAC5 AC4F 7416 4B17`. That consistency is itself
+a useful property; a subset signed by a second key is what a partially
+substituted mirror would look like, and the tool flags it.
+
+The problem is obtaining that key. We could not find it in:
+
+| Where we looked | Result |
+|---|---|
+| `keys.openpgp.org`, `keyserver.ubuntu.com`, `pgp.mit.edu` | no data for the fingerprint |
+| `cisagov/CSAF` repository root and `csaf_files/` | 404 |
+| `https://www.cisa.gov/.well-known/csaf/provider-metadata.json` | 404 |
+| The cloned corpus itself | no standalone key, no provider metadata |
+
+If that is right, the signatures on the authoritative OT advisory feed cannot be
+verified by any third party, and a downstream consumer has integrity against
+their own copy but no assurance of origin at all. **We would genuinely like to be
+wrong about this**, which is part of why it is in the submission: an Arsenal
+audience is the right room to ask.
+
+What the tool does about it is the honest minimum. `--fetch-key` asks a keyserver
+for exactly the fingerprint the signatures name and discards anything else, so
+the keyserver never gets to choose the key. `--key FILE` accepts one obtained out
+of band, which is the only route that works today. And the report never presents
+the corpus naming its own signer as evidence of origin, because it is not: it
+tells you to confirm that fingerprint elsewhere.
+
+---
+
 ## Before you submit
 
 - [ ] **Publish the repository.** It is a local git repo with 26 commits and no
@@ -250,8 +297,11 @@ security tooling would undercut that on sight.
 
 - **It answers a question no other tool answers.** Not a better scanner; a
   different point in the lifecycle.
-- **It carries a measured research finding**, not just an implementation: CPE is
-  absent from ICS advisory data, and the number is 0.1%.
+- **It carries two measured research findings**, not just an implementation.
+  CPE is absent from ICS advisory data, and the number is 0.1%. And CISA signs
+  every OT advisory with a key we could not obtain from any public keyserver,
+  the repository, or its CSAF provider metadata, which would mean those
+  signatures are unverifiable downstream.
 - **Accuracy is a command, not a claim.** Reviewers can reproduce every figure on
   their own index.
 - **It reports against its own interest.** The back-test result is unfavourable
