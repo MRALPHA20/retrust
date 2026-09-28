@@ -965,8 +965,9 @@ def cmd_verify(args):
         sys.exit(f"No advisories at {root}. Run `retrust setup` first, or pass "
                  "--csaf.")
 
-    # Read the signer from the corpus before anything else: --fetch-key asks for
-    # exactly this fingerprint, so the keyserver never gets to choose the key.
+    # Read the signer from the corpus before anything else: --fetch-key demands
+    # exactly this fingerprint from CISA's provider metadata, so neither source
+    # alone gets to choose the key.
     keys = integrity.signers(root) if not args.no_signatures else {}
     if args.key:
         try:
@@ -1402,7 +1403,8 @@ def build_parser():
     p.add_argument("--no-signatures", action="store_true",
                    help="digests only; skip gpg")
     p.add_argument("--fetch-key", action="store_true",
-                   help="ask a keyserver for the fingerprint the signatures name")
+                   help="fetch the key CISA advertises in its CSAF provider "
+                        "metadata, refusing a fingerprint mismatch")
     p.add_argument("--key", metavar="FILE",
                    help="import a signing key you obtained out of band")
     p.set_defaults(func=cmd_verify)

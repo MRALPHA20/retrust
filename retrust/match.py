@@ -117,6 +117,30 @@ def _rows_to_matches(rows, method):
     ]
 
 
+def _vendor_key(connection, vendor):
+    """The corpus key a typed vendor name refers to, or None if it names none.
+
+    An exact key wins. Otherwise a prefix reaching exactly one key is that
+    vendor -- "Hirschmann" for the corpus's merged "Hirschmann Automation and
+    Control GmbH, Belden Inc." entity. Reaching two keys would be a guess, and
+    a short fragment proves nothing, so both count as unknown. Every rung uses
+    this one answer: the order-number filter deciding differently from the
+    name rung made a correct short vendor WORSE than no vendor at all.
+    """
+    key = normalize_vendor(vendor or "")
+    if not key:
+        return None
+    if connection.execute("SELECT 1 FROM product WHERE vendor_key = ? LIMIT 1",
+                          (key,)).fetchone():
+        return key
+    if len(key) < 4:
+        return None
+    prefixed = [r[0] for r in connection.execute(
+        "SELECT DISTINCT vendor_key FROM product WHERE vendor_key LIKE ?",
+        (key + "%",))]
+    return prefixed[0] if len(prefixed) == 1 else None
+
+
 def resolve(connection, vendor=None, product=None, order_number=None):
     """Find the advisory products matching this request."""
     query = " ".join(filter(None, [vendor, product, order_number]))
@@ -133,8 +157,8 @@ def resolve(connection, vendor=None, product=None, order_number=None):
         # at 0.98 confidence, and screening then ran against that wrong vendor.
         # A mismatch falls through to rung 2 rather than being believed.
         if rows and vendor:
-            wanted = normalize_vendor(vendor)
-            rows = [r for r in rows if r["vendor_key"] == wanted] or []
+            wanted = _vendor_key(connection, vendor) or normalize_vendor(vendor)
+            rows = [r for r in rows if r["vendor_key"] == wanted]
         # A product name was given too, so it has to agree. It named the
         # S7-1200 while the order number named the S7-1500, and the report
         # carried the typed name above the other product's 1,063 CVEs.
@@ -174,32 +198,21 @@ def resolve(connection, vendor=None, product=None, order_number=None):
         )
         return result
 
-    vendor_key, name_key = normalize_vendor(vendor), normalize_name(product)
+    name_key = normalize_name(product)
     # Punctuation-only input normalises to "", and an empty name_key turns the
     # rung-2 LIKE into "match everything": --product "-" returned all 15,015
     # Siemens products at 0.90 confidence. "-" is also the commonest spreadsheet
     # placeholder, so this is reachable straight from the documented batch path.
-    if not (vendor_key and name_key):
+    if not (normalize_vendor(vendor) and name_key):
         result.abstained = True
         result.reason = (f"{vendor!r} and {product!r} do not contain enough "
                          "characters to identify a product")
         return result
 
-    if not connection.execute(
-        "SELECT 1 FROM product WHERE vendor_key = ? LIMIT 1", (vendor_key,)).fetchone():
-        # A short form of a merged entity: "Hirschmann" for the corpus's
-        # "Hirschmann Automation and Control GmbH, Belden Inc.". A prefix that
-        # reaches exactly one vendor key is that vendor; reaching two would be
-        # a guess, and a short fragment proves nothing, so both still abstain.
-        prefixed = [r[0] for r in connection.execute(
-            "SELECT DISTINCT vendor_key FROM product WHERE vendor_key LIKE ?",
-            (vendor_key + "%",))] if len(vendor_key) >= 4 else []
-        if len(prefixed) == 1:
-            vendor_key = prefixed[0]
-        else:
-            result.abstained = True
-            result.reason = f"vendor {vendor!r} does not appear in the advisory corpus"
-            return result
+    if (vendor_key := _vendor_key(connection, vendor)) is None:
+        result.abstained = True
+        result.reason = f"vendor {vendor!r} does not appear in the advisory corpus"
+        return result
 
     # Rung 2 - exact normalised product name, plus the longer variants that
     # start with it. A buyer writing "SIMATIC S7-1500" means the family, so the

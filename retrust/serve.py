@@ -82,6 +82,11 @@ MAST = ('<header class="mast"><a class="mark" href="/">RETRUST</a>'
         '</header>')
 
 EXTRA = """
+/* Links keep the ink and mark themselves with the underline alone, so colour
+   stays reserved for state. Without this they render browser-blue, the one
+   colour ISA-101 never hands out for free. */
+a{color:var(--ink);text-underline-offset:3px;text-decoration-color:var(--faint)}
+a:hover{text-decoration-color:var(--ink)}
 .mast{display:flex;align-items:baseline;gap:1rem;margin:0 0 .35rem;flex-wrap:wrap}
 .mast .mark{font:700 .95rem/1 var(--mono);letter-spacing:.38em;
      color:var(--ink);text-decoration:none}
@@ -261,7 +266,7 @@ def _alternatives_page(connection, assess, vendor, product, version):
 
     if options:
         rows = "".join(
-            f'<tr><td><a class="plain" href="/score?vendor='
+            f'<tr><td><a href="/score?vendor='
             f'{urllib.parse.quote(family_vendor)}&amp;product='
             f'{urllib.parse.quote(o.name)}">'
             f'{_esc(o.product)}</a></td>'

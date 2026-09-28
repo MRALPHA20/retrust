@@ -94,7 +94,9 @@ def run(data_dir="data", db_path="data/retrust.db"):
     # is visible: an index smaller than its corpus is an index behind it.
     corpus = data / "CSAF"
     if corpus.is_dir():
-        files = sum(1 for _ in corpus.rglob("*.json"))
+        # Skipping feed indexes the same way the ingest does, so the two
+        # numbers are comparable rather than one step out by construction.
+        files = sum(1 for f in corpus.rglob("*.json") if "feed" not in f.name)
         checks.append(Check("corpus", "ok", f"{files:,} advisory files on disk"))
         if connection and files > int(counts.get("advisories", 0)) * 1.02:
             checks.append(Check(
