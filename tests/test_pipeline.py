@@ -213,6 +213,11 @@ def test_epss_loads_with_or_without_the_comment_line(tmp_path):
         path.write_text(text)
         connection = index.connect(str(tmp_path / f"{label}.db"))
         with connection:
-            connection.execute("INSERT INTO affected VALUES"
-                               " ('A','P','CVE-2026-0001',7.0,'CWE-1','vendor_fix')")
+            # Columns named, not positional: this row only needs a CVE to
+            # exist, and a positional insert breaks every time the schema grows
+            # a field this test does not care about.
+            connection.execute(
+                "INSERT INTO affected (advisory_id, product_id, cve, cvss, cwe,"
+                " remediation) VALUES"
+                " ('A','P','CVE-2026-0001',7.0,'CWE-1','vendor_fix')")
         assert index.load_exploitation(connection, epss_path=str(path))["epss"] == 1, label

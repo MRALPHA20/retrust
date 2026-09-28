@@ -20,6 +20,8 @@ Two rules keep this defensible:
 
 from dataclasses import dataclass, field
 
+from . import cvss
+
 BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
 
 
@@ -112,10 +114,32 @@ def _severity(findings):
     # CVSS below 4 is barely worth weighting; 10 is the ceiling.
     peak_share = min(1.0, max(0.0, (peak - 4.0) / 6.0))
     critical_share = len(critical) / len(scored)
-    penalty = 60 * peak_share + 40 * critical_share
-
     evidence = [f"highest CVSS {peak:.1f}",
                 f"{len(critical)}/{len(scored)} rated critical (9.0+), {len(high)} high"]
+
+    # How the flaw is reached matters as much as how bad it is. A 9.8 needing
+    # physical access to a device in a locked cabinet is a different purchase
+    # from a 9.8 reachable over the network with no credentials, and the base
+    # score cannot tell those apart. Every score block in CISA's corpus carries
+    # its vector, so this is read rather than assumed.
+    vectors = [v for v in (cvss.parse(f.vector) for f in scored) if v]
+    if vectors:
+        reachable = [v for v in vectors if v.wormable]
+        penalty = (55 * peak_share + 30 * critical_share
+                   + 15 * len(reachable) / len(vectors))
+        evidence.append(
+            f"{len(reachable)}/{len(vectors)} reachable over the network with no "
+            "credentials and no user action")
+        if physical := sum(1 for v in vectors if v.attack_vector == "physical"):
+            evidence.append(f"{physical} need physical access to the device")
+    else:
+        # An index built before vectors were stored weighs what it has, and says
+        # so. Silently scoring reachability as zero would read as "none of these
+        # are reachable", which is a claim about the product rather than the data.
+        penalty = 60 * peak_share + 40 * critical_share
+        evidence.append("no CVSS vectors in this index, so how the flaws are "
+                        "reached was not weighed")
+
     return Pillar("Severity", max(0.0, 100 - penalty),
                   len(scored) / len(findings), evidence)
 

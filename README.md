@@ -18,11 +18,11 @@ $ retrust compare \
     --candidate "Hikvision|IP Camera"
 
 CANDIDATE                                 VERDICT       SCORE  CVES  ROBUST  NOTES
-ABB AC 800M                               PREFER         81.5    10    96%
-Schneider Electric Modicon M340           PREFER         77.2    21    84%
-Rockwell Automation ControlLogix          CONDITIONAL    56.4    35   100%
-Moxa EDS-405A                             CONDITIONAL    55.9    10    89%
-Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.1  1011   gated  Known exploited vulnerability
+ABB AC 800M                               PREFER         82.2    10    93%
+Schneider Electric Modicon M340           PREFER         77.0    21    75%
+Moxa EDS-405A                             CONDITIONAL    56.1    10    77%
+Rockwell Automation ControlLogix          CONDITIONAL    54.8    35    98%
+Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.8  1011   gated  Known exploited vulnerability
 Hikvision IP Camera                       AVOID           --      -     -     Named on a covered list
 ```
 
@@ -747,6 +747,35 @@ already going to hear about.
 `CONDITIONAL` (≥40), `AVOID`. Weights and thresholds live in an editable config
 file; run `retrust config --init`.
 
+### What the vector says, not just the score
+
+A base score collapses eight decisions into one number, and the decisions are
+what a buyer needs. CVSS 9.8 reached over the network with no credentials is a
+different purchase from CVSS 9.8 that needs physical access to a device in a
+locked cabinet.
+
+Every score block in CISA's OT corpus carries its vector, so this is read rather
+than assumed: **69,557 of 69,560 affected rows, 100%**. Better coverage than any
+other optional field in the data.
+
+| Reading | Share of findings |
+|---|---:|
+| Reachable over the network | 66.9% |
+| No credentials needed | 66.2% |
+| **Wormable** (network + no credentials + no user action) | **44.8%** |
+| Automatable (that, and low complexity) | 35.5% |
+| Physical access only | 1.8% |
+
+The severity pillar weighs the wormable share alongside peak CVSS and critical
+share, so two products with the same worst-case number no longer score the same.
+An index built before vectors were stored falls back to the old formula and says
+so, because silently weighing reachability as zero would be a claim about the
+product rather than about the data.
+
+`retrust ssvc --automatable auto` derives SSVC's Automatable from the vectors and
+shows its working. SSVC does not define that metric as a function of CVSS, so it
+is offered as a suggestion for a human to accept, never as the answer.
+
 ### Do the weights actually matter?
 
 The usual objection to any composite score is that its weights were invented.
@@ -898,8 +927,8 @@ BACK-TEST AT 2022-01-01
   products scored on pre-cutoff data only     5,839
 
   correlation                                rho
-  score vs CVEs after the cutoff          +0.432   p=0.001 (1,000 shuffles)
-  score vs CVEs before the cutoff         -0.049   (is the score just re-reading history?)
+  score vs CVEs after the cutoff          +0.438   p=0.001 (1,000 shuffles)
+  score vs CVEs before the cutoff         -0.035   (is the score just re-reading history?)
   CVEs before vs CVEs after               +0.183   (how much does volume persist?)
 ```
 
@@ -915,8 +944,8 @@ a vendor discloses, which is what the scoring rules deliberately refuse to
 penalise.
 
 The decomposition is printed for exactly this reason. The score barely tracks
-*past* CVE count (−0.049), so it is not simply re-reading history; it tracks
-*future* count (+0.432) because it tracks disclosure maturity. The sign is stable
+*past* CVE count (−0.035), so it is not simply re-reading history; it tracks
+*future* count (+0.438) because it tracks disclosure maturity. The sign is stable
 across every cutoff from 2019 to 2024, so it is a property of the outcome
 variable, not of one date.
 
@@ -934,28 +963,29 @@ against *others from the same manufacturer* should dissolve it. It does:
 MATCHED COHORT AT 2022-01-01  (each product compared only with others from the same vendor)
   vendors with enough products                   21
   products inside those vendors               3,814
-  pooled within-vendor rho                   +0.106   p=0.003 (within-vendor shuffles)
-  same, excluding Siemens                    -0.187   (leave-one-out)
-  vendors pointing each way               9 negative / 10 positive
+  pooled within-vendor rho                   +0.159   p=0.001 (within-vendor shuffles)
+  same, excluding Siemens                    +0.001   (leave-one-out)
+  vendors pointing each way               8 negative / 12 positive
 ```
 
 Three readings, in order:
 
 | Design | rho | What it means |
 |---|---:|---|
-| Pooled across all vendors | **+0.432** | confounded; disclosure practice varies by vendor |
-| Within vendor | **+0.106** | most of the effect *was* the vendor |
-| Within vendor, excluding Siemens | **−0.187** | one stratum carried the sign |
+| Pooled across all vendors | **+0.438** | confounded; disclosure practice varies by vendor |
+| Within vendor | **+0.159** | most of the effect *was* the vendor |
+| Within vendor, excluding Siemens | **+0.001** | nothing left once one vendor goes |
 
 Siemens is half the matched sample and bundles hundreds of upstream Linux CVEs
-into single advisories, so it dominates any count-based outcome. Dropping it
-reverses the sign, which is why the tool reports leave-one-out instead of a
-single number.
+into single advisories, so it dominates any count-based outcome. Drop it and
+what remains is **+0.001**: nothing at all. That is why the tool reports
+leave-one-out beside the pooled figure instead of a single number.
 
 The honest conclusion is not "the score predicts" or "the score fails". It is
-that **once the vendor is held constant the effect largely dissolves**, its
-residual is small, and its sign is not consistent between manufacturers (9 to
-10) or across cutoffs. With 3,814 products a small p-value means "not zero", not
+that **once the vendor is held constant the effect largely dissolves**, and
+removing the one vendor that is half the sample leaves nothing measurable. The
+residual is small and its sign is not consistent between manufacturers (8 to
+12) or across cutoffs. With 3,814 products a small p-value means "not zero", not
 "large enough to act on", and the report says so.
 
 Strata where every product scored alike, or none had a later CVE, are dropped

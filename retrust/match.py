@@ -163,6 +163,7 @@ class Finding:
     # and the evidence line says "not checked" rather than "parsed cleanly".
     decided: bool
     remediation: str = "unknown"   # vendor_fix / mitigation / workaround / none_available
+    vector: str | None = None      # the CVSS vector behind cvss, when given
 
 
 def findings(connection, resolution, version=None):
@@ -189,7 +190,8 @@ def findings(connection, resolution, version=None):
             decided = False            # no version given: nothing was decided
 
         rows = connection.execute(
-            "SELECT a.cve, a.cvss, a.cwe, a.remediation, e.epss, e.in_kev, e.ransomware"
+            "SELECT a.cve, a.cvss, a.cwe, a.remediation, a.vector,"
+            "       e.epss, e.in_kev, e.ransomware"
             " FROM affected a LEFT JOIN exploitation e ON e.cve = a.cve"
             " WHERE a.advisory_id = ? AND a.product_id = ?",
             (match.advisory_id, match.product_id)).fetchall()
@@ -205,5 +207,6 @@ def findings(connection, resolution, version=None):
                 in_kev=bool(row["in_kev"]), ransomware=bool(row["ransomware"]),
                 version_range=match.version_range, decided=decided,
                 remediation=row["remediation"] or "unknown",
+                vector=row["vector"],
             ))
     return out

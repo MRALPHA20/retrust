@@ -144,7 +144,7 @@ def _cohort(connection, cutoff, min_history, limit):
 def _findings(connection, vendor_key, name_key, cutoff, before=True):
     comparison = "<" if before else ">="
     rows = connection.execute(f"""
-        SELECT DISTINCT af.cve, af.cvss, af.cwe, af.remediation,
+        SELECT DISTINCT af.cve, af.cvss, af.cwe, af.remediation, af.vector,
                e.epss, e.in_kev, e.ransomware
         FROM product p
         JOIN advisory a  ON a.id = p.advisory_id
@@ -158,7 +158,11 @@ def _findings(connection, vendor_key, name_key, cutoff, before=True):
     return [Finding(cve=r["cve"], advisory_id="", cvss=r["cvss"], cwe=r["cwe"],
                     epss=r["epss"], in_kev=bool(r["in_kev"]),
                     ransomware=bool(r["ransomware"]), version_range="",
-                    decided=False, remediation=r["remediation"] or "unknown")
+                    decided=False, remediation=r["remediation"] or "unknown",
+                    # Carried so the back-test scores with the severity model the
+                    # tool actually ships. Omitting it silently fell back to the
+                    # pre-vector formula, which is a test of a score nobody runs.
+                    vector=r["vector"])
             for r in rows]
 
 

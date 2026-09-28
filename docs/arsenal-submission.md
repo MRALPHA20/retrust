@@ -43,10 +43,10 @@ not a result.
 `retrust eval` recomputes every accuracy figure from your own index: **93.1%** of
 26,958 version ranges decided deterministically, **99.9%** resolution precision
 and recall at n=4,000. And `retrust backtest` reports a finding against the
-tool's own interest. Correlation with later disclosure is **+0.432**, the wrong
+tool's own interest. Correlation with later disclosure is **+0.438**, the wrong
 direction, because the score tracks disclosure maturity rather than risk. Holding
-the manufacturer constant collapses it to +0.106, and to **−0.187** once the one
-vendor that is half the sample is dropped. The demo walks that confounder down
+the manufacturer constant collapses it to +0.159, and to **+0.001** once the one
+vendor that is half the sample is dropped: nothing at all. The demo walks that confounder down
 live, because a scoring tool that cannot show you its own failure mode has not
 earned the verdict it prints.
 
@@ -146,8 +146,10 @@ memorable rather than a demo they watched.
    1.000 against 0.162) and where it is weak (2.6% of young CVEs clear the
    threshold against 87.5% of old ones). This is the strongest beat in the set:
    two published methods, one corpus, an honest account of the gap.
-8. **The back-test** (6 min). Pooled +0.432, within-vendor +0.106, −0.187
-   leave-one-out. Walk the confounder down in three commands.
+8. **The back-test** (6 min). Pooled +0.438, within-vendor +0.159, +0.001
+   leave-one-out. Walk the confounder down in three commands: hold the vendor
+   constant and most of it goes, drop the vendor that is half the sample and
+   nothing measurable is left.
 9. **The gate** (2 min). `retrust batch bom.csv --fail-on unassessed` and its
    exit code blocking a CI job.
 
@@ -217,10 +219,10 @@ security tooling would undercut that on sight.
       coverage **93.12%**, decidable accuracy **94.71%**, round-trip precision
       and recall **99.88%** at n=4,000, order-number resolution **100%**
       (1,428/1,428).
-- [x] **Back-test re-run on the same fresh index**: pooled +0.432, within-vendor
-      **+0.106** (p=0.001), leave-one-out **−0.187**, 9 negative / 10 positive
-      across 21 vendors and 3,814 products. Every correlation quoted above
-      reproduces.
+- [x] **Back-test re-run after the scoring change**: pooled +0.438,
+      within-vendor **+0.159** (p=0.001), leave-one-out **+0.001**, 8 negative /
+      12 positive across 21 vendors and 3,814 products. Every correlation quoted
+      above reproduces.
 - [x] **Every command documented.** A check reads the live argument parser and
       confirms the README names every command, invents none, and shows no flag on
       a command that does not take it.

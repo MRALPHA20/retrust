@@ -20,6 +20,8 @@ would be worse than no tree.
 
 from dataclasses import dataclass
 
+from . import cvss
+
 # CERT/CC SSVC "Deployer Patch Application Priority" decision table v1.0.0.
 # Copyright 2026 Carnegie Mellon University, MIT (SEI)-style licence. Taken from
 # data/csv/ssvc/deployer_patch_application_priority_1_0_0.csv in CERTCC/SSVC.
@@ -119,6 +121,29 @@ def exploitation_for(finding):
 # An EPSS above this on a finding SSVC calls "none" is worth saying out loud:
 # the model rates exploitation likely while the tree has no evidence to act on.
 LIKELY = 0.5
+
+
+def suggest_automatable(findings):
+    """What the CVSS vectors say, for a buyer who would rather not guess.
+
+    SSVC's Automatable asks whether an attacker can automate reconnaissance
+    through exploitation. That is a judgement about the flaw and the standard
+    does not define it as a function of CVSS, so this is a suggestion drawn
+    from the vectors and labelled as one: "yes" when any finding is reachable
+    over the network, unauthenticated, needs no user action and is rated low
+    complexity. Returns (answer, why) so the caller can show its working, or
+    (None, why) when no vector was available to read.
+    """
+    vectors = [v for v in (cvss.parse(f.vector) for f in findings) if v]
+    if not vectors:
+        return None, "no CVSS vectors available, so this cannot be suggested"
+    automatable = [v for v in vectors if v.automatable]
+    if automatable:
+        return "yes", (f"{len(automatable)} of {len(vectors)} findings are "
+                       "network-reachable, unauthenticated, need no user action "
+                       "and are rated low complexity")
+    return "no", (f"none of {len(vectors)} findings combine network reach, no "
+                  "credentials, no user action and low complexity")
 
 
 def assess(findings, exposure, automatable, human_impact):

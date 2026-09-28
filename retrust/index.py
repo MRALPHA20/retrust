@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS order_number (
 
 CREATE TABLE IF NOT EXISTS affected (
     advisory_id TEXT, product_id TEXT, cve TEXT, cvss REAL, cwe TEXT,
-    remediation TEXT);
+    remediation TEXT,
+    vector TEXT);      -- the CVSS vector behind cvss, not just the number
 
 -- EPSS scores through time, for the LEV estimate. Only CVEs this corpus names
 -- are kept: the full feed is 250,000 CVEs a day and we would store 249,000 of
@@ -153,11 +154,11 @@ def build(db_path, csaf_root, progress=None):
 
             rows = [
                 (advisory.advisory_id, product_id, cve, data["cvss"], data["cwe"],
-                 data.get("remediation", "unknown"))
+                 data.get("remediation", "unknown"), data.get("vector"))
                 for cve, data in advisory.vulnerabilities.items()
                 for product_id in data["product_ids"]
             ]
-            connection.executemany("INSERT INTO affected VALUES (?,?,?,?,?,?)", rows)
+            connection.executemany("INSERT INTO affected VALUES (?,?,?,?,?,?,?)", rows)
             counts["cve_links"] += len(rows)
 
             if progress and counts["advisories"] % 500 == 0:

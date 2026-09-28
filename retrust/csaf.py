@@ -173,12 +173,20 @@ def _parse(path):
         status = vulnerability.get("product_status") or {}
         affected = list(status.get("known_affected") or [])
 
-        # The vendor's highest score, preferring the newest CVSS version it gives.
+        # The vendor's highest score, preferring the newest CVSS version it
+        # gives, and the vector that produced that same score. Taking the
+        # vector from a different entry would describe a different flaw.
         scores = vulnerability.get("scores") or []
-        per_version = [[float(b) for s in scores
-                        if (b := (s.get(k) or {}).get("baseScore")) is not None]
-                       for k in ("cvss_v4", "cvss_v3", "cvss_v2")]
-        cvss = next((max(v) for v in per_version if v), None)
+        rated = [[(float(b), (s.get(k) or {}).get("vectorString"))
+                  for s in scores
+                  if (b := (s.get(k) or {}).get("baseScore")) is not None]
+                 for k in ("cvss_v4", "cvss_v3", "cvss_v2")]
+        # Keyed on the score alone: max() over bare tuples would fall through to
+        # comparing the vectors when two entries tie, and a None vector beside a
+        # string one raises rather than picking either.
+        best = next((max(v, key=lambda rating: rating[0]) for v in rated if v),
+                    (None, None))
+        cvss, vector = best
 
         # CSAF remediation categories, best first. "vendor_fix" means a patch
         # exists; "mitigation"/"workaround" mean you must live with it; and
@@ -196,6 +204,7 @@ def _parse(path):
             "product_ids": affected,
             "cvss": cvss,
             "cwe": (vulnerability.get("cwe") or {}).get("id"),
+            "vector": vector,
             "remediation": remediation,
         }
 

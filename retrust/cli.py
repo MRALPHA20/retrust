@@ -1027,10 +1027,20 @@ def cmd_ssvc(args):
         print("SSVC needs findings to place on the tree, and there are none.")
         return 2
 
-    decisions = ssvc.assess(findings, args.exposure, args.automatable,
+    automatable, why = args.automatable, ""
+    if automatable == "auto":
+        automatable, why = ssvc.suggest_automatable(findings)
+        if automatable is None:
+            sys.exit("--automatable auto needs CVSS vectors and this index has "
+                     "none. Re-run `retrust ingest`, or answer yes/no yourself.")
+        print(f"Automatable suggested as {automatable.upper()}: {why}.\n"
+              "SSVC does not define this from CVSS, so check it before relying "
+              "on the result.\n")
+
+    decisions = ssvc.assess(findings, args.exposure, automatable,
                             args.human_impact)
     print(ssvc.format_report(assessment.product, decisions, args.exposure,
-                             args.automatable, args.human_impact,
+                             automatable, args.human_impact,
                              undecided=sum(1 for f in findings if not f.decided)))
 
     if args.json:
@@ -1039,7 +1049,8 @@ def cmd_ssvc(args):
               "in_kev": d.in_kev, "epss": d.epss, "cvss": d.cvss}
              for d in decisions],
             {"product": assessment.product, "findings": len(decisions),
-             "context": {"exposure": args.exposure, "automatable": args.automatable,
+             "context": {"exposure": args.exposure, "automatable": automatable,
+                         "automatable_source": "derived from CVSS vectors" if why else "given",
                          "human_impact": args.human_impact},
              "tree": "CERT/CC SSVC Deployer Patch Application Priority v1.0.0",
              "provenance": index.provenance(connection)}))
@@ -1252,8 +1263,10 @@ def build_parser():
     # invent the stakeholder context that SSVC exists to make explicit.
     p.add_argument("--exposure", required=True, choices=list(ssvc.EXPOSURE),
                    help="how reachable the system is")
-    p.add_argument("--automatable", required=True, choices=list(ssvc.AUTOMATABLE),
-                   help="can an attacker automate the attack on your deployment?")
+    p.add_argument("--automatable", required=True,
+                   choices=list(ssvc.AUTOMATABLE) + ["auto"],
+                   help="can an attacker automate the attack? 'auto' suggests "
+                        "one from the CVSS vectors and shows its working")
     p.add_argument("--human-impact", required=True, choices=list(ssvc.HUMAN_IMPACT),
                    help="safety and mission impact of a compromise")
     p.add_argument("--json", metavar="FILE",
