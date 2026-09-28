@@ -179,9 +179,11 @@ person actually signing the purchase order would rather use.
 retrust serve                  # http://127.0.0.1:8765
 ```
 
-Search, score, compare and vendor profiles as pages, rendered by the same
-function that writes the report, so the browser and the printed PDF cannot drift
-into showing one assessment two ways.
+Search, score, compare, alternatives and vendor profiles as pages, rendered by
+the same function that writes the report, so the browser and the printed PDF
+cannot drift into showing one assessment two ways. A scored product links
+onward -- its vendor's profile, its family's alternatives, a comparison started
+with it -- so the next question is a click rather than a form refilled.
 
 **It is deliberately small and deliberately local.** One standard-library HTTP
 server, no dependencies, and the security posture is the point rather than an
@@ -214,11 +216,12 @@ $ retrust shell
 │   1 │ Search the corpus       find a vendor, product or order number     │
 │   2 │ Score one product       verdict, pillars and the evidence          │
 │   3 │ Compare candidates      rank several for one decision              │
-│   4 │ Vendor profile          what the index holds on a manufacturer     │
-│   5 │ Score a BOM file        a CSV or JSON list of candidates           │
-│   6 │ Likely exploited        NIST LEV, has it probably happened already │
-│   7 │ SSVC decisions          what buying this commits you to            │
-│   8 │ What changed            re-score a saved result against today      │
+│   4 │ Alternatives            others in the family, scored the same way  │
+│   5 │ Vendor profile          what the index holds on a manufacturer     │
+│   6 │ Score a BOM file        a CSV or JSON list of candidates           │
+│   7 │ Likely exploited        NIST LEV, has it probably happened already │
+│   8 │ SSVC decisions          what buying this commits you to            │
+│   9 │ What changed            re-score a saved result against today      │
 │   s │ Save the last result    HTML, JSON or CSV                          │
 ├─────┼────────────────────────────────────────────────────────────────────┤
 │   q │ Quit                                                               │

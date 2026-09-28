@@ -74,7 +74,7 @@ a clone and one command builds it.
 
 ReTrust scores OT hardware for cyber risk *before* you buy it, working from
 public advisory data and keying on the manufacturer order number a purchase
-requisition already contains. Only 26 of 28,951 product entries in CISA's OT
+requisition already contains. Only 60 of 28,951 product entries in CISA's OT
 advisory corpus carry a CPE string, 0.21%, which is why conventional vulnerability
 tooling fails on industrial equipment; declared order numbers are 137× more
 available. Hard gates for known-exploited vulnerabilities and supply-chain
@@ -173,8 +173,8 @@ covers the pipeline, both ways of driving it, and how to read a verdict.
 and `retrust snapshot --restore` pins the exact data, so a station with no
 network still gives the same numbers. The snapshot is **7.3 MB** and already
 carries the LEV estimates and the EPSS history they were built from, so beat 7
-works offline without re-fetching anything. `smoke.sh` exercises all 67 command
-paths if something needs checking the morning of.
+works offline without re-fetching anything. `smoke.sh` runs 72 end-to-end
+checks across every command path if something needs checking the morning of.
 
 ---
 
@@ -258,6 +258,19 @@ canonical URL and says where it came from.
       within-vendor **+0.157** (p=0.001), leave-one-out **+0.019**, 6 negative /
       14 positive across 3,822 products. Every correlation quoted above
       reproduces.
+- [x] **Full-code audit closed out** (2026-09-28, two passes). Every confirmed
+      finding fixed, the low-severity tail included: the version parser no
+      longer reads `< V14 SP2` as "before version 2", a range's prose tail now
+      keeps the bound it names instead of matching every later version, ABB's
+      slash-separated VERS schemes decide 49 previously abstaining ranges,
+      CVSS v4's `UI:P`/`UI:A` are mapped so a flaw needing a tricked user no
+      longer counts as wormable, one malformed element no longer drops its
+      whole advisory, standards citations (`IEC 61131-3`) are no longer
+      harvested as order numbers, and a product's own board variants are no
+      longer offered as its "alternatives". One candidate fix was tried,
+      measured to cost more accuracy than it bought, and reverted with the
+      measurement recorded in the code -- which is the working style the
+      submission claims, applied to itself. 590 tests, 72 smoke checks.
 - [x] **Every command documented.** A check reads the live argument parser and
       confirms the README names every command, invents none, and shows no flag on
       a command that does not take it.

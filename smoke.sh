@@ -2,7 +2,7 @@
 # Exercise every command against the real index and report what broke.
 #
 # The test suite runs against fixtures in a temporary directory. This runs the
-# shipped commands against the real 27,234-product corpus, which is where the
+# shipped commands against the real 28,951-product corpus, which is where the
 # differences live: a query that is fine on three fixture rows and quadratic on
 # thirty thousand, an exit code that is right in-process and wrong through the
 # shell, output that only misaligns once a vendor name is long enough.
@@ -54,13 +54,16 @@ echo "== interactive shell =="
 printf 'q\n' | $RETRUST shell >/dev/null 2>&1 \
   && { echo "  ok    the menu opens and quits"; pass=$((pass+1)); } \
   || { echo "  FAIL  the menu opens and quits"; fail=$((fail+1)); failed+=("shell quit"); }
-printf '4\nMoxa\nq\n' | $RETRUST shell 2>&1 | grep -q "VENDOR DOSSIER" \
+printf '5\nMoxa\nq\n' | $RETRUST shell 2>&1 | grep -q "VENDOR DOSSIER" \
   && { echo "  ok    a menu choice runs its action"; pass=$((pass+1)); } \
   || { echo "  FAIL  a menu choice runs its action"; fail=$((fail+1)); failed+=("shell action"); }
-printf '4\nMoxa\nq\n' | $RETRUST shell 2>&1 | grep -q 'retrust vendor Moxa' \
+printf '5\nMoxa\nq\n' | $RETRUST shell 2>&1 | grep -q 'retrust vendor Moxa' \
   && { echo "  ok    it prints the equivalent command"; pass=$((pass+1)); } \
   || { echo "  FAIL  it prints the equivalent command"; fail=$((fail+1)); failed+=("shell echo"); }
-printf '9\nq\n' | $RETRUST shell 2>&1 | grep -q "not on the menu" \
+printf '4\nMoxa\nEDS-405A\n\nq\n' | $RETRUST shell 2>&1 | grep -q 'retrust alternatives' \
+  && { echo "  ok    alternatives is on the menu"; pass=$((pass+1)); } \
+  || { echo "  FAIL  alternatives is on the menu"; fail=$((fail+1)); failed+=("shell alternatives"); }
+printf '0\nq\n' | $RETRUST shell 2>&1 | grep -q "not on the menu" \
   && { echo "  ok    a wrong choice does not end it"; pass=$((pass+1)); } \
   || { echo "  FAIL  a wrong choice does not end it"; fail=$((fail+1)); failed+=("shell bad choice"); }
 

@@ -35,7 +35,8 @@ RANK = {"PREFER": 0, "CONDITIONAL": 1}
 class Option:
     """One candidate, with how it relates to the product asked about."""
 
-    product: str
+    product: str         # display name, as the assessment titles it
+    name: str            # catalogue name, as the advisory spells it
     verdict: str
     score: float
     shared: str          # the leading name tokens it has in common
@@ -144,7 +145,7 @@ def find(connection, vendor, product, assess, limit=8, exclude=()):
             skipped["no evidence"] += 1
             continue
         options.append(Option(
-            product=assessment.product, verdict=assessment.verdict,
+            product=assessment.product, name=name, verdict=assessment.verdict,
             score=assessment.score, gates=list(assessment.gates),
             cves=assessment.findings_count,
             shared=" ".join(product.split()[:depth])))

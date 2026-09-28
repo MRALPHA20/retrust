@@ -21,7 +21,8 @@ import http.server
 import urllib.parse
 from datetime import date
 
-from . import report, search
+from . import alternatives, report, search
+from .index import normalize_name
 
 # Bound to loopback by default. Serving to anything else is opt-in, announced,
 # and still read-only -- but it is the user's decision, not a default.
@@ -85,21 +86,24 @@ button{margin-top:.8rem;padding:.5rem 1.4rem;font:inherit;cursor:pointer;
 .empty{color:var(--soft);font-size:.92rem}
 """
 
-NAV = ('<nav class="nav"><a href="/">Search</a><a href="/compare">Compare</a>'
+NAV = ('<nav class="nav"><a href="/">Search</a><a href="/score">Score</a>'
+       '<a href="/compare">Compare</a><a href="/alternatives">Alternatives</a>'
        '<a href="/vendor">Vendor</a><a href="/about">About</a></nav>')
 
 
-def _search_page(connection, query):
+def _search_page(connection, stats, query):
     """The landing page: a box, and what the corpus holds that matches it."""
     form = (
         '<form method="get" action="/"><label for="q">Product, vendor or order '
         f'number</label><input type="text" id="q" name="q" value="{_esc(query)}" '
         'autofocus><button type="submit">Search</button></form>')
     if not query:
+        # The counts are the index's own, so this page cannot go stale the way
+        # a number typed in once already did.
         return _page("ReTrust", "<h1>Search the corpus</h1>" + form +
-                     '<p class="empty">27,234 product entries under 814 vendor '
-                     "spellings. Scoring needs the spelling the advisory used, so "
-                     "start here.</p>")
+                     f'<p class="empty">{stats["products"]:,} product entries '
+                     f'under {stats["vendors"]:,} vendor spellings. Scoring '
+                     "needs the spelling the advisory used, so start here.</p>")
 
     hits = search.products(connection, query, limit=MAX_RESULTS)
     rows = "".join(
@@ -129,6 +133,21 @@ def _score_page(connection, assess, context, vendor, product, version):
     body = ("<h1>Score a product</h1>" + _score_form(vendor, product, version)
             + report.body(
                 [(assessment, resolution, findings)], weights=context["weights"]))
+    if resolution.resolved:
+        # The next two questions a buyer asks, one click away rather than a
+        # form to refill: who makes this, and what else is in the family.
+        named = resolution.matches[0]
+        query = (f"vendor={urllib.parse.quote(named.vendor)}"
+                 f"&amp;product={urllib.parse.quote(named.name)}")
+        candidate = "|".join(filter(None, [named.vendor, named.name, version]))
+        body += (f'<p class="empty"><a href="/vendor?name='
+                 f'{urllib.parse.quote(named.vendor)}">Vendor profile: '
+                 f'{_esc(named.vendor)}</a> &middot; '
+                 f'<a href="/alternatives?{query}'
+                 + (f"&amp;version={urllib.parse.quote(version)}" if version else "")
+                 + '">Alternatives in this family</a> &middot; '
+                 f'<a href="/compare?c={urllib.parse.quote(candidate)}">'
+                 'Start a comparison with this</a></p>')
     if not resolution.resolved:
         suggestions = search.suggest(connection, vendor=vendor, product=product)
         rows = "".join(
@@ -177,6 +196,76 @@ def _compare_page(assess, context, candidates):
                  f"{len(blocks)} candidate(s)")
 
 
+def _alternatives_page(connection, assess, vendor, product, version):
+    """Same-family candidates, with the same caveat the terminal prints."""
+    form = (
+        '<form method="get" action="/alternatives">'
+        f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
+        f'<label for="p" style="margin-top:.8rem">Product</label>'
+        f'<input type="text" id="p" name="product" value="{_esc(product)}">'
+        f'<label for="f" style="margin-top:.8rem">Firmware version (optional, '
+        f'scores the subject only)</label>'
+        f'<input type="text" id="f" name="version" value="{_esc(version)}">'
+        '<button type="submit">Find alternatives</button></form>')
+    if not (vendor and product):
+        return _page("Alternatives", "<h1>Alternatives in the family</h1>" + form +
+                     '<p class="empty">Other products from the same vendor '
+                     "family, scored the same way. Candidates for an engineer "
+                     "to evaluate, never a recommendation to substitute.</p>")
+
+    subject, resolution, _ = assess(vendor, product, version or None)
+    named = resolution.matches[0] if resolution.matches else None
+    family_vendor = named.vendor if named else vendor
+    family_name = named.name if named else product
+    body = "<h1>Alternatives in the family</h1>" + form
+    shown = "no score" if subject.score is None else f"{subject.score}/100"
+    body += (f'<div class="tw"><p><b>{_esc(subject.product)}</b> &mdash; '
+             f'{_esc(subject.verdict)}, {shown}.</p></div>')
+
+    options, skipped = alternatives.find(
+        connection, family_vendor, family_name,
+        lambda v, p: assess(v, p), limit=8,
+        exclude={normalize_name(m.name) for m in resolution.matches})
+    body += f'<p class="empty">{_esc(alternatives.CAVEAT)}</p>'
+    if version:
+        body += ('<p class="empty">These are scored without a firmware '
+                 f'version, while the product above was scored at '
+                 f'{_esc(version)}. The two columns are not on equal terms: '
+                 'check each candidate again once you know which firmware '
+                 'you would buy.</p>')
+
+    if options:
+        rows = "".join(
+            f'<tr><td><a class="plain" href="/score?vendor='
+            f'{urllib.parse.quote(family_vendor)}&amp;product='
+            f'{urllib.parse.quote(o.name)}">'
+            f'{_esc(o.product)}</a></td>'
+            f'<td style="color:{report.VERDICT_COLOR.get(o.verdict, report.INERT)};'
+            f'font-weight:700">{_esc(o.verdict)}</td>'
+            f'<td class="n">{o.score:.1f}</td><td class="n">{o.cves}</td></tr>'
+            for o in options)
+        body += ('<div class="tw"><table><thead><tr><th>Candidate</th>'
+                 '<th>Verdict</th><th>Score</th><th>CVEs</th></tr></thead>'
+                 f'<tbody>{rows}</tbody></table></div>')
+        if subject.score is not None:
+            better = sum(1 for o in options if o.score > subject.score)
+            body += (f'<p>{better} of {len(options)} scored above '
+                     f'{_esc(subject.product)} ({subject.score}/100).</p>')
+    else:
+        body += ('<p class="empty">No product in this family scored better '
+                 'and could also be assessed.</p>')
+    for reason, count in (skipped or {}).items():
+        if count:
+            body += (f'<p class="empty">{count} family member(s) skipped: '
+                     f'{_esc(reason)}. '
+                     + ("Disqualified by a hard gate, so not offered as safer."
+                        if reason == "gated" else
+                        "Absence of advisories is not evidence of safety, so "
+                        "not offered.") + '</p>')
+    return _page(f"Alternatives: {subject.product}", body,
+                 f"{len(options)} candidate(s)")
+
+
 def _vendor_page(connection, dossier, context, name):
     form = ('<form method="get" action="/vendor"><label for="n">Manufacturer</label>'
             f'<input type="text" id="n" name="name" value="{_esc(name)}">'
@@ -189,6 +278,9 @@ def _vendor_page(connection, dossier, context, name):
     # rather than restyled. One renderer, two surfaces, nothing to drift.
     body = (f"<h1>Vendor profile</h1>{form}<pre class=\"tw\" style=\"white-space:pre-wrap\">"
             f"{_esc(dossier.format_report(profile))}</pre>")
+    if profile.known:
+        body += (f'<p class="empty"><a href="/?q={urllib.parse.quote(name)}">'
+                 "Search this vendor's products</a></p>")
     return _page(f"Vendor: {name}", body)
 
 
@@ -222,13 +314,16 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
     def page_for(path, params):
         first = lambda key: (params.get(key) or [""])[0][:MAX_QUERY]
         if path == "/":
-            return _search_page(connection, first("q"))
+            return _search_page(connection, stats, first("q"))
         if path == "/score":
             return _score_page(connection, assess, context, first("vendor"),
                                first("product"), first("version"))
         if path == "/compare":
             return _compare_page(assess, context,
                                  [c[:MAX_QUERY] for c in params.get("c", [])])
+        if path == "/alternatives":
+            return _alternatives_page(connection, assess, first("vendor"),
+                                      first("product"), first("version"))
         if path == "/vendor":
             return _vendor_page(connection, dossier, context, first("name"))
         if path == "/about":

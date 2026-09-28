@@ -179,7 +179,7 @@ def _subject(verdict="AVOID", value=39.1):
 
 
 def test_the_caveat_comes_before_any_suggestion():
-    option = alternatives.Option("Testco TestPLC 9000 Beta", "PREFER", 80.0,
+    option = alternatives.Option("Testco TestPLC 9000 Beta", "TestPLC 9000 Beta", "PREFER", 80.0,
                                  "TestPLC 9000", [], 3)
     text = _flat(alternatives.format_report(_subject(), [option], _nothing_skipped()))
     assert text.index("not a recommendation to substitute") < text.index("CANDIDATE")
@@ -200,7 +200,7 @@ def test_an_empty_family_says_so_without_inventing_one():
 
 def test_a_supplied_version_is_flagged_as_an_unequal_comparison():
     """Candidates are scored without a version; the subject was scored with one."""
-    option = alternatives.Option("Testco TestPLC 9000 Beta", "PREFER", 80.0,
+    option = alternatives.Option("Testco TestPLC 9000 Beta", "TestPLC 9000 Beta", "PREFER", 80.0,
                                  "TestPLC 9000", [], 3)
     text = _flat(alternatives.format_report(_subject(), [option], _nothing_skipped(), version="3.1.6"))
     assert "not on equal terms" in text
@@ -209,12 +209,12 @@ def test_a_supplied_version_is_flagged_as_an_unequal_comparison():
 
 
 def test_no_version_means_no_spurious_warning():
-    option = alternatives.Option("X", "PREFER", 80.0, "TestPLC", [], 3)
+    option = alternatives.Option("X", "X", "PREFER", 80.0, "TestPLC", [], 3)
     assert "equal terms" not in _flat(alternatives.format_report(_subject(), [option], _nothing_skipped()))
 
 
 def test_the_comparison_line_counts_only_genuine_improvements():
-    options = [alternatives.Option("Better", "PREFER", 80.0, "T", [], 3),
-               alternatives.Option("Worse", "CONDITIONAL", 30.0, "T", [], 3)]
+    options = [alternatives.Option("Better", "Better", "PREFER", 80.0, "T", [], 3),
+               alternatives.Option("Worse", "Worse", "CONDITIONAL", 30.0, "T", [], 3)]
     assert "1 of 2 scored above" in _flat(alternatives.format_report(
         _subject(value=50.0), options, _nothing_skipped()))

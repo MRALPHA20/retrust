@@ -116,7 +116,9 @@ $ retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</pre></l
   <p class="qs-alt"><b>Would rather be asked than type flags?</b>
      <code>retrust shell</code> gives you a menu covering everything here, prints
      the equivalent command each time, and saves the result as HTML, JSON or CSV
-     when you are done.</p>
+     when you are done. <b>Prefer a browser?</b> <code>retrust serve</code> puts
+     search, scoring, comparison, alternatives and vendor profiles on
+     <code>127.0.0.1:8765</code>, local to your machine and read-only.</p>
   <table class="qs-legend">
     <tr>
       <td><span class="v-prefer">PREFER</span> &ge;70</td>
@@ -321,11 +323,12 @@ asked.</p>
 │   1 │ Search the corpus       find a vendor, product or order number     │
 │   2 │ Score one product       verdict, pillars and the evidence          │
 │   3 │ Compare candidates      rank several for one decision              │
-│   4 │ Vendor profile          what the index holds on a manufacturer     │
-│   5 │ Score a BOM file        a CSV or JSON list of candidates           │
-│   6 │ Likely exploited        NIST LEV, has it probably happened already │
-│   7 │ SSVC decisions          what buying this commits you to            │
-│   8 │ What changed            re-score a saved result against today      │
+│   4 │ Alternatives            others in the family, scored the same way  │
+│   5 │ Vendor profile          what the index holds on a manufacturer     │
+│   6 │ Score a BOM file        a CSV or JSON list of candidates           │
+│   7 │ Likely exploited        NIST LEV, has it probably happened already │
+│   8 │ SSVC decisions          what buying this commits you to            │
+│   9 │ What changed            re-score a saved result against today      │
 │   s │ Save the last result    HTML, JSON or CSV                          │
 ├─────┼────────────────────────────────────────────────────────────────────┤
 │   q │ Quit                                                               │

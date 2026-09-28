@@ -769,6 +769,23 @@ def _shell_actions(connection, context, args):
                                   "weights": context["weights"],
                                   "provenance": index.provenance(connection)})
 
+    def do_alternatives(result, reader):
+        if not (asked := _ask_product(reader)):
+            return None
+        vendor, product, version = asked
+        shell.echo_command(["alternatives", "--vendor", vendor,
+                            "--product", product]
+                           + (["--version", version] if version else []))
+        print("Scoring the family takes a moment ...")
+        subject, resolution, options, skipped = _find_alternatives(
+            connection, context, vendor, product, version)
+        if options is None:
+            print(f"{subject.product}: {resolution.reason or 'nothing to compare against'}")
+            return None
+        print(alternatives.format_report(subject, options, skipped,
+                                         version=version))
+        return None
+
     def do_vendor(result, reader):
         name = shell.ask("Manufacturer", required=True, reader=reader)
         if name is shell.CANCELLED:
@@ -879,11 +896,12 @@ def _shell_actions(connection, context, args):
         "1": ("Search the corpus", "find a vendor, product or order number", do_search),
         "2": ("Score one product", "verdict, pillars and the evidence", do_score),
         "3": ("Compare candidates", "rank several for one decision", do_compare),
-        "4": ("Vendor profile", "what the index holds on a manufacturer", do_vendor),
-        "5": ("Score a BOM file", "a CSV or JSON list of candidates", do_batch),
-        "6": ("Likely exploited", "NIST LEV, has it probably happened already", do_lev),
-        "7": ("SSVC decisions", "what buying this commits you to", do_ssvc),
-        "8": ("What changed", "re-score a saved result against today", do_diff),
+        "4": ("Alternatives", "others in the family, scored the same way", do_alternatives),
+        "5": ("Vendor profile", "what the index holds on a manufacturer", do_vendor),
+        "6": ("Score a BOM file", "a CSV or JSON list of candidates", do_batch),
+        "7": ("Likely exploited", "NIST LEV, has it probably happened already", do_lev),
+        "8": ("SSVC decisions", "what buying this commits you to", do_ssvc),
+        "9": ("What changed", "re-score a saved result against today", do_diff),
         "s": ("Save the last result", "HTML, JSON or CSV", do_save),
     }
 
@@ -1112,28 +1130,43 @@ def cmd_ssvc(args):
                     for d in decisions) else 0
 
 
+def _find_alternatives(connection, context, vendor, product, version=None,
+                       order_number=None, limit=8):
+    """Resolve a product, then score its family. One path for flag and menu.
+
+    Returns (subject, resolution, options, skipped); options is None when the
+    request resolved to nothing there is a family for.
+    """
+    subject, resolution, _ = _assess(
+        connection, vendor, product, version, order_number, context=context)
+
+    # Prefer the name the advisory uses: it is the one the family shares.
+    named = resolution.matches[0] if resolution.matches else None
+    family_vendor = named.vendor if named else vendor
+    family_name = named.name if named else product
+    if not (family_vendor and family_name):
+        return subject, resolution, None, None
+
+    options, skipped = alternatives.find(
+        connection, family_vendor, family_name,
+        lambda v, p: _assess(connection, v, p, None, None, context=context),
+        limit=limit,
+        # Every row the request resolved to is the product asked about, under
+        # whatever spelling its advisory used. None of them is an alternative.
+        exclude={index.normalize_name(m.name) for m in resolution.matches})
+    return subject, resolution, options, skipped
+
+
 def cmd_alternatives(args):
     """Other products in the same vendor family, scored the same way."""
     connection = _open(args.db)
     context = _context(config_path=args.config)
-    subject, resolution, _ = _assess(
-        connection, args.vendor, args.product, args.version, args.order_number,
-        context=context)
-
-    # Prefer the name the advisory uses: it is the one the family shares.
-    vendor = resolution.matches[0].vendor if resolution.matches else args.vendor
-    name = resolution.matches[0].name if resolution.matches else args.product
-    if not (vendor and name):
+    subject, resolution, options, skipped = _find_alternatives(
+        connection, context, args.vendor, args.product, args.version,
+        args.order_number, limit=args.limit)
+    if options is None:
         print(f"{subject.product}: {resolution.reason or 'nothing to compare against'}")
         return 1
-
-    options, skipped = alternatives.find(
-        connection, vendor, name,
-        lambda v, p: _assess(connection, v, p, None, None, context=context),
-        limit=args.limit,
-        # Every row the request resolved to is the product asked about, under
-        # whatever spelling its advisory used. None of them is an alternative.
-        exclude={index.normalize_name(m.name) for m in resolution.matches})
     print(alternatives.format_report(subject, options, skipped,
                                      version=args.version))
     return 0 if options else 1

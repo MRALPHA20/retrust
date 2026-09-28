@@ -225,7 +225,7 @@ def test_overview_describes_an_index_that_has_data(db_path):
 def test_overview_counts_product_entries_rather_than_claiming_distinct_products(tmp_path):
     """The same product under three advisories is three rows, not three products.
 
-    index.stats counts rows, which on the real corpus is 27,234 against 11,644
+    index.stats counts rows, which on the real corpus is 28,951 against 11,648
     distinct vendor-and-name pairs. Calling that "products" in the first thing a
     new user reads would overstate the index by a factor of two.
     """

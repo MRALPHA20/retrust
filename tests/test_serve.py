@@ -91,11 +91,27 @@ def _get(handler, path):
 
 @pytest.mark.parametrize("path", [
     "/", "/?q=test", "/score?vendor=Testco&product=TestPLC",
-    "/compare?c=Testco%7CTestPLC", "/vendor?name=Testco", "/about"])
+    "/compare?c=Testco%7CTestPLC", "/vendor?name=Testco", "/about",
+    "/alternatives", "/alternatives?vendor=Testco&product=TestPLC"])
 def test_every_route_answers(handler, path):
     status, _, body = _get(handler, path)
     assert status == 200
     assert body.startswith("<!doctype html>")
+
+
+def test_the_landing_counts_come_from_the_index(handler, db):
+    """The corpus size on the landing page is measured, not typed in once."""
+    stats = index.stats(db)
+    _, _, body = _get(handler, "/")
+    assert f'{stats["products"]:,} product entries' in body
+    assert f'{stats["vendors"]:,} vendor spellings' in body
+
+
+def test_the_alternatives_page_keeps_the_caveat(handler):
+    """The one paragraph that must survive any restyling."""
+    for path in ("/alternatives", "/alternatives?vendor=Testco&product=TestPLC"):
+        _, _, body = _get(handler, path)
+        assert "recommendation to substitute" in body
 
 
 def test_an_unknown_path_is_a_clean_404(handler):
