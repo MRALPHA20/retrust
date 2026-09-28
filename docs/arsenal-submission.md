@@ -96,7 +96,7 @@ usable on a real purchase order.
 | Category (secondary) | Vulnerability Assessment / Supply Chain |
 | Open source | Yes, Apache-2.0 |
 | Source repository | https://github.com/MRALPHA20/retrust |
-| Documentation | `docs/ReTrust-Guide.pdf`, an 11-page printable user guide, plus a long `README.md` and `docs/build-plan.html`. Arsenal's minimum is three pages |
+| Documentation | `docs/ReTrust-Guide.pdf`, an 11-page printable user guide; a short diagrammed `README.md`; and `docs/manual.md`, the full manual. Arsenal's minimum is three pages |
 | Runtime dependencies | None beyond Python 3.10+ |
 | Install | `git clone` then `python3 -m retrust.cli setup` |
 | Network required at demo time | No; runs offline against a pinned snapshot |
@@ -286,8 +286,9 @@ canonical URL and says where it came from.
       confirms the README names every command, invents none, and shows no flag on
       a command that does not take it.
 - [x] **Documentation clears the three-page minimum several times over.** An
-      11-page printable guide (`docs/ReTrust-Guide.pdf`), a README covering every
-      command, and the build plan. The guide is printed from `docs/user-guide.html`
+      11-page printable guide (`docs/ReTrust-Guide.pdf`), a short README with a
+      pipeline diagram naming every command, and `docs/manual.md` -- the full
+      manual. The guide is printed from `docs/user-guide.html`
       by `make guide`, so it is rebuilt from source rather than hand-maintained
       and cannot drift from the figures it quotes.
 - [ ] Print 30 to 50 copies of the guide for the station.
