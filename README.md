@@ -19,7 +19,7 @@ $ retrust compare \
 
 CANDIDATE                                 VERDICT       SCORE  CVES  ROBUST  NOTES
 ABB AC 800M                               PREFER         82.2    10    93%
-Schneider Electric Modicon M340           PREFER         77.0    21    75%
+Schneider Electric Modicon M340           PREFER         76.4    49    80%
 Moxa EDS-405A                             CONDITIONAL    56.1    10    77%
 Rockwell Automation ControlLogix          CONDITIONAL    54.8    35    98%
 Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.8  1011   gated  Known exploited vulnerability
@@ -31,21 +31,21 @@ Hikvision IP Camera                       AVOID           --      -     -     Na
 ## Why order numbers, not CPE
 
 Every conventional vulnerability tool joins products to CVEs through CPE
-strings. Measured across all 27,234 product entries in CISA's OT advisory
+strings. Measured across all 28,951 product entries in CISA's OT advisory
 corpus:
 
 | Identifier available on the product entry | Entries | Share |
 |---|---:|---:|
-| **CPE**, the join key conventional scanners use | 26 | **0.10%** |
-| Order number the advisory declares (`model_numbers` / `skus`) | 8,204 | 30.12% |
-| Order number ReTrust recovers from the product name | 1,384 | 5.08% |
-| **Order number, either** (what ReTrust keys on) | **9,588** | **35.21%** |
-| Vendor name | 27,231 | 99.99% |
-| Product name | 27,234 | 100.00% |
+| **CPE**, the join key conventional scanners use | 60 | **0.21%** |
+| Order number the advisory declares (`model_numbers` / `skus`) | 8,211 | 28.36% |
+| Order number ReTrust recovers from the product name | 1,384 | 4.78% |
+| **Order number, either** (what ReTrust keys on) | **9,595** | **33.14%** |
+| Vendor name | 28,947 | 99.99% |
+| Product name | 28,951 | 100.00% |
 
 CPE is effectively absent from ICS advisory data, which is why general-purpose
-tooling performs so poorly on OT gear. Declared order numbers are **316×** more
-available, and the ones ReTrust recovers from product names bring that to 369×.
+tooling performs so poorly on OT gear. Declared order numbers are **137×** more
+available, and the ones ReTrust recovers from product names bring that to 160×.
 An order number is also what a buyer types onto a requisition in the first
 place, so `6ES7518-4AX00-1AB0` is a key both sides of the transaction already
 use. ReTrust keys on those instead.
@@ -64,11 +64,10 @@ never have to take these numbers on trust.
 
 | Measurement | Result |
 |---|---|
-| Version ranges decided deterministically | **93.1%** of 26,958 |
-| ...of ranges that *can* be decided from a version string | **94.7%** |
+| Version ranges decided deterministically | **89.1%** of 28,651 |
+| ...of ranges that *can* be decided from a version string | **90.5%** |
 | Product resolution precision (n = 4,000) | **99.9%** |
 | Product resolution recall (n = 4,000) | **99.9%** |
-| Resolution by order number | **100%** (1,428 / 1,428) |
 
 Two things that keep these honest:
 
@@ -208,7 +207,7 @@ which is how corruption gets in.
 $ retrust shell
 
 ┌─ ReTrust ── INTERACTIVE SESSION ─────────────────────────────────────────┐
-│  HOLDS     3,937 advisories, 27,234 product entries, 814 vendors         │
+│  HOLDS     3,937 advisories, 28,951 product entries, 814 vendors         │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌─────┬────────────────────────────────────────────────────────────────────┐
@@ -255,7 +254,7 @@ session, and Ctrl-C returns to the menu.
 
 ## Find what you are looking for
 
-The corpus names 27,234 product entries under 814 vendor spellings, and scoring
+The corpus names 28,951 product entries under 814 vendor spellings, and scoring
 needs the spelling the advisory used. `retrust search` is how you get it.
 
 ```
@@ -982,7 +981,7 @@ BACK-TEST AT 2022-01-01
   products scored on pre-cutoff data only     5,839
 
   correlation                                rho
-  score vs CVEs after the cutoff          +0.438   p=0.001 (1,000 shuffles)
+  score vs CVEs after the cutoff          +0.453   p=0.001 (1,000 shuffles)
   score vs CVEs before the cutoff         -0.035   (is the score just re-reading history?)
   CVEs before vs CVEs after               +0.183   (how much does volume persist?)
 ```
@@ -1000,7 +999,7 @@ penalise.
 
 The decomposition is printed for exactly this reason. The score barely tracks
 *past* CVE count (−0.035), so it is not simply re-reading history; it tracks
-*future* count (+0.438) because it tracks disclosure maturity. The sign is stable
+*future* count (+0.453) because it tracks disclosure maturity. The sign is stable
 across every cutoff from 2019 to 2024, so it is a property of the outcome
 variable, not of one date.
 
@@ -1018,29 +1017,29 @@ against *others from the same manufacturer* should dissolve it. It does:
 MATCHED COHORT AT 2022-01-01  (each product compared only with others from the same vendor)
   vendors with enough products                   21
   products inside those vendors               3,814
-  pooled within-vendor rho                   +0.159   p=0.001 (within-vendor shuffles)
-  same, excluding Siemens                    +0.001   (leave-one-out)
-  vendors pointing each way               8 negative / 12 positive
+  pooled within-vendor rho                   +0.157   p=0.001 (within-vendor shuffles)
+  same, excluding Siemens                    +0.019   (leave-one-out)
+  vendors pointing each way               6 negative / 14 positive
 ```
 
 Three readings, in order:
 
 | Design | rho | What it means |
 |---|---:|---|
-| Pooled across all vendors | **+0.438** | confounded; disclosure practice varies by vendor |
-| Within vendor | **+0.159** | most of the effect *was* the vendor |
-| Within vendor, excluding Siemens | **+0.001** | nothing left once one vendor goes |
+| Pooled across all vendors | **+0.453** | confounded; disclosure practice varies by vendor |
+| Within vendor | **+0.157** | most of the effect *was* the vendor |
+| Within vendor, excluding Siemens | **+0.019** | nothing left once one vendor goes |
 
 Siemens is half the matched sample and bundles hundreds of upstream Linux CVEs
 into single advisories, so it dominates any count-based outcome. Drop it and
-what remains is **+0.001**: nothing at all. That is why the tool reports
+what remains is **+0.019**: nothing measurable. That is why the tool reports
 leave-one-out beside the pooled figure instead of a single number.
 
 The honest conclusion is not "the score predicts" or "the score fails". It is
 that **once the vendor is held constant the effect largely dissolves**, and
 removing the one vendor that is half the sample leaves nothing measurable. The
-residual is small and its sign is not consistent between manufacturers (8 to
-12) or across cutoffs. With 3,814 products a small p-value means "not zero", not
+residual is small and its sign is not consistent between manufacturers (6 to
+14) or across cutoffs. With 3,814 products a small p-value means "not zero", not
 "large enough to act on", and the report says so.
 
 Strata where every product scored alike, or none had a later CVE, are dropped

@@ -93,7 +93,7 @@ ol.qs pre{margin:1.5mm 0 0;font-size:8.2pt;padding:2.5mm 3mm}
   <dl>
     <dt>Guide</dt><dd>How it works, how to run it, how to use it</dd>
     <dt>Version</dt><dd>0.1.0 &middot; Apache-2.0 &middot; Python 3.10+</dd>
-    <dt>Corpus</dt><dd>3,937 CISA OT advisories &middot; 27,234 product entries &middot; 814 vendors</dd>
+    <dt>Corpus</dt><dd>3,937 CISA OT advisories &middot; 28,951 product entries &middot; 814 vendors</dd>
   </dl>
 </div>
 
@@ -144,22 +144,22 @@ reproducible and a demonstration never depends on the network.</p>
 <h3>Why order numbers, and not CPE</h3>
 
 <p>Every conventional vulnerability tool joins products to CVEs through CPE strings.
-Measured across all 27,234 product entries in CISA's OT advisory corpus:</p>
+Measured across all 28,951 product entries in CISA's OT advisory corpus:</p>
 
 <table>
   <thead><tr><th>Identifier on the product entry</th><th>Entries</th><th>Share</th></tr></thead>
   <tbody>
-    <tr><td><b>CPE</b>, the join key conventional scanners use</td><td class="n">26</td><td class="n">0.10%</td></tr>
-    <tr><td>Order number the advisory declares</td><td class="n">8,204</td><td class="n">30.12%</td></tr>
-    <tr><td>Order number ReTrust recovers from the product name</td><td class="n">1,384</td><td class="n">5.08%</td></tr>
-    <tr><td><b>Order number, either</b> &mdash; what ReTrust keys on</td><td class="n">9,588</td><td class="n">35.21%</td></tr>
-    <tr><td>Vendor name</td><td class="n">27,231</td><td class="n">99.99%</td></tr>
+    <tr><td><b>CPE</b>, the join key conventional scanners use</td><td class="n">60</td><td class="n">0.21%</td></tr>
+    <tr><td>Order number the advisory declares</td><td class="n">8,211</td><td class="n">28.36%</td></tr>
+    <tr><td>Order number ReTrust recovers from the product name</td><td class="n">1,384</td><td class="n">4.78%</td></tr>
+    <tr><td><b>Order number, either</b> &mdash; what ReTrust keys on</td><td class="n">9,595</td><td class="n">33.14%</td></tr>
+    <tr><td>Vendor name</td><td class="n">28,947</td><td class="n">99.99%</td></tr>
   </tbody>
 </table>
 
 <p>CPE is effectively absent from industrial advisory data, which is why
 general-purpose tooling performs so badly on OT gear. Declared order numbers are
-<b>316&times;</b> more available, and <span class="id">6ES7518-4AX00-1AB0</span>
+<b>137&times;</b> more available, and <span class="id">6ES7518-4AX00-1AB0</span>
 is what a buyer types onto a requisition in the first place. Run
 <code>retrust eval</code> to recompute that table from your own database.</p>
 
@@ -269,7 +269,7 @@ connection.</p>
   [3/4] FIRST EPSS scores ...
         11.5 MB
   [4/4] Build the local index ...
-        3,937 advisories, 27,234 products, KEV 1,726, EPSS 12,031
+        3,937 advisories, 28,951 products, KEV 1,726, EPSS 12,031
 
 Ready.</pre>
 
@@ -342,7 +342,7 @@ Ctrl-C returns to the menu.</p>
 
 <h3>Finding the name to type</h3>
 
-<p>The database holds 27,234 product entries under 814 vendor spellings, and
+<p>The database holds 28,951 product entries under 814 vendor spellings, and
 scoring needs the spelling the advisory used.</p>
 
 <pre class="cmd">$ retrust search S7-1500</pre>
@@ -477,11 +477,11 @@ a gate rather than a report somebody has to read.</p>
 <table>
   <thead><tr><th>Measurement</th><th>Result</th></tr></thead>
   <tbody>
-    <tr><td>Version ranges decided deterministically</td><td class="n">93.1% of 26,958</td></tr>
-    <tr><td>&hellip; of ranges that <i>can</i> be decided from a version string</td><td class="n">94.7%</td></tr>
+    <tr><td>Version ranges decided deterministically</td><td class="n">89.1% of 28,651</td></tr>
+    <tr><td>&hellip; of ranges that <i>can</i> be decided from a version string</td><td class="n">90.5%</td></tr>
     <tr><td>Product resolution precision (n = 4,000)</td><td class="n">99.9%</td></tr>
     <tr><td>Product resolution recall (n = 4,000)</td><td class="n">99.9%</td></tr>
-    <tr><td>Resolution by order number</td><td class="n">100% (1,428 / 1,428)</td></tr>
+    
   </tbody>
 </table>
 

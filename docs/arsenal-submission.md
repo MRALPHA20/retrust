@@ -24,11 +24,11 @@ already have. Nobody has built the layer above them: a defensible answer to
 moment a security decision is still cheap.
 
 ReTrust is that layer, and building it surfaced why nobody had. Measured across
-all 27,234 product entries in CISA's OT advisory corpus, exactly **26 carry a CPE
-string, 0.1%**. Every conventional vulnerability tool joins products to CVEs
+all 28,951 product entries in CISA's OT advisory corpus, exactly **60 carry a CPE
+string, 0.21%**. Every conventional vulnerability tool joins products to CVEs
 through CPE, which is why general-purpose tooling performs so badly on industrial
 gear. Manufacturer order numbers (Siemens MLFB, `6ES7518-4AX00-1AB0`) are
-declared on 30.1% of entries, **316× more available**, and are what a buyer types
+declared on 28.4% of entries, **137× more available**, and are what a buyer types
 onto a requisition anyway. ReTrust keys on those instead.
 
 The scoring is built to survive a hostile reviewer. Hard gates (CISA KEV, the FCC
@@ -39,12 +39,12 @@ a silent one. A product that cannot be resolved gets no score at all, because
 every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags
 a verdict surviving fewer than 90% of random weightings as a judgement call.
 
-`retrust eval` recomputes every accuracy figure from your own index: **93.1%** of
-26,958 version ranges decided deterministically, **99.9%** resolution precision
+`retrust eval` recomputes every accuracy figure from your own index: **89.1%** of
+28,651 version ranges decided deterministically, **99.9%** resolution precision
 and recall at n=4,000. And `retrust backtest` reports against the tool's own
-interest. Correlation with later disclosure is **+0.438**, the wrong direction,
+interest. Correlation with later disclosure is **+0.453**, the wrong direction,
 because the score tracks disclosure maturity rather than risk. Holding the
-manufacturer constant collapses it to +0.159, and to **+0.001** once the vendor
+manufacturer constant collapses it to +0.157, and to **+0.019** once the vendor
 that is half the sample is dropped: nothing at all. The demo walks that
 confounder down live, because a scoring tool that cannot show its own failure
 mode has not earned the verdict it prints.
@@ -74,11 +74,11 @@ a clone and one command builds it.
 
 ReTrust scores OT hardware for cyber risk *before* you buy it, working from
 public advisory data and keying on the manufacturer order number a purchase
-requisition already contains. Only 26 of 27,234 product entries in CISA's OT
-advisory corpus carry a CPE string, 0.1%, which is why conventional vulnerability
-tooling fails on industrial equipment; declared order numbers are 316× more
+requisition already contains. Only 26 of 28,951 product entries in CISA's OT
+advisory corpus carry a CPE string, 0.21%, which is why conventional vulnerability
+tooling fails on industrial equipment; declared order numbers are 137× more
 available. Hard gates for known-exploited vulnerabilities and supply-chain
-restrictions sit outside the weighted score. Accuracy (93.1% version-range
+restrictions sit outside the weighted score. Accuracy (89.1% version-range
 coverage, 99.9% resolution) and a back-test that reports against the tool's own
 interest are both reproducible with one command. It also implements CERT/CC's
 SSVC deployer tree and NIST CSWP 41 (Likely Exploited Vulnerabilities), and shows
@@ -148,7 +148,7 @@ memorable rather than a demo they watched.
    1.000 against 0.162) and where it is weak (2.6% of young CVEs clear the
    threshold against 87.5% of old ones). This is the strongest beat in the set:
    two published methods, one corpus, an honest account of the gap.
-8. **The back-test** (6 min). Pooled +0.438, within-vendor +0.159, +0.001
+8. **The back-test** (6 min). Pooled +0.453, within-vendor +0.157, +0.019
    leave-one-out. Walk the confounder down in three commands: hold the vendor
    constant and most of it goes, drop the vendor that is half the sample and
    nothing measurable is left.
@@ -250,15 +250,14 @@ canonical URL and says where it came from.
 - [ ] Presenter name, title, employer, bio and photo. The form wants a complete
       speaker record, and reviewers read the bio.
 - [x] **Every accuracy figure above re-measured from a fresh ingest**
-      (3,937 advisories, 27,234 products, 2026-09-27): CPE 26 / 27,234 =
-      **0.10%**, declared order numbers 8,204 = **30.12%** (316×), version-range
-      coverage **93.12%**, decidable accuracy **94.71%**, round-trip precision
-      and recall **99.88%** at n=4,000, order-number resolution **100%**
-      (1,428/1,428).
-- [x] **Back-test re-run after the scoring change**: pooled +0.438,
-      within-vendor **+0.159** (p=0.001), leave-one-out **+0.001**, 8 negative /
-      12 positive across 21 vendors and 3,814 products. Every correlation quoted
-      above reproduces.
+      (3,937 advisories, 28,951 products, 2026-09-28): CPE 60 / 28,951 =
+      **0.21%**, declared order numbers 8,211 = **28.36%** (137×), version-range
+      coverage **89.08%**, decidable accuracy **90.51%**, round-trip precision
+      and recall **99.85%** at n=4,000.
+- [x] **Back-test re-run after closing the cutoff leak**: pooled +0.453,
+      within-vendor **+0.157** (p=0.001), leave-one-out **+0.019**, 6 negative /
+      14 positive across 3,814 products. Every correlation quoted above
+      reproduces.
 - [x] **Every command documented.** A check reads the live argument parser and
       confirms the README names every command, invents none, and shows no flag on
       a command that does not take it.
