@@ -337,3 +337,31 @@ def test_csv_cells_cannot_carry_spreadsheet_formulas(tmp_path):
     assert "'@import" in text
     assert "'-looks odd" in text
     assert "\n=" not in text and ",=" not in text
+
+
+def test_a_cyclonedx_sbom_reads_as_candidates(tmp_path):
+    """The list a buyer already has: their integrator's SBOM."""
+    import json
+    bom = {"bomFormat": "CycloneDX", "specVersion": "1.5", "components": [
+        {"type": "device", "name": "TestPLC 9000", "version": "2.1",
+         "supplier": {"name": "Testco"}, "mpn": "TC-9000-A1"},
+        {"type": "device", "name": "NoVendor Switch", "publisher": "Pubco"},
+        {"type": "library", "version": "1.0"},          # nameless: dropped
+    ]}
+    path = tmp_path / "bom.json"
+    path.write_text(json.dumps(bom))
+    rows = batch.read_candidates(str(path))
+    assert rows == [
+        {"vendor": "Testco", "product": "TestPLC 9000", "version": "2.1",
+         "order_number": "TC-9000-A1"},
+        {"vendor": "Pubco", "product": "NoVendor Switch", "version": None,
+         "order_number": None}]
+
+
+def test_an_sbom_with_no_usable_components_is_refused(tmp_path):
+    import json
+    import pytest
+    path = tmp_path / "bom.json"
+    path.write_text(json.dumps({"bomFormat": "CycloneDX", "components": []}))
+    with pytest.raises(SystemExit, match="no usable"):
+        batch.read_candidates(str(path))

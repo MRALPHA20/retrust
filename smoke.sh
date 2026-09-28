@@ -198,6 +198,14 @@ contains "ORIGIN" "origin is reported separately from content" \
 check 1 "a missing corpus is reported"              -- $RETRUST verify --csaf /nonexistent
 
 echo
+echo "== doctor and the shipped benchmarks =="
+check 0 "doctor passes on this installation"       -- $RETRUST doctor
+contains "BUYER-QUERY SET" "eval runs the buyer-query set" -- $RETRUST eval --sample 5
+check 0 "a CycloneDX SBOM scores as a batch"       -- $RETRUST batch examples/system-bom.json --fail-on never
+$RETRUST alternatives --vendor Siemens --product "SIPROTEC 5 6MD86" --json - 2>/dev/null | python3 -m json.tool >/dev/null   && { echo "  ok    alternatives --json parses"; pass=$((pass+1)); }   || { echo "  FAIL  alternatives --json parses"; fail=$((fail+1)); failed+=("alternatives json"); }
+$RETRUST vendor Moxa --json - 2>/dev/null | python3 -m json.tool >/dev/null   && { echo "  ok    vendor --json parses"; pass=$((pass+1)); }   || { echo "  FAIL  vendor --json parses"; fail=$((fail+1)); failed+=("vendor json"); }
+
+echo
 echo "== misuse =="
 check 2 "an unknown command is rejected"          -- $RETRUST frobnicate
 check 1 "a missing index is reported, not crashed" -- $RETRUST --db /nonexistent/x.db stats

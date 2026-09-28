@@ -70,6 +70,15 @@ def read_candidates(path):
         except ValueError as error:
             raise SystemExit(f"{source} is not valid JSON: {error}")
 
+        # A CycloneDX SBOM is the list a buyer is most likely to already have:
+        # the hardware components of a system they are being sold, exported by
+        # the integrator's own tooling. Its components map straight onto
+        # candidates, so `retrust batch bom.json` works without reshaping.
+        if isinstance(document, dict) and (
+                document.get("bomFormat") == "CycloneDX"
+                or "components" in document and "specVersion" in document):
+            return _cyclonedx_candidates(source, document)
+
         raw = document if isinstance(document, list) else document.get("candidates", [])
         for entry in raw:
             if not isinstance(entry, dict):
@@ -103,6 +112,37 @@ def read_candidates(path):
 
     if not rows:
         raise SystemExit(f"{source} contained no candidates")
+    return rows
+
+
+def _cyclonedx_candidates(source, document):
+    """Candidates from a CycloneDX SBOM's component list.
+
+    Fields per the spec: `supplier.name` (or `manufacturer.name`, or the
+    looser `publisher`) is the vendor, `name` the product, `version` itself.
+    An `mpn` -- manufacturer part number -- is exactly what this tool calls an
+    order number, so it is carried when present. Software-only components
+    still resolve where a vendor publishes advisories for them; the ones that
+    match nothing surface as "needs review" like any other unresolved row.
+    """
+    rows = []
+    for component in document.get("components") or []:
+        if not isinstance(component, dict):
+            continue
+        supplier = component.get("supplier") or component.get("manufacturer") or {}
+        vendor = (supplier.get("name") if isinstance(supplier, dict) else None) \
+            or component.get("publisher")
+        row = {
+            "vendor": str(vendor).strip() if vendor else None,
+            "product": str(component.get("name") or "").strip() or None,
+            "version": str(component.get("version") or "").strip() or None,
+            "order_number": str(component.get("mpn") or "").strip() or None,
+        }
+        if row["product"] or row["order_number"]:
+            rows.append(row)
+    if not rows:
+        raise SystemExit(f"{source} is a CycloneDX SBOM with no usable "
+                         "components: none carries a name or an mpn")
     return rows
 
 

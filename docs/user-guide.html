@@ -466,7 +466,10 @@ a gate rather than a report somebody has to read.</p>
     <tr><td>What changed since we approved this list?</td><td><code>retrust diff approved.json</code></td></tr>
     <tr><td>How much does the verdict depend on the weights?</td><td><code>retrust sensitivity --vendor V --product P</code></td></tr>
     <tr><td>Reproduce the published accuracy figures</td><td><code>retrust eval --sample 4000</code></td></tr>
+    <tr><td>Is this installation current enough to trust?</td><td><code>retrust doctor</code></td></tr>
+    <tr><td>Score the components of an integrator's SBOM</td><td><code>retrust batch system-bom.json</code></td></tr>
     <tr><td>Does the score predict anything?</td><td><code>retrust backtest</code></td></tr>
+    <tr><td>Does that answer depend on the cutoff date?</td><td><code>retrust backtest --sweep</code></td></tr>
     <tr><td>Pin the data for a reproducible result</td><td><code>retrust snapshot --note "Q4 review"</code></td></tr>
     <tr><td>Tab completion</td><td><code>eval "$(retrust completion bash)"</code></td></tr>
   </tbody>

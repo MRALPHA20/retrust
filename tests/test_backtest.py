@@ -348,3 +348,15 @@ def test_a_kev_listing_added_after_the_cutoff_is_not_known_at_it(tmp_path):
 
     after = backtest._findings(connection, "testco", "plc", "2025-01-01")
     assert any(f.in_kev for f in after), "and must be visible once it has happened"
+
+
+def test_the_sweep_summary_only_claims_stability_when_it_holds():
+    stable = [backtest.SweepRow("2021-01-01", 100, 0.4, 0.01, 0.1, 0.02, 0.02, 6, 10, 1),
+              backtest.SweepRow("2022-01-01", 120, 0.45, 0.01, 0.15, 0.02, 0.01, 5, 11, 2)]
+    assert "does not depend on where" in backtest.format_sweep(stable)
+
+    unstable = stable + [
+        backtest.SweepRow("2023-01-01", 130, -0.2, 0.01, 0.3, 0.02, 0.4, 2, 12, 0)]
+    text = backtest.format_sweep(unstable)
+    assert "unsettled" in text
+    assert "does not depend" not in text

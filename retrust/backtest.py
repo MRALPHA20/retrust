@@ -543,3 +543,91 @@ def format_matched(matched, top=8):
         "  Counting CVEs still measures disclosure volume; this design removes "
         "the vendor-level part of that, not the product-level part.")
     return "\n".join(lines)
+
+
+# --- cutoff sweep ----------------------------------------------------------
+#
+# One cutoff is one draw. The claim the sweep tests is the structural one:
+# pooled correlation positive (disclosure maturity), collapsing when the
+# vendor is held constant, and collapsing further when the dominant vendor is
+# dropped. If that pattern held at one cutoff and reversed at another, the
+# interpretation this tool prints would be an artifact of where the line was
+# drawn -- which is exactly what a reviewer should ask.
+
+SWEEP_CUTOFFS = ("2019-01-01", "2020-01-01", "2021-01-01",
+                 "2022-01-01", "2023-01-01")
+
+
+@dataclass
+class SweepRow:
+    cutoff: str
+    cohort: int
+    rho_pooled: float
+    p_pooled: float
+    rho_within: float
+    p_within: float
+    rho_without_largest: float
+    negative_strata: int
+    positive_strata: int
+    kev_products: int
+
+
+def sweep(connection, cutoffs=SWEEP_CUTOFFS, min_history=MIN_HISTORY,
+          limit=None, permutations=200, progress=None):
+    """Run the whole decomposition at several cutoffs.
+
+    Fewer permutations than a single run's default: the sweep asks about the
+    sign and rough size at each cutoff, not a precise p at one.
+    """
+    rows = []
+    for cutoff in cutoffs:
+        if progress:
+            progress(cutoff)
+        result = run(connection, cutoff=cutoff, min_history=min_history,
+                     limit=limit, permutations=permutations)
+        matched = matched_cohort(result, permutations=permutations)
+        rows.append(SweepRow(
+            cutoff=cutoff, cohort=result.cohort,
+            rho_pooled=round(result.rho_future, 3),
+            p_pooled=round(result.p_value, 3),
+            rho_within=round(matched.rho, 3),
+            p_within=round(matched.p_value, 3),
+            rho_without_largest=round(matched.rho_without_largest, 3),
+            negative_strata=matched.negative_strata,
+            positive_strata=matched.positive_strata,
+            kev_products=result.kev_products))
+    return rows
+
+
+def format_sweep(rows):
+    """The stability table -- what `retrust backtest --sweep` prints."""
+    lines = [
+        "CUTOFF SWEEP  (the same decomposition, drawn at different dates)",
+        "",
+        f"  {'cutoff':<12}{'cohort':>8}{'pooled':>9}{'p':>7}"
+        f"{'within':>9}{'p':>7}{'-largest':>10}{'strata -/+':>12}{'KEV after':>11}",
+    ]
+    for r in rows:
+        lines.append(
+            f"  {r.cutoff:<12}{r.cohort:>8,}{r.rho_pooled:>+9.3f}{r.p_pooled:>7.3f}"
+            f"{r.rho_within:>+9.3f}{r.p_within:>7.3f}{r.rho_without_largest:>+10.3f}"
+            f"{f'{r.negative_strata}/{r.positive_strata}':>12}{r.kev_products:>11,}")
+
+    lines.append("")
+    pooled_positive = sum(1 for r in rows if r.rho_pooled > 0.1)
+    collapsed = sum(1 for r in rows
+                    if abs(r.rho_within) < abs(r.rho_pooled)
+                    and abs(r.rho_without_largest) <= abs(r.rho_within) + 0.05)
+    if pooled_positive == len(rows) and collapsed == len(rows):
+        lines.append(
+            "  The pattern holds at every cutoff: pooled correlation positive\n"
+            "  (disclosure maturity, not risk), collapsing once the vendor is\n"
+            "  held constant, and further once the dominant vendor is dropped.\n"
+            "  The interpretation printed above does not depend on where the\n"
+            "  line was drawn.")
+    else:
+        lines.append(
+            f"  The pattern holds at {min(pooled_positive, collapsed)} of "
+            f"{len(rows)} cutoffs. Where it does not, trust the sweep over any "
+            "single\n  cutoff -- and treat the interpretation as unsettled.")
+    return "\n".join(lines)

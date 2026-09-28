@@ -74,24 +74,38 @@ def boundary_key(text):
 
 
 def prefix_matches(wanted, candidate):
-    """Does `candidate` continue `wanted` at a component boundary?
+    """Does `candidate` continue `wanted` at one of the candidate's boundaries?
 
     "RSLogix 5" matched RSLogix 500 and RSLogix 5000 -- three products with three
     different advisory sets -- because normalisation had already thrown away the
-    space that separated the components. Compared on boundary keys, a name may
-    only continue at a separator, so "SIMATIC S7-1500 CPU 1518" still reaches
-    "...1518-4 PN/DP MFP" while "5" no longer reaches "500".
+    space that separated the components. Compared against the candidate's
+    boundaries, a name may only continue at a separator, so "SIMATIC S7-1500
+    CPU 1518" still reaches "...1518-4 PN/DP MFP" while "5" no longer reaches
+    "500".
+
+    The buyer's own separators are flattened before comparing, because
+    transcription loses them: "EDS405A" on a requisition is the corpus's
+    "EDS-405A". The corpus spelling is the authoritative one, so its
+    boundaries are the ones that decide where a name may end.
+
+    Version tokens are deliberately allowed to continue: "PCS 7 V9" reaches
+    the "V9.0", "V9.1" and "V9.X" rows, which are the release line the buyer
+    named. Refusing that (tried, measured) lost more true advisories than
+    the one "V15"-reaches-"V15.1" case it prevented: 99.85%/99.70% became
+    99.77%/99.62% on a 4,000-product round trip.
     """
-    if candidate == wanted:
-        return True
-    if not wanted or not candidate.startswith(wanted):
+    flat = wanted.replace("|", "")
+    if not flat:
         return False
-    # Version tokens are deliberately allowed to continue: "PCS 7 V9" reaches
-    # the "V9.0", "V9.1" and "V9.X" rows, which are the release line the buyer
-    # named. Refusing that (tried, measured) lost more true advisories than
-    # the one "V15"-reaches-"V15.1" case it prevented: 99.85%/99.70% became
-    # 99.77%/99.62% on a 4,000-product round trip.
-    return candidate[len(wanted)] == "|"
+    position = 0
+    for component in candidate.split("|"):
+        if position == len(flat):
+            return True                   # ended exactly at a boundary
+        if flat.startswith(component, position):
+            position += len(component)
+        else:
+            return False                  # ends inside a component: "5" in "5000"
+    return position == len(flat)
 
 
 def _rows_to_matches(rows, method):
@@ -173,9 +187,19 @@ def resolve(connection, vendor=None, product=None, order_number=None):
 
     if not connection.execute(
         "SELECT 1 FROM product WHERE vendor_key = ? LIMIT 1", (vendor_key,)).fetchone():
-        result.abstained = True
-        result.reason = f"vendor {vendor!r} does not appear in the advisory corpus"
-        return result
+        # A short form of a merged entity: "Hirschmann" for the corpus's
+        # "Hirschmann Automation and Control GmbH, Belden Inc.". A prefix that
+        # reaches exactly one vendor key is that vendor; reaching two would be
+        # a guess, and a short fragment proves nothing, so both still abstain.
+        prefixed = [r[0] for r in connection.execute(
+            "SELECT DISTINCT vendor_key FROM product WHERE vendor_key LIKE ?",
+            (vendor_key + "%",))] if len(vendor_key) >= 4 else []
+        if len(prefixed) == 1:
+            vendor_key = prefixed[0]
+        else:
+            result.abstained = True
+            result.reason = f"vendor {vendor!r} does not appear in the advisory corpus"
+            return result
 
     # Rung 2 - exact normalised product name, plus the longer variants that
     # start with it. A buyer writing "SIMATIC S7-1500" means the family, so the

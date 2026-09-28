@@ -179,6 +179,84 @@ def round_trip(connection, sample=400, realistic=True):
     return trip
 
 
+@dataclass
+class QueryOutcome:
+    """One buyer query against its hand-written expectation."""
+
+    query: str
+    expect: str
+    got: str
+    passed: bool
+    note: str = ""
+
+
+def buyer_queries(connection, path):
+    """Run the hand-written query set and compare against its expectations.
+
+    The round-trip test above generates its queries from the corpus, which
+    measures degradation the generator chose. This set is authored the other
+    way round: real requisition habits -- misspellings, vendor shorthand,
+    dropped hyphens, catalogue numbers typed into the wrong field -- each with
+    the answer a human analyst would give. Expectations record the CORRECT
+    answer, not the current behaviour, so a row this tool fails stays visible
+    as a miss rather than being papered over.
+
+    Each row expects either an advisory id that must be among the matches, or
+    the word "abstain". An optional `reject` column names an advisory that
+    must NOT appear -- how "RSLogix 5 must not reach RSLogix 5000" is written.
+    """
+    import csv
+
+    outcomes = []
+    with open(path, encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            expect = (row.get("expect") or "").strip()
+            if not expect:
+                continue
+            resolution = match.resolve(
+                connection,
+                vendor=(row.get("vendor") or "").strip() or None,
+                product=(row.get("product") or "").strip() or None,
+                order_number=(row.get("order_number") or "").strip() or None)
+            advisories = {m.advisory_id for m in resolution.matches}
+
+            if expect == "abstain":
+                passed = not resolution.resolved
+                got = "abstained" if passed else                     f"resolved to {sorted(advisories)[0]} by {resolution.method}"
+            else:
+                passed = resolution.resolved and expect in advisories
+                if reject := (row.get("reject") or "").strip():
+                    passed = passed and reject not in advisories
+                if not resolution.resolved:
+                    got = "abstained"
+                elif expect not in advisories:
+                    got = f"resolved, but to {sorted(advisories)[0]}"
+                elif reject and reject in advisories:
+                    got = f"correct, but {reject} came with it"
+                else:
+                    got = f"correct by {resolution.method}"
+
+            query = " ".join(filter(None, [
+                row.get("vendor"), row.get("product"), row.get("order_number")]))
+            outcomes.append(QueryOutcome(query=query.strip(), expect=expect,
+                                         got=got, passed=passed,
+                                         note=(row.get("note") or "").strip()))
+    return outcomes
+
+
+def format_queries(outcomes):
+    """The pass/fail table for the buyer-query set."""
+    passed = sum(1 for o in outcomes if o.passed)
+    lines = [f"BUYER-QUERY SET   {passed}/{len(outcomes)} as a human would answer",
+             ""]
+    for o in outcomes:
+        mark = "pass" if o.passed else "MISS"
+        lines.append(f"  {mark}  {o.query[:44]:<44} {o.got}")
+        if not o.passed and o.note:
+            lines.append(f"        {o.note}")
+    return "\n".join(lines)
+
+
 def run(connection, sample=400):
     """Run both measurements. Returns a dict ready to print or serialise."""
     coverage = version_coverage(connection)

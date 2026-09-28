@@ -68,6 +68,7 @@ never have to take these numbers on trust.
 | ...of ranges that *can* be decided from a version string | **90.7%** |
 | Product resolution precision (n = 4,000) | **99.9%** |
 | Product resolution recall (n = 4,000) | **99.7%** |
+| Hand-written buyer-query set (misspellings, shorthand, wrong-field entries) | **20/21** |
 
 Two things that keep these honest:
 
@@ -75,6 +76,14 @@ Two things that keep these honest:
   strips the parenthetical order number, drops punctuation and case, and keeps
   only the first four words, roughly what a buyer types. Testing exact strings
   against themselves reports a meaningless 100%.
+- **The buyer-query set is authored the other way round**: real requisition
+  habits -- misspelled vendors, "Schneider" for "Schneider Electric", dropped
+  hyphens, a catalogue number typed into the product field -- each recorded
+  with the answer a human analyst would give, in
+  [examples/buyer-queries.csv](examples/buyer-queries.csv). Expectations record
+  the *correct* answer, not the current behaviour, so a row the tool fails
+  stays visible as a miss. One is failed on purpose today, and the file says
+  why.
 - **Ranges that cannot be decided are counted separately, not hidden.** A range
   pinned to a serial number or a board revision (`<= first 5 digits of serial
   number 26061`) is undecidable for any version-based tool. ReTrust abstains and
@@ -402,10 +411,11 @@ retrust snapshot --restore retrust-snapshot.zip
 | `lev` | has this probably been exploited already? (NIST CSWP 41) |
 | `score` | assess one product |
 | `compare` | rank candidates for one decision |
-| `batch FILE` | score a whole bill of materials, with a CI exit code |
+| `batch FILE` | score a bill of materials or a CycloneDX SBOM, with a CI exit code |
 | `sensitivity` | how much a verdict depends on the weights |
-| `eval` | reproduce the accuracy figures |
+| `eval` | reproduce the accuracy figures, buyer-query set included |
 | `backtest` | did the score predict later disclosure? |
+| `doctor` | is the installation current enough to be trusted right now? |
 | `stats` | counts from the index |
 | `config` | show or create the scoring weights |
 | `snapshot` | pin the data into one portable file |
@@ -648,10 +658,14 @@ Three rules taken from the paper itself:
 
 **Score a whole bill of materials.** Point it at a CSV or JSON export from your
 procurement system. Column names are matched loosely, so `Manufacturer`,
-`Part Number` and `Firmware Version` all work without reshaping.
+`Part Number` and `Firmware Version` all work without reshaping. A **CycloneDX
+SBOM** works directly too -- the component list an integrator ships is exactly
+a candidate list, with `supplier` as the vendor and `mpn` as the order number
+([examples/system-bom.json](examples/system-bom.json) shows the shape).
 
 ```bash
 retrust batch candidates.csv --json results.json --csv results.csv --html review.html
+retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 ```
 
 ```
@@ -994,12 +1008,12 @@ get this, on CISA's own corpus:
 
 ```
 BACK-TEST AT 2022-01-01
-  products scored on pre-cutoff data only     5,839
+  products scored on pre-cutoff data only     5,848
 
   correlation                                rho
   score vs CVEs after the cutoff          +0.453   p=0.001 (1,000 shuffles)
-  score vs CVEs before the cutoff         -0.035   (is the score just re-reading history?)
-  CVEs before vs CVEs after               +0.183   (how much does volume persist?)
+  score vs CVEs before the cutoff         -0.007   (is the score just re-reading history?)
+  CVEs before vs CVEs after               +0.184   (how much does volume persist?)
 ```
 
 **That positive number is the interesting part, and it is not a validation.** A
@@ -1014,10 +1028,26 @@ a vendor discloses, which is what the scoring rules deliberately refuse to
 penalise.
 
 The decomposition is printed for exactly this reason. The score barely tracks
-*past* CVE count (−0.035), so it is not simply re-reading history; it tracks
-*future* count (+0.453) because it tracks disclosure maturity. The sign is stable
-across every cutoff from 2019 to 2024, so it is a property of the outcome
-variable, not of one date.
+*past* CVE count (−0.007), so it is not simply re-reading history; it tracks
+*future* count (+0.453) because it tracks disclosure maturity. And that is not a
+property of one date: `retrust backtest --sweep` redraws the whole decomposition
+at five cutoffs, and this is what it prints on the current corpus:
+
+```
+CUTOFF SWEEP  (the same decomposition, drawn at different dates)
+
+  cutoff        cohort   pooled      p   within      p  -largest  strata -/+  KEV after
+  2019-01-01     2,962   +0.495  0.005   +0.394  0.005    +0.128         8/9          0
+  2020-01-01     3,803   +0.484  0.005   +0.267  0.005    +0.099        5/15          0
+  2021-01-01     4,847   +0.482  0.005   +0.236  0.005    +0.109        4/15          0
+  2022-01-01     5,848   +0.453  0.005   +0.157  0.005    +0.019        6/14          2
+  2023-01-01     6,952   +0.355  0.005   -0.109  0.005    +0.036        5/12         20
+```
+
+Pooled positive at every cutoff, collapsing once the vendor is held constant,
+collapsing further once the dominant vendor is dropped. The one within-vendor
+sign flip, at 2023, is in the direction a *predictive* score would show -- and
+the leave-one-out column says not to make anything of it (+0.036).
 
 The sound outcome would be confirmed exploitation. A product later appearing in
 CISA's KEV catalogue unambiguously went badly, whatever its vendor's disclosure

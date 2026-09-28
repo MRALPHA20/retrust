@@ -34,8 +34,8 @@ from pathlib import Path
 
 from .index import normalize_vendor
 from . import (alternatives, backtest, batch, bootstrap, certification,
-               config, console, diff, dossier, evaluate, index, match,
-               integrity, lev, report, score, screenshot, search,
+               config, console, diff, doctor, dossier, evaluate, index,
+               integrity, lev, match, report, score, screenshot, search,
                sensitivity, serve, shell, snapshot, ssvc, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
@@ -205,6 +205,16 @@ def cmd_ingest(args):
         print("\n  The EPSS history and LEV estimates were cleared by this "
               "rebuild.\n  The snapshots are still on disk, so restoring them "
               "is quick:\n    retrust lev --update")
+
+
+def cmd_doctor(args):
+    """Is this installation current enough to be trusted right now?"""
+    checks = doctor.run(data_dir=args.data, db_path=args.db)
+    print("Checking what this installation's next verdict would rest on.\n")
+    print(doctor.format_report(checks))
+    # Missing pieces fail the run so a cron or CI wrapper can alert; stale
+    # ones only warn, because the tool still works and says what to refresh.
+    return 1 if any(c.state == "missing" for c in checks) else 0
 
 
 def cmd_stats(args):
@@ -585,6 +595,28 @@ def cmd_backtest(args):
     """Does the score predict what actually happened next?"""
     connection = _open(args.db)
     quiet = args.json == "-"          # stdout must stay parseable
+
+    if args.sweep:
+        if not quiet:
+            print("Running the decomposition at "
+                  f"{len(backtest.SWEEP_CUTOFFS)} cutoffs. This scores the "
+                  "whole cohort once per cutoff, so expect it to take a "
+                  "while;\neach cutoff prints as it finishes.\n")
+        rows = backtest.sweep(
+            connection, min_history=args.min_history, limit=args.limit,
+            progress=None if quiet else lambda c: print(f"  scoring at {c} ..."))
+        if not quiet:
+            print()
+            print(backtest.format_sweep(rows))
+        if args.json:
+            written = _emit_json(args.json, batch.envelope(
+                [vars(r) for r in rows],
+                {"sweep": {"cutoffs": list(backtest.SWEEP_CUTOFFS)},
+                 "provenance": index.provenance(connection)}))
+            if written and not quiet:
+                print(f"\nJSON written to {written}")
+        return 0
+
     if not quiet:
         print(f"Scoring every product on advisories published before {args.cutoff},")
         print("then measuring against what was disclosed after it.\n")
@@ -1167,8 +1199,20 @@ def cmd_alternatives(args):
     if options is None:
         print(f"{subject.product}: {resolution.reason or 'nothing to compare against'}")
         return 1
-    print(alternatives.format_report(subject, options, skipped,
-                                     version=args.version))
+    quiet = args.json == "-"
+    if not quiet:
+        print(alternatives.format_report(subject, options, skipped,
+                                         version=args.version))
+    if args.json:
+        written = _emit_json(args.json, batch.envelope(
+            [vars(o) for o in options],
+            {"subject": {"product": subject.product, "verdict": subject.verdict,
+                         "score": subject.score},
+             "skipped": skipped,
+             "caveat": alternatives.CAVEAT,
+             "provenance": index.provenance(connection)}))
+        if written and not quiet:
+            print(f"\nJSON written to {written}")
     return 0 if options else 1
 
 
@@ -1214,12 +1258,20 @@ def cmd_vendor(args):
     profile = dossier.build(connection, name,
                             screening=context["screening"],
                             certificates=context["certificates"])
-    print(dossier.format_report(profile))
+    quiet = args.json == "-"
+    if not quiet:
+        print(dossier.format_report(profile))
+    if args.json:
+        from dataclasses import asdict
+        written = _emit_json(args.json, batch.envelope(
+            [asdict(profile)], {"provenance": index.provenance(connection)}))
+        if written and not quiet:
+            print(f"\nJSON written to {written}")
 
     # An unrecognised name is far more often a spelling difference than a vendor
     # the corpus has never heard of. suggest(), not vendors(): a substring search
     # cannot reach "Siemens" from "Siemems", which is exactly the typo to catch.
-    if not profile.known:
+    if not profile.known and not quiet:
         if hits := search.suggest(connection, vendor=name)["vendors"]:
             print()
             print(search.format_vendors(hits, name,
@@ -1269,9 +1321,42 @@ def cmd_setup(args):
 
 def cmd_eval(args):
     connection = _open(args.db)
-    print("Measuring against the local index. This is the number ReTrust publishes;")
-    print("re-run it yourself to check it.\n")
-    print(evaluate.format_report(evaluate.run(connection, sample=args.sample)))
+    quiet = args.json == "-"
+    if not quiet:
+        print("Measuring against the local index. This is the number ReTrust "
+              "publishes;")
+        print("re-run it yourself to check it.\n")
+    results = evaluate.run(connection, sample=args.sample)
+    if not quiet:
+        print(evaluate.format_report(results))
+
+    # The hand-written query set rides along whenever its file is present, so
+    # the shipped benchmark is part of the default measurement rather than a
+    # flag nobody remembers.
+    queries = args.queries or (
+        "examples/buyer-queries.csv"
+        if Path("examples/buyer-queries.csv").exists() else None)
+    outcomes = evaluate.buyer_queries(connection, queries) if queries else []
+    if outcomes and not quiet:
+        print()
+        print(evaluate.format_queries(outcomes))
+
+    if args.json:
+        trip, version = results["round_trip"], results["version"]
+        written = _emit_json(args.json, batch.envelope(
+            [vars(o) for o in outcomes],
+            {"eval": {
+                "identifiers": results.get("identifiers"),
+                "version_coverage": round(version.coverage, 4),
+                "decidable_accuracy": round(version.decidable_accuracy, 4),
+                "round_trip": {"sample": trip.attempted,
+                               "precision": round(trip.precision, 4),
+                               "recall": round(trip.recall, 4)},
+                "buyer_queries": {"passed": sum(1 for o in outcomes if o.passed),
+                                  "total": len(outcomes)}},
+             "provenance": index.provenance(connection)}))
+        if written and not quiet:
+            print(f"\nJSON written to {written}")
     return 0
 
 
@@ -1376,6 +1461,8 @@ def build_parser():
     _product_args(p)
     p.add_argument("--limit", type=int, default=8, help="suggestions to show")
     p.add_argument("--config", help="scoring configuration file")
+    p.add_argument("--json", metavar="FILE",
+                   help='write results as JSON; "-" for stdout')
     p.set_defaults(func=cmd_alternatives)
 
     p = sub.add_parser("diff", help="re-score a stored result against today's index")
@@ -1388,6 +1475,8 @@ def build_parser():
     p = sub.add_parser("vendor", help="what the index knows about a manufacturer")
     p.add_argument("vendor", nargs="+", help="manufacturer name")
     p.add_argument("--data", default="data", help="data directory")
+    p.add_argument("--json", metavar="FILE",
+                   help='write results as JSON; "-" for stdout')
     p.set_defaults(func=cmd_vendor)
 
     p = sub.add_parser("completion", help="print a shell completion script")
@@ -1409,6 +1498,10 @@ def build_parser():
     p.add_argument("--kev", help="CISA KEV JSON file")
     p.add_argument("--epss", help="EPSS scores CSV file")
     p.set_defaults(func=cmd_ingest)
+
+    p = sub.add_parser("doctor", help="check the installation and its data ages")
+    p.add_argument("--data", default="data", help="data directory (default data)")
+    p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("stats", help="show what the index contains")
     p.set_defaults(func=cmd_stats)
@@ -1493,12 +1586,19 @@ def build_parser():
                    help="products a vendor needs to form a matched stratum")
     p.add_argument("--no-matched", action="store_true",
                    help="skip the within-vendor matched comparison")
+    p.add_argument("--sweep", action="store_true",
+                   help="run the whole decomposition at several cutoffs")
     p.add_argument("--json", metavar="FILE", help='write results as JSON; "-" for stdout')
     p.set_defaults(func=cmd_backtest)
 
     p = sub.add_parser("eval", help="reproduce the published accuracy figures")
     p.add_argument("--sample", type=int, default=400,
                    help="products to round-trip (default 400)")
+    p.add_argument("--queries", metavar="CSV",
+                   help="hand-written buyer-query set "
+                        "(default examples/buyer-queries.csv when present)")
+    p.add_argument("--json", metavar="FILE",
+                   help='write results as JSON; "-" for stdout')
     p.set_defaults(func=cmd_eval)
 
     return parser

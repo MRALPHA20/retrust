@@ -23,49 +23,47 @@ already have. Nobody has built the layer above them: a defensible answer to
 *which of these candidate PLCs should go on the purchase order*, at the one
 moment a security decision is still cheap.
 
-ReTrust is that layer, and building it surfaced why nobody had. Measured across
+ReTrust is that layer; building it surfaced why nobody had. Measured across
 all 28,951 product entries in CISA's OT advisory corpus, exactly **60 carry a CPE
-string, 0.21%**. Every conventional vulnerability tool joins products to CVEs
-through CPE, which is why general-purpose tooling performs so badly on industrial
-gear. Manufacturer order numbers (Siemens MLFB, `6ES7518-4AX00-1AB0`) are
-declared on 28.4% of entries, **137× more available**, and are what a buyer types
-onto a requisition anyway. ReTrust keys on those instead.
+string, 0.21%**. Conventional vulnerability tooling joins products to CVEs through CPE, which
+is why it performs so badly on industrial gear. Manufacturer order numbers (Siemens MLFB,
+`6ES7518-4AX00-1AB0`) are declared on 28.4% of entries, **137× more
+available**, and are what a requisition already holds. ReTrust keys on those.
 
 The scoring is built to survive a hostile reviewer. Hard gates (CISA KEV, the FCC
 Covered List, the BIS Entity List, OFAC) sit outside the weighted composite,
 because a weighted disqualifier can be averaged away by good scores elsewhere.
 Raw CVE counts are never scored, since that would rank a diligent discloser below
 a silent one. A product that cannot be resolved gets no score at all, because
-every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags
-a verdict surviving fewer than 90% of random weightings as a judgement call.
+every pillar reads "no CVEs found" as good news. `retrust sensitivity` flags any verdict
+surviving fewer than 90% of random weightings.
 
 `retrust eval` recomputes every accuracy figure from your own index: **89.2%** of
 28,651 version ranges decided deterministically, **99.9%** resolution precision
 and recall at n=4,000. And `retrust backtest` reports against the tool's own
 interest. Correlation with later disclosure is **+0.453**, the wrong direction,
-because the score tracks disclosure maturity rather than risk. Holding the
+because the score tracks disclosure maturity, not risk -- at every cutoff
+from 2019 to 2023 (`--sweep` redraws them all). Holding the
 manufacturer constant collapses it to +0.157, and to **+0.019** once the vendor
-that is half the sample is dropped: nothing at all. The demo walks that
-confounder down live, because a scoring tool that cannot show its own failure
-mode has not earned the verdict it prints.
+that is half the sample is dropped: nothing at all. The demo walks that confounder down
+live: a scoring tool that cannot show its own failure mode has not earned the
+verdict it prints.
 
 Two published standards are implemented on top of that, and made to disagree in
 public. `retrust ssvc` places every finding on CERT/CC's SSVC deployer tree,
-reproduced from their repository rather than rewritten, with three of its four
-decision points left for the buyer because they describe a plant this tool never
-sees. `retrust lev` implements NIST CSWP 41. On Delta Electronics DIAEnergie,
+reproduced from their repository, three of its four decision points left to
+the buyer because they describe a plant this tool never sees. `retrust lev` implements NIST CSWP 41. On Delta Electronics DIAEnergie,
 SSVC returns 72 findings all marked *scheduled* because none are in KEV, while
-LEV estimates **23 of those same 72 have probably already been exploited**. The
-tool prints both, and `retrust lev --audit` measures whether LEV discriminates
-before anyone leans on it.
+LEV estimates **23 of those same 72 have probably already been exploited**. The tool prints both, and
+`retrust lev --audit` measures whether LEV discriminates at all.
 
 `retrust verify` checks its own inputs: the SHA-512 and PGP signature CISA ships
 beside every advisory, with the two kept apart because only the signature
-survives a hostile mirror. One key signed all 3,937, and key discovery follows
-CSAF's provider-metadata standard rather than trusting a keyserver.
+survives a hostile mirror. One key signed all 3,937; key discovery
+follows CSAF's provider-metadata standard, not a keyserver.
 
-The interface follows ISA-101, the HMI standard for industrial control rooms, and
-a menu sits beside the flags. Python 3.10+, no dependencies, Apache-2.0, offline:
+The interface follows ISA-101, the control-room HMI standard; a menu sits
+beside the flags. Python 3.10+, no dependencies, Apache-2.0, offline:
 a clone and one command builds it.
 
 ---
@@ -151,7 +149,10 @@ memorable rather than a demo they watched.
 8. **The back-test** (6 min). Pooled +0.453, within-vendor +0.157, +0.019
    leave-one-out. Walk the confounder down in three commands: hold the vendor
    constant and most of it goes, drop the vendor that is half the sample and
-   nothing measurable is left.
+   nothing measurable is left. `retrust backtest --sweep` shows the same
+   pattern at five cutoffs, so the reading does not depend on where the line
+   was drawn -- have its table ready rather than running it live (it re-scores
+   the cohort five times).
 9. **The gate, and where the data came from** (2 min). `retrust batch bom.csv
    --fail-on unassessed` and its exit code blocking a CI job, then
    `retrust verify`: 3,937 digests checked, one signer, every signature verified
@@ -258,6 +259,17 @@ canonical URL and says where it came from.
       within-vendor **+0.157** (p=0.001), leave-one-out **+0.019**, 6 negative /
       14 positive across 3,822 products. Every correlation quoted above
       reproduces.
+- [x] **The cutoff is not the result.** `retrust backtest --sweep` redraws the
+      decomposition at five cutoffs, 2019 through 2023: pooled positive at all
+      five (+0.495 to +0.355), collapsing within vendor at all five, and to
+      noise on leave-one-out. The one within-vendor sign flip (2023, -0.109)
+      is in the predictive direction, and the leave-one-out column says not
+      to make anything of it.
+- [x] **A second, adversarial benchmark ships with the tool**:
+      `examples/buyer-queries.csv`, 21 hand-written requisition-style queries
+      (misspellings, vendor shorthand, dropped hyphens, order numbers in the
+      product field, two expected abstentions) run by `retrust eval` on every
+      invocation. 20/21, with the one miss annotated in the file.
 - [x] **Full-code audit closed out** (2026-09-28, two passes). Every confirmed
       finding fixed, the low-severity tail included: the version parser no
       longer reads `< V14 SP2` as "before version 2", a range's prose tail now
@@ -308,7 +320,10 @@ canonical URL and says where it came from.
   by a `default-src 'none'` CSP; snapshot manifests validated against path
   escape; CSV output neutralised against spreadsheet formula injection.
 - **Accuracy is a command, not a claim.** Reviewers can reproduce every figure on
-  their own index.
+  their own index, including a hand-written buyer-query benchmark -- misspelled
+  vendors, dropped hyphens, catalogue numbers in the wrong field -- whose
+  expectations record the correct answer rather than the current behaviour, so
+  a miss stays visible (one is, on purpose, today: 20/21).
 - **It reports against its own interest.** The back-test result is unfavourable
   and printed anyway, with the confounder decomposed. That is rare enough in this
   category to be the thing a reviewer remembers.

@@ -325,3 +325,18 @@ def test_format_report_prints_the_identifier_table(db):
     assert "IDENTIFIER COVERAGE" in text
     assert "CPE" in text
     assert "order number" in text
+
+
+def test_buyer_queries_judge_against_the_expectation(tmp_path, db):
+    """The hand-written set: expect an advisory, or expect an abstention."""
+    queries = tmp_path / "queries.csv"
+    queries.write_text(
+        "vendor,product,version,order_number,expect,reject,note\n"
+        "Testco,TestPLC 9000,,,ICSA-26-001-01,,exact\n"
+        "Testco,TestPLC 9000,,,ICSA-99-999-99,,wrong advisory expected\n"
+        "Nobody,Nothing,,,abstain,,unknown vendor\n"
+        "Testco,TestPLC 9000,,,abstain,,resolves so this expectation fails\n")
+    outcomes = evaluate.buyer_queries(db, str(queries))
+    assert [o.passed for o in outcomes] == [True, False, True, False]
+    text = evaluate.format_queries(outcomes)
+    assert "2/4" in text and "MISS" in text
