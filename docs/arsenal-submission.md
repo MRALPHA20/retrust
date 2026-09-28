@@ -82,8 +82,8 @@ interest are both reproducible with one command. It also implements CERT/CC's
 SSVC deployer tree and NIST CSWP 41 (Likely Exploited Vulnerabilities), and shows
 where the two disagree: one real product returns 72 findings SSVC calls
 "scheduled" while LEV estimates 23 of them have probably been exploited already.
-Search, vendor profiles, bill-of-materials scoring and a CI exit code make it
-usable on a real purchase order.
+Search, vendor profiles, advisory timelines, SBOM-in/annex-out, and a CI exit
+code make it usable on a real purchase order.
 
 ---
 
@@ -133,6 +133,10 @@ memorable rather than a demo they watched.
 4. **One product, with its evidence** (5 min). `retrust score --order-number
    6ES7518-4AX00-1AB0 --version 3.1.6`. A real MLFB off a real requisition,
    resolving to real advisories, with the evidence line behind every pillar.
+   Then `retrust questions` on the same product: the KEV findings become a
+   written demand for the fixed firmware version and its release date -- the
+   security annex of an RFQ, generated from the evidence just shown. Visitors
+   who buy equipment take that one home.
 5. **The decision** (6 min). `retrust compare` across six candidates, one gated
    on KEV and one on the FCC Covered List, to the HTML report a buyer attaches to
    the purchase order.

@@ -208,6 +208,17 @@ contains "could not resolve" "an unresolved product gets the resolver-honest ann
 check 1 "timeline abstains with the resolver"       -- $RETRUST timeline --vendor Nobody --product Nothing
 
 echo
+echo "== vex and profiles =="
+contains "RISK APPETITES" "the shipped risk appetites list" -- $RETRUST config --appetites
+$RETRUST vex --vendor Moxa --product EDS-405A --version 3.0 --out - 2>/dev/null | python3 -m json.tool >/dev/null \
+  && { echo "  ok    vex emits parseable CycloneDX"; pass=$((pass+1)); } \
+  || { echo "  FAIL  vex emits parseable CycloneDX"; fail=$((fail+1)); failed+=("vex json"); }
+check 2 "vex refuses to assert about nothing"       -- $RETRUST vex --vendor Nobody --product Nothing --out -
+contains "CVE LOOKUP" "the pivot lookup answers"          -- $RETRUST cve CVE-2023-44487
+contains "never met" "an unknown CVE is said plainly"     -- $RETRUST cve CVE-1999-0001
+check 2 "an unknown CVE exits 2"                    -- $RETRUST cve CVE-1999-0001
+
+echo
 echo "== doctor and the shipped benchmarks =="
 check 0 "doctor passes on this installation"       -- $RETRUST doctor
 contains "BUYER-QUERY SET" "eval runs the buyer-query set" -- $RETRUST eval --sample 5

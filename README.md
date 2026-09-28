@@ -135,12 +135,14 @@ tool that cannot show its own failure mode has not earned its verdicts.
 | `score` | assess one product |
 | `compare` | rank candidates for one decision |
 | `batch FILE` | score a bill of materials or a CycloneDX SBOM, with a CI exit code |
+| `vex` | write the assessment as a CycloneDX VEX document: SBOM in, VEX out |
+| `cve CVE-...` | one CVE, everything the index knows about it |
 | `sensitivity` | how much a verdict depends on the weights |
 | `eval` | reproduce the accuracy figures, buyer-query set included |
 | `backtest` | did the score predict later disclosure? `--sweep` for five cutoffs |
 | `doctor` | is the installation current enough to be trusted right now? |
 | `stats` | counts from the index |
-| `config` | show or create the scoring weights |
+| `config` | show or create the scoring weights; `--appetites` lists shipped risk appetites |
 | `snapshot` | pin the data into one portable file |
 | `ingest` | build the index from a CSAF directory |
 | `refresh` | update the certification and sanctions lists |

@@ -105,10 +105,16 @@ def _bands_from(bands):
     return [(prefer, "PREFER"), (conditional, "CONDITIONAL"), (0, "AVOID")]
 
 
-def write_template(path=None):
-    """Write a starter config the user can edit. Never overwrites silently."""
+def write_template(path=None, document=None):
+    """Write a starter config the user can edit. Never overwrites silently.
+
+    `document` lets a caller write a different starting opinion -- a named
+    profile -- through the same refuse-to-overwrite gate, so there is exactly
+    one place a config file comes into being.
+    """
     destination = Path(path or DEFAULT_PATH)
     if destination.exists():
         raise SystemExit(f"{destination} already exists; edit it or delete it first.")
-    destination.write_text(json.dumps(template(), indent=2) + "\n", encoding="utf-8")
+    destination.write_text(json.dumps(document or template(), indent=2) + "\n",
+                           encoding="utf-8")
     return destination

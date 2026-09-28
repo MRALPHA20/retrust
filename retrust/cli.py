@@ -29,15 +29,16 @@ reproducible and a demo never depends on the network.
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from .index import normalize_vendor
-from . import (alternatives, backtest, batch, bootstrap, certification,
-               config, console, diff, doctor, dossier, evaluate, index,
-               integrity, lev, match, questions, report, score, screenshot,
-               search, sensitivity, serve, shell, snapshot, ssvc, supplychain,
-               timeline)
+from . import (alternatives, appetites, backtest, batch, bootstrap,
+               certification, config, console, cvelookup, diff, doctor, dossier,
+               evaluate, index, integrity, lev, match, questions, report, score,
+               screenshot, search, sensitivity, serve, shell, snapshot, ssvc,
+               supplychain, timeline, vex)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -343,9 +344,20 @@ def cmd_compare(args):
 
 
 def cmd_config(args):
-    if args.init:
-        print(f"Wrote {config.write_template(args.file)}. Edit the weights and re-run.")
+    if args.appetites:
+        print(appetites.describe())
         return 0
+    if args.init:
+        document = appetites.template(args.appetite) if args.appetite else None
+        written = config.write_template(args.file, document=document)
+        opinion = (f"the {args.appetite!r} appetite" if args.appetite
+                   else "the defaults")
+        print(f"Wrote {written} from {opinion}. Edit the weights and re-run.")
+        return 0
+    if args.appetite:
+        print("--appetite only means something with --init; "
+              "`retrust config --appetites` lists what ships.")
+        return 2
     weights, bands, source = config.load(args.file)
     total = sum(weights.values())
     print(f"Scoring configuration from {source}\n")
@@ -1294,6 +1306,52 @@ def cmd_timeline(args):
     return 0
 
 
+def cmd_cve(args):
+    """One CVE, everything the index knows about it: the pivot lookup."""
+    connection = _open(args.db)
+    view = cvelookup.lookup(connection, args.cve)
+    if view is None:
+        print(f"this index has never met {args.cve.upper().strip()}: it is in "
+              "neither the corpus nor the KEV/EPSS tables")
+        return 2
+    quiet = args.json == "-"
+    if not quiet:
+        print(cvelookup.format_report(view))
+    if args.json:
+        from dataclasses import asdict
+        written = _emit_json(args.json, batch.envelope(
+            [asdict(view)], {"provenance": index.provenance(connection)}))
+        if written and not quiet:
+            print(f"\nJSON written to {written}")
+    return 0
+
+
+def cmd_vex(args):
+    """The assessment as a CycloneDX VEX document: SBOM in, VEX out."""
+    connection = _open(args.db)
+    resolution = match.resolve(connection, vendor=args.vendor,
+                               product=args.product,
+                               order_number=args.order_number)
+    statements = vex.statements(connection, resolution, version=args.version)
+    if not statements:
+        reason = resolution.reason if not resolution.resolved else \
+            "the resolution names no CVE to make a claim about"
+        print(f"No VEX written: {reason}")
+        return 2
+    named = resolution.matches[0]
+    subject = f"{named.vendor} {named.name}".strip()
+    doc = vex.document(subject, args.version, statements,
+                       index.provenance(connection))
+    payload = json.dumps(doc, indent=2) + "\n"
+    if args.out == "-":
+        print(payload, end="")
+    else:
+        Path(args.out).write_text(payload, encoding="utf-8")
+        print(vex.format_summary(statements))
+        print(f"\nVEX written to {args.out}")
+    return 0
+
+
 def cmd_alternatives(args):
     """Other products in the same vendor family, scored the same way."""
     connection = _open(args.db)
@@ -1575,6 +1633,18 @@ def build_parser():
     _product_args(p)
     p.set_defaults(func=cmd_timeline)
 
+    p = sub.add_parser("cve", help="one CVE, everything the index knows about it")
+    p.add_argument("cve", help="the id, e.g. CVE-2023-44487 (case-insensitive)")
+    p.add_argument("--json", metavar="FILE",
+                   help='write the view as JSON; "-" for stdout')
+    p.set_defaults(func=cmd_cve)
+
+    p = sub.add_parser("vex", help="write the assessment as a CycloneDX VEX document")
+    _product_args(p)
+    p.add_argument("--out", default="retrust-vex.json",
+                   help='output file (default retrust-vex.json; "-" for stdout)')
+    p.set_defaults(func=cmd_vex)
+
     p = sub.add_parser("alternatives", help="other products in the same family")
     _product_args(p)
     p.add_argument("--limit", type=int, default=8, help="suggestions to show")
@@ -1679,6 +1749,10 @@ def build_parser():
     p = sub.add_parser("config", help="show or create the scoring configuration")
     p.add_argument("--init", action="store_true", help="write an editable config file")
     p.add_argument("--file", help=f"config path (default {config.DEFAULT_PATH})")
+    p.add_argument("--appetite", metavar="NAME",
+                   help="start --init from a named risk appetite")
+    p.add_argument("--appetites", action="store_true",
+                   help="list the shipped risk appetites and their reasoning")
     p.set_defaults(func=cmd_config)
 
     p = sub.add_parser("sensitivity",

@@ -471,6 +471,9 @@ a gate rather than a report somebody has to read.</p>
     <tr><td>Is this installation current enough to trust?</td><td><code>retrust doctor</code></td></tr>
     <tr><td>What do we ask the vendor before signing?</td><td><code>retrust questions --vendor V --product P</code></td></tr>
     <tr><td>What does this product's history look like?</td><td><code>retrust timeline --vendor V --product P</code></td></tr>
+    <tr><td>Does anything we are buying carry this CVE?</td><td><code>retrust cve CVE-2023-44487</code></td></tr>
+    <tr><td>A machine-readable record of what was decided</td><td><code>retrust vex --vendor V --product P --version X</code></td></tr>
+    <tr><td>Start the weights from our kind of plant</td><td><code>retrust config --init --appetite safety-critical</code></td></tr>
     <tr><td>Score the components of an integrator's SBOM</td><td><code>retrust batch system-bom.json</code></td></tr>
     <tr><td>Does the score predict anything?</td><td><code>retrust backtest</code></td></tr>
     <tr><td>Does that answer depend on the cutoff date?</td><td><code>retrust backtest --sweep</code></td></tr>
