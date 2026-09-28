@@ -170,10 +170,39 @@ retrust refresh
 
 `make all` does the same thing through the Makefile.
 
-## Two ways to drive it
+## Three ways to drive it
 
-Every command below takes flags, which is what a pipeline wants. If you would
-rather not learn them, `retrust shell` asks instead.
+Commands with flags suit a script or a pipeline. `retrust shell` asks instead.
+And `retrust serve` puts the same assessments in a browser, which is what the
+person actually signing the purchase order would rather use.
+
+```bash
+retrust serve                  # http://127.0.0.1:8765
+```
+
+Search, score, compare and vendor profiles as pages, rendered by the same
+function that writes the report, so the browser and the printed PDF cannot drift
+into showing one assessment two ways.
+
+**It is deliberately small and deliberately local.** One standard-library HTTP
+server, no dependencies, and the security posture is the point rather than an
+afterthought: a tool that screens sanctions lists has no business opening an
+unauthenticated port on a plant network by accident. `/about` states the
+contract, and tests hold it:
+
+| | |
+|---|---|
+| Bound to `127.0.0.1` | anything else is opt-in and printed as a warning |
+| GET only | no request body is ever read |
+| No path becomes a filename | routing is an explicit table, so traversal has no code to live in |
+| Nothing written, nothing executed | every request is the same function call the CLI makes |
+| Everything escaped | and a CSP of `default-src 'none'` on every response |
+
+Single-threaded on purpose: a SQLite connection belongs to the thread that
+opened it, and this is one person looking at their own index. Threading would
+buy nothing and cost either a connection pool or `check_same_thread=False`,
+which is how corruption gets in.
+
 
 ```
 $ retrust shell
@@ -347,6 +376,7 @@ retrust snapshot --restore retrust-snapshot.zip
 |---|---|
 | `retrust` | what the index holds, and what to try next |
 | `shell` | interactive menu; no flags to remember |
+| `serve` | a local web interface on 127.0.0.1 |
 | `setup` | fetch every source and build the index |
 | `search QUERY` | find vendors, products or order numbers |
 | `vendor NAME` | what the index holds on one manufacturer |

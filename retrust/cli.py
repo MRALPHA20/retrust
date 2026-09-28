@@ -1,6 +1,8 @@
 """Command line interface.
 
-    retrust shell                                     interactive menu, no flags needed\n    retrust setup                                     fetch everything, build the index
+    retrust shell                                     interactive menu, no flags needed
+    retrust serve                                     a local web interface
+    retrust setup                                     fetch everything, build the index
     retrust search  QUERY                             find vendors, products, order numbers
     retrust vendor  NAME                              what the index knows about a maker
     retrust diff    previous.json                     what changed since that run
@@ -33,7 +35,7 @@ from .index import normalize_vendor
 from . import (alternatives, backtest, batch, bootstrap, certification,
                config, console, diff, dossier, evaluate, index, match,
                lev, report, score, screenshot, search, sensitivity,
-               shell, snapshot, ssvc, supplychain)
+               serve, shell, snapshot, ssvc, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -894,6 +896,28 @@ def _shell_writers(context):
             "csv": lambda result, path: batch.write_csv(result.records, path)}
 
 
+def cmd_serve(args):
+    """Serve the same assessments as pages, on this machine only by default."""
+    connection = _open(args.db)
+    context = _context(config_path=args.config)
+    handler = serve.build_handler(
+        connection,
+        lambda vendor, product, version=None: _assess(
+            connection, vendor, product, version, None, context=context),
+        context, dossier, index.stats(connection), index.provenance(connection),
+        args.host, args.port)
+
+    print(f"ReTrust on http://{args.host}:{args.port}  (Ctrl-C to stop)")
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        # Said plainly rather than buried: this is read-only and unauthenticated,
+        # and a plant network is not the place to leave it running unattended.
+        print(f"\n  WARNING: {args.host} is not the loopback address, so anyone\n"
+              "  who can reach this machine can read your index and run scoring\n"
+              "  against it. There is no authentication. Stop it when you are done.\n")
+    serve.serve(handler, args.host, args.port)
+    return 0
+
+
 def cmd_shell(args):
     """Menu-driven session, for people who would rather not learn the flags."""
     connection = _open(args.db)
@@ -1188,6 +1212,13 @@ def build_parser():
     # Not required: bare `retrust` shows what the index holds and what to run
     # next, which is a better first contact than an argparse usage error.
     sub = parser.add_subparsers(dest="command")
+
+    p = sub.add_parser("serve", help="a local web interface")
+    p.add_argument("--port", type=int, default=serve.DEFAULT_PORT)
+    p.add_argument("--host", default=serve.DEFAULT_HOST,
+                   help="loopback by default; anything else is announced")
+    p.add_argument("--config", help="scoring configuration file")
+    p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("shell", help="interactive menu, no flags to remember")
     p.add_argument("--config", help="scoring configuration file")

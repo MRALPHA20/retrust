@@ -307,21 +307,31 @@ def _summary_table(blocks, stabilities):
             'pillars rather than on the evidence.</p>')
 
 
+def body(blocks, stabilities=None, weights=None):
+    """The summary table and assessment blocks, without the page around them.
+
+    Split out so the local web server can put the same markup inside its own
+    page. One renderer for both surfaces means they cannot drift into showing
+    the same assessment differently.
+    """
+    stabilities = stabilities or {}
+    summary = _summary_table(blocks, stabilities) if len(blocks) > 1 else ""
+    return summary + "".join(
+        _assessment_block(a, r, f, stabilities.get(a.product), weights)
+        for a, r, f in blocks)
+
+
 def render(blocks, title="ReTrust assessment", snapshot="", stabilities=None,
            provenance=(), weights=None, config_source=""):
     """Render one or more (assessment, resolution, findings) triples to HTML."""
-    stabilities = stabilities or {}
-    summary = _summary_table(blocks, stabilities) if len(blocks) > 1 else ""
-    body = "".join(
-        _assessment_block(a, r, f, stabilities.get(a.product), weights)
-        for a, r, f in blocks)
+    inner = body(blocks, stabilities, weights)
     return (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
         f"<title>{_esc(title)}</title><style>{CSS}</style></head><body><div class=\"wrap\">"
         f"<p class=\"meta\">ReTrust &middot; generated {date.today().isoformat()}"
         + (f" &middot; data snapshot {_esc(snapshot)}" if snapshot else "")
-        + f"</p><h1>{_esc(title)}</h1>{summary}{body}"
+        + f"</p><h1>{_esc(title)}</h1>{inner}"
         + _footer_sources(provenance, weights, config_source)
         + "<footer>Scores are decision support, not a certification. Every figure above "
         "comes from public CISA, FIRST and vendor sources; weights are configurable and "
