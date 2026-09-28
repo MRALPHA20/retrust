@@ -18,10 +18,10 @@ Alternative, if a shorter title is wanted:
 ## Abstract (primary, 500 words)
 
 Every OT security tool analyses equipment you already own. Asset inventory
-platforms fingerprint what is on the wire; firmware tools like EMBA and FACT take
-apart images you already have. Nobody has built the layer above them: a
-defensible answer to *which of these candidate PLCs should go on the purchase
-order*, at the one moment when a security decision is still cheap.
+platforms fingerprint what is on the wire; firmware tools take apart images you
+already have. Nobody has built the layer above them: a defensible answer to
+*which of these candidate PLCs should go on the purchase order*, at the one
+moment a security decision is still cheap.
 
 ReTrust is that layer, and building it surfaced why nobody had. Measured across
 all 27,234 product entries in CISA's OT advisory corpus, exactly **26 carry a CPE
@@ -29,7 +29,7 @@ string, 0.1%**. Every conventional vulnerability tool joins products to CVEs
 through CPE, which is why general-purpose tooling performs so badly on industrial
 gear. Manufacturer order numbers (Siemens MLFB, `6ES7518-4AX00-1AB0`) are
 declared on 30.1% of entries, **316× more available**, and are what a buyer types
-onto a requisition in the first place. ReTrust keys on those instead.
+onto a requisition anyway. ReTrust keys on those instead.
 
 The scoring is built to survive a hostile reviewer. Hard gates (CISA KEV, the FCC
 Covered List, the BIS Entity List, OFAC) sit outside the weighted composite,
@@ -37,24 +37,23 @@ because a weighted disqualifier can be averaged away by good scores elsewhere.
 Raw CVE counts are never scored, since that would rank a diligent discloser below
 a silent one. A product that cannot be resolved gets no score at all, because
 every pillar reads "no CVEs found" as good news. And `retrust sensitivity` flags
-any verdict surviving fewer than 90% of random weightings as a judgement call,
-not a result.
+a verdict surviving fewer than 90% of random weightings as a judgement call.
 
 `retrust eval` recomputes every accuracy figure from your own index: **93.1%** of
 26,958 version ranges decided deterministically, **99.9%** resolution precision
-and recall at n=4,000. And `retrust backtest` reports a finding against the
-tool's own interest. Correlation with later disclosure is **+0.438**, the wrong
-direction, because the score tracks disclosure maturity rather than risk. Holding
-the manufacturer constant collapses it to +0.159, and to **+0.001** once the one
-vendor that is half the sample is dropped: nothing at all. The demo walks that confounder down
-live, because a scoring tool that cannot show you its own failure mode has not
-earned the verdict it prints.
+and recall at n=4,000. And `retrust backtest` reports against the tool's own
+interest. Correlation with later disclosure is **+0.438**, the wrong direction,
+because the score tracks disclosure maturity rather than risk. Holding the
+manufacturer constant collapses it to +0.159, and to **+0.001** once the vendor
+that is half the sample is dropped: nothing at all. The demo walks that
+confounder down live, because a scoring tool that cannot show its own failure
+mode has not earned the verdict it prints.
 
 Two published standards are implemented on top of that, and made to disagree in
 public. `retrust ssvc` places every finding on CERT/CC's SSVC deployer tree,
 reproduced from their repository rather than rewritten, with three of its four
-decision points left for the buyer because they describe a plant this tool has
-never seen. `retrust lev` implements NIST CSWP 41. On Delta Electronics DIAEnergie,
+decision points left for the buyer because they describe a plant this tool never
+sees. `retrust lev` implements NIST CSWP 41. On Delta Electronics DIAEnergie,
 SSVC returns 72 findings all marked *scheduled* because none are in KEV, while
 LEV estimates **23 of those same 72 have probably already been exploited**. The
 tool prints both, and `retrust lev --audit` measures whether LEV discriminates
@@ -62,9 +61,9 @@ before anyone leans on it.
 
 Building it turned up a second measured finding. CISA signs all 3,937 OT
 advisories with one PGP key, and `retrust verify` reports a fingerprint we could
-not obtain from any major public keyserver, the repository, or CISA's CSAF
-provider-metadata URL. If that holds, the signatures on the authoritative OT
-advisory feed cannot today be verified by anyone downstream.
+not obtain from any major keyserver, the repository, or CISA's CSAF
+provider-metadata URL. If that holds, those signatures cannot today be verified
+by anyone downstream.
 
 The interface follows ISA-101, the HMI standard for industrial control rooms, and
 a menu sits beside the flags. Python 3.10+, no dependencies, Apache-2.0, offline:
