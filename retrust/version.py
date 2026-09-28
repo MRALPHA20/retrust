@@ -27,6 +27,25 @@ _OP = re.compile(r"(<=|>=|<|>|=)")
 _PREFIX = re.compile(r"^(?:V|R|FW|SW|HW|SV|SP|T|M|Rev|Version|Firmware|Build)[_\s.]*", re.I)
 _UPDATE = re.compile(r"[_\s]*(?:Update|SP|Service[_\s]?Pack|Build)[_\s]*(\d+)$", re.I)
 
+# Words vendors put between two comparators, or after one. Absorbed into a
+# bound they sort above every numeric component -- ">=V2.3_and_<V6.30.016"
+# excluded the whole 2.3 line, the lower edge the vendor had just named.
+_CONNECTIVE = re.compile(
+    r"[_\s](?:and|or|only|up|to|thru|through|until|including|when|with)(?:[_\s]|$)",
+    re.I)
+
+# "V2.x", "V1.00.xx": everything on that line. Read as an exact pin it matched
+# nothing, which is a confident False for every real version.
+_WILDCARD = re.compile(r"^(.*?)[._](?:x+|\*)$", re.I)
+
+# "34.011-34.014". Only when both sides carry a dot, so "6.1.1-3" stays the
+# single version it is.
+_DASH_RANGE = re.compile(r"^([A-Za-z]*[\s._]*\d+\.[\d.]*\d)\s*-\s*"
+                         r"([A-Za-z]*[\s._]*\d+\.[\d.]*\d)$")
+
+_AND_OLDER = re.compile(r"^(.*?)[_\s]+and[_\s]+(?:older|below|earlier|prior)$", re.I)
+_UNTIL = re.compile(r"^(.*?)[_\s]+(?:until|thru|through)[_\s]+(.*)$", re.I)
+
 
 def parse_version(text):
     """Turn "V4.5.1 Update 3" into a sortable tuple, or None if it isn't a version."""
@@ -77,6 +96,37 @@ def _holds(op, version, bound):
     return {"<": v < b, "<=": v <= b, ">": v > b, ">=": v >= b, "=": v == b}[op]
 
 
+def _rewrite(text):
+    """Turn a vendor shorthand into the comparator string it means.
+
+    Each of these was previously read as an exact version pin and answered a
+    confident False for every version the range was written to cover. Rewriting
+    rather than special-casing keeps the comparator parser the only thing that
+    decides, which is what stops the layers fighting each other.
+    """
+    if _OP.search(text):
+        return text                       # already comparators; leave it alone
+
+    if m := _AND_OLDER.match(text):
+        return f"<={m.group(1)}"
+    if m := _UNTIL.match(text):
+        if parse_version(m.group(1)) and parse_version(m.group(2)):
+            return f">={m.group(1)}|<={m.group(2)}"
+    if m := _DASH_RANGE.match(text):
+        if parse_version(m.group(1)) and parse_version(m.group(2)):
+            return f">={m.group(1)}|<={m.group(2)}"
+    if m := _WILDCARD.match(text):
+        # "2.x" covers everything from 2 up to but not including 3.
+        if (low := parse_version(m.group(1))) and low[0]:
+            parts = list(low[0])
+            last = parts[-1]
+            if last[0] == 0:              # a numeric component we can increment
+                upper = ".".join(
+                    str(p[1]) + p[2] for p in parts[:-1] + [(0, last[1] + 1, "")])
+                return f">={m.group(1)}|<{upper}"
+    return text
+
+
 def _constraints(text):
     """Split a comparator string into (op, version) pairs, or None if unclear."""
     tokens = []
@@ -98,6 +148,9 @@ def _constraints(text):
         m = _OP.match(token)
         op, rest = (m.group(1), token[m.end():]) if m else ("=", token)
         rest = re.sub(r"^[A-Za-z]\w*\s+", "", rest.strip())
+        # Cut a trailing connective before parsing: "V2.3_and_" must read as
+        # 2.3, not as a version whose last component is the word "and".
+        rest = _CONNECTIVE.split(rest, maxsplit=1)[0].strip("_ ")
         if (v := parse_version(rest)) is None:
             return None
         out.append((op, v))
@@ -115,6 +168,7 @@ def _normalize(range_text):
 
     # Some vendors emit a malformed VERS fragment mid-string (">=vers:/_V5.4").
     text = re.sub(r"vers:[a-z]*/", "", text, flags=re.I).strip("_ ")
+    text = _rewrite(text)
 
     # "vers:all/*" and a bare "*" really do mean every version. A vers: string
     # whose constraint part is missing ("vers:intdot/") is malformed, not

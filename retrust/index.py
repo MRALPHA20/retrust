@@ -51,7 +51,11 @@ CREATE TABLE IF NOT EXISTS lev_estimate (
     first_seen TEXT, last_seen TEXT, peak_epss REAL) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS exploitation (
-    cve TEXT PRIMARY KEY, epss REAL, in_kev INTEGER DEFAULT 0, ransomware INTEGER DEFAULT 0);
+    cve TEXT PRIMARY KEY, epss REAL, in_kev INTEGER DEFAULT 0, ransomware INTEGER DEFAULT 0,
+    -- When CISA added it. The back-test needs this: 82% of the catalogue was
+    -- added after its 2022 cutoff, so scoring a pre-cutoff product with today's
+    -- KEV lets the score see the future it is being asked to predict.
+    kev_added TEXT);
 
 -- Provenance: which source snapshot produced this index. Printed on every
 -- report so a result can be tied to the exact data it came from.
@@ -282,13 +286,15 @@ def load_exploitation(connection, kev_path=None, epss_path=None):
             catalog = json.loads(Path(kev_path).read_text())
             rows = [
                 (item["cveID"], 1,
-                 int(str(item.get("knownRansomwareCampaignUse", "")).lower() == "known"))
+                 int(str(item.get("knownRansomwareCampaignUse", "")).lower() == "known"),
+                 (item.get("dateAdded") or "")[:10])
                 for item in catalog.get("vulnerabilities", [])
             ]
             connection.executemany(
-                "INSERT INTO exploitation (cve, in_kev, ransomware) VALUES (?,?,?) "
+                "INSERT INTO exploitation (cve, in_kev, ransomware, kev_added)"
+                " VALUES (?,?,?,?) "
                 "ON CONFLICT(cve) DO UPDATE SET in_kev=excluded.in_kev,"
-                " ransomware=excluded.ransomware", rows)
+                " ransomware=excluded.ransomware, kev_added=excluded.kev_added", rows)
             loaded["kev"] = len(rows)
             record_provenance(connection, "CISA KEV", f"{len(rows):,} entries")
 

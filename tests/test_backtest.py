@@ -308,3 +308,43 @@ def test_matched_report_states_its_residual_limitation(tmp_path):
         backtest.matched_cohort(result, min_stratum=5, permutations=0))
     # Removing the vendor effect does not remove product-level exposure.
     assert "vendor-level part" in text
+
+
+# --- the cutoff must not leak ----------------------------------------------
+
+def test_a_kev_listing_added_after_the_cutoff_is_not_known_at_it(tmp_path):
+    """82% of the KEV catalogue post-dates the default 2022 cutoff.
+
+    Counting those would let the score see the future it is being asked to
+    predict, which is the one thing a back-test must not do.
+    """
+    import json
+    from retrust import index
+
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    (directory / "a.json").write_text(json.dumps({
+        "document": {"title": "T", "tracking": {
+            "id": "ICSA-20-001-01", "initial_release_date": "2020-01-01T00:00:00Z"}},
+        "product_tree": {"branches": [{
+            "category": "vendor", "name": "Testco", "branches": [{
+                "category": "product_name", "name": "PLC",
+                "branches": [{"category": "product_version", "name": "1.0",
+                              "product": {"product_id": "P1", "name": "PLC"}}]}]}]},
+        "vulnerabilities": [{"cve": "CVE-2020-1",
+                             "product_status": {"known_affected": ["P1"]},
+                             "scores": [{"cvss_v3": {"baseScore": 9.8},
+                                         "products": ["P1"]}]}],
+    }))
+    connection, _ = index.build(str(tmp_path / "t.db"), str(directory))
+    kev = tmp_path / "kev.json"
+    kev.write_text(json.dumps({"vulnerabilities": [
+        {"cveID": "CVE-2020-1", "dateAdded": "2024-06-01"}]}))
+    index.load_exploitation(connection, kev_path=str(kev))
+
+    before = backtest._findings(connection, "testco", "plc", "2022-01-01")
+    assert before and not any(f.in_kev for f in before), \
+        "a 2024 KEV listing must not be visible at a 2022 cutoff"
+
+    after = backtest._findings(connection, "testco", "plc", "2025-01-01")
+    assert any(f.in_kev for f in after), "and must be visible once it has happened"

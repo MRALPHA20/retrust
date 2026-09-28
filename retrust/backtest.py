@@ -145,7 +145,11 @@ def _findings(connection, vendor_key, name_key, cutoff, before=True):
     comparison = "<" if before else ">="
     rows = connection.execute(f"""
         SELECT DISTINCT af.cve, af.cvss, af.cwe, af.remediation, af.vector,
-               e.epss, e.in_kev, e.ransomware
+               e.in_kev, e.ransomware, e.kev_added,
+               -- EPSS as it stood at the cutoff, not as it stands today.
+               (SELECT h.score FROM epss_history h
+                 WHERE h.cve = af.cve AND h.day <= ?
+                 ORDER BY h.day DESC LIMIT 1) epss
         FROM product p
         JOIN advisory a  ON a.id = p.advisory_id
         JOIN affected af ON af.advisory_id = p.advisory_id
@@ -153,10 +157,14 @@ def _findings(connection, vendor_key, name_key, cutoff, before=True):
         LEFT JOIN exploitation e ON e.cve = af.cve
         WHERE p.vendor_key = ? AND p.name_key = ?
           AND a.released != '' AND a.released {comparison} ?
-    """, (vendor_key, name_key, cutoff)).fetchall()
+    """, (cutoff, vendor_key, name_key, cutoff)).fetchall()
 
+    # A CVE added to KEV after the cutoff was not known then. Counting it would
+    # let the score see the future it is being asked to predict, and 82% of the
+    # catalogue was added after the default 2022 cutoff.
     return [Finding(cve=r["cve"], advisory_id="", cvss=r["cvss"], cwe=r["cwe"],
-                    epss=r["epss"], in_kev=bool(r["in_kev"]),
+                    epss=r["epss"],
+                    in_kev=bool(r["in_kev"]) and (r["kev_added"] or "") < cutoff,
                     ransomware=bool(r["ransomware"]), version_range="",
                     decided=False, remediation=r["remediation"] or "unknown",
                     # Carried so the back-test scores with the severity model the
