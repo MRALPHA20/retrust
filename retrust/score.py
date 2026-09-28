@@ -20,7 +20,7 @@ Two rules keep this defensible:
 
 from dataclasses import dataclass, field
 
-from . import cvss
+from . import cvss, weakness
 
 BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
 
@@ -438,6 +438,12 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             "No advisories name this product. That is not proof it is secure -- it "
             "may simply mean nobody has published about it."
         )
+
+    # What kind of flaws these are, which is a different question from how many
+    # or how bad. Notes rather than a scoring term: a credential baked into
+    # firmware is not three points off a composite, it is something the operator
+    # cannot engineer around for the life of the asset.
+    notes.extend(weakness.notes(weakness.classify(findings)))
 
     return Assessment(
         product=product_label, verdict=verdict, score=round(composite, 1),

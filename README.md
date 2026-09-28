@@ -377,6 +377,7 @@ retrust snapshot --restore retrust-snapshot.zip
 | `retrust` | what the index holds, and what to try next |
 | `shell` | interactive menu; no flags to remember |
 | `serve` | a local web interface on 127.0.0.1 |
+| `verify` | are the advisories the ones CISA published? |
 | `setup` | fetch every source and build the index |
 | `search QUERY` | find vendors, products or order numbers |
 | `vendor NAME` | what the index holds on one manufacturer |
@@ -862,6 +863,51 @@ below the floor ReTrust returns nothing rather than a weak guess.
 
 A wrong answer about whether a PLC is vulnerable costs more than "needs review",
 so abstention is a feature rather than a failure.
+
+## Are the advisories genuine?
+
+A tool that screens supply chains should be able to say where its own inputs
+came from. CISA ships a SHA-512 and a detached PGP signature beside every
+advisory, and `retrust verify` checks both, keeping them apart because they
+answer different questions.
+
+```bash
+retrust verify
+```
+
+```
+CONTENT   does each file still match the digest shipped beside it?
+  verified                        3,937
+  failed                              0
+
+ORIGIN    who signed it?
+  signature verified                  0
+  not established                 3,937
+
+  signed by:
+    144A ED0A 57BE 7D4A E835 D9D8 CAC5 AC4F 7416 4B17   438 sampled
+```
+
+**The digest and the file came from the same clone**, so it catches corruption
+and tampering after download and nothing else. A substituted repository would
+carry a matching digest. Only the signature survives a hostile mirror, and the
+report says so rather than rolling both into one reassuring number.
+
+**One key signed all 3,937 advisories**, which is the expected shape; more than
+one is what a partially substituted mirror looks like, and gets flagged.
+
+**And here is the finding.** CISA signs every advisory and publishes the signing
+key nowhere a verifier can reach it: not on the public keyservers, not in its
+CSAF provider metadata, not in the repository. `--fetch-key` asks a keyserver for
+exactly the fingerprint the signatures name and refuses anything else, but today
+that returns nothing. Until CISA publishes the key, these signatures cannot be
+verified by a third party at all, and `--key FILE` is the only route for someone
+who has obtained it out of band. The corpus naming its own signer proves nothing
+by itself, which is why the tool tells you to confirm that fingerprint
+elsewhere rather than presenting it as evidence.
+
+Exit code is non-zero if anything failed, so a build can refuse to score on a
+corpus it could not verify.
 
 ## Data sources
 

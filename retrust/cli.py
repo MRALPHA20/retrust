@@ -2,6 +2,7 @@
 
     retrust shell                                     interactive menu, no flags needed
     retrust serve                                     a local web interface
+    retrust verify                                    are the advisories genuine?
     retrust setup                                     fetch everything, build the index
     retrust search  QUERY                             find vendors, products, order numbers
     retrust vendor  NAME                              what the index knows about a maker
@@ -34,8 +35,8 @@ from pathlib import Path
 from .index import normalize_vendor
 from . import (alternatives, backtest, batch, bootstrap, certification,
                config, console, diff, dossier, evaluate, index, match,
-               lev, report, score, screenshot, search, sensitivity,
-               serve, shell, snapshot, ssvc, supplychain)
+               integrity, lev, report, score, screenshot, search,
+               sensitivity, serve, shell, snapshot, ssvc, supplychain)
 
 DEFAULT_DB = "data/retrust.db"
 
@@ -904,6 +905,44 @@ def _shell_writers(context):
             "csv": lambda result, path: batch.write_csv(result.records, path)}
 
 
+def cmd_verify(args):
+    """Check the advisories we scored on are the ones CISA published."""
+    keyring = Path(args.data) / "csaf-keyring.gpg"
+    root = args.csaf or str(bootstrap.corpus_dir(args.data))
+    if not Path(root).is_dir():
+        sys.exit(f"No advisories at {root}. Run `retrust setup` first, or pass "
+                 "--csaf.")
+
+    # Read the signer from the corpus before anything else: --fetch-key asks for
+    # exactly this fingerprint, so the keyserver never gets to choose the key.
+    keys = integrity.signers(root) if not args.no_signatures else {}
+    if args.key:
+        try:
+            print(f"  imported into {integrity.import_key_file(keyring, args.key)}")
+        except Exception as error:
+            sys.exit(f"Could not import {args.key}: {error}")
+    if args.fetch_key:
+        if len(keys) != 1:
+            sys.exit(f"Expected one signing key to fetch, found {len(keys)}. "
+                     "Establish why before importing anything.")
+        fingerprint = next(iter(keys))
+        try:
+            print(f"Asking {integrity.KEYSERVER} for {fingerprint} ...")
+            print(f"  imported into {integrity.import_key(keyring, fingerprint)}")
+        except Exception as error:
+            sys.exit(f"Could not import the key: {error}")
+    print(f"Verifying advisories under {root} ...")
+    results = integrity.sweep(
+        root, limit=args.limit, signatures=not args.no_signatures,
+        keyring=keyring if keyring.exists() else None,
+        progress=lambda n, total: print(f"  {n:,}/{total:,}", end="\r", flush=True))
+    print(" " * 40, end="\r")      # wipe the progress line before the report
+    print()
+    print(integrity.format_report(results, root, keyring.exists(), keys))
+    # Non-zero when anything failed, so a build can refuse to score on it.
+    return 1 if any(not r.intact for r in results) else 0
+
+
 def cmd_serve(args):
     """Serve the same assessments as pages, on this machine only by default."""
     connection = _open(args.db)
@@ -1231,6 +1270,18 @@ def build_parser():
     # Not required: bare `retrust` shows what the index holds and what to run
     # next, which is a better first contact than an argparse usage error.
     sub = parser.add_subparsers(dest="command")
+
+    p = sub.add_parser("verify", help="are the advisories the ones CISA published?")
+    p.add_argument("--csaf", help="directory of CSAF files (default: the one setup cloned)")
+    p.add_argument("--data", default="data", help="data directory")
+    p.add_argument("--limit", type=int, help="check only the first N, for a quick look")
+    p.add_argument("--no-signatures", action="store_true",
+                   help="digests only; skip gpg")
+    p.add_argument("--fetch-key", action="store_true",
+                   help="ask a keyserver for the fingerprint the signatures name")
+    p.add_argument("--key", metavar="FILE",
+                   help="import a signing key you obtained out of band")
+    p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser("serve", help="a local web interface")
     p.add_argument("--port", type=int, default=serve.DEFAULT_PORT)

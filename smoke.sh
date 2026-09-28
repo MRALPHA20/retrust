@@ -182,6 +182,15 @@ $RETRUST completion bash | bash -n \
   || { echo "  FAIL  bash completion is valid bash"; fail=$((fail+1)); failed+=("bash -n"); }
 
 echo
+echo "== integrity =="
+check 0 "digests verify"                            -- $RETRUST verify --limit 40 --no-signatures
+contains "same clone" "a digest is not an origin proof" -- $RETRUST verify --limit 10 --no-signatures
+contains "signed by:" "the signer fingerprint is reported" -- $RETRUST verify --limit 10
+contains "does not currently publish this key" "the ecosystem gap is stated" \
+  -- $RETRUST verify --limit 10
+check 1 "a missing corpus is reported"              -- $RETRUST verify --csaf /nonexistent
+
+echo
 echo "== misuse =="
 check 2 "an unknown command is rejected"          -- $RETRUST frobnicate
 check 1 "a missing index is reported, not crashed" -- $RETRUST --db /nonexistent/x.db stats
