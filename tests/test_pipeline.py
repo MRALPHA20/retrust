@@ -221,3 +221,50 @@ def test_epss_loads_with_or_without_the_comment_line(tmp_path):
                 " remediation) VALUES"
                 " ('A','P','CVE-2026-0001',7.0,'CWE-1','vendor_fix')")
         assert index.load_exploitation(connection, epss_path=str(path))["epss"] == 1, label
+
+
+# --- the resolution ladder must not cross identities ------------------------
+
+def test_a_numeric_prefix_is_not_extended_by_more_digits(tmp_path):
+    """RSLogix 5 matched RSLogix 500 and RSLogix 5000.
+
+    Normalisation strips the punctuation that separated the components, so a
+    plain prefix test crossed into three different products with three different
+    advisory sets.
+    """
+    from retrust import match
+    key = match._boundary_key
+    assert match._prefix_matches(key("RSLogix 5"), key("RSLogix 5"))
+    assert not match._prefix_matches(key("RSLogix 5"), key("RSLogix 500"))
+    assert not match._prefix_matches(key("RSLogix 5"), key("RSLogix 5000"))
+    # A real family member continues at a separator, and must survive. The
+    # first of these is why the check cannot simply refuse a following digit:
+    # normalisation had already eaten the hyphen in "1518-4".
+    assert match._prefix_matches(key("SIMATIC S7-1500 CPU 1518"),
+                                 key("SIMATIC S7-1500 CPU 1518-4 PN/DP MFP"))
+    assert match._prefix_matches(key("RSLogix 5"), key("RSLogix 5 FactoryTalk"))
+    assert match._prefix_matches(key("SIMATIC S7-1500"), key("SIMATIC S7-1500 CPU"))
+
+
+def test_an_order_number_naming_two_vendors_abstains(tmp_path):
+    """Merging them scored one product against another company's advisories."""
+    from retrust import index, match
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    for n, vendor in enumerate(("Ecava", "Intellicom")):
+        (directory / f"a{n}.json").write_text(json.dumps({
+            "document": {"title": "T", "tracking": {"id": f"ICSA-26-00{n}-01"}},
+            "product_tree": {"branches": [{
+                "category": "vendor", "name": vendor, "branches": [{
+                    "category": "product_name", "name": f"Box {n} (EC150)",
+                    "branches": [{"category": "product_version", "name": "1.0",
+                                  "product": {"product_id": "P1", "name": "Box"}}]}]}]},
+            "vulnerabilities": [],
+        }))
+    connection, _ = index.build(str(tmp_path / "t.db"), str(directory))
+    resolution = match.resolve(connection, order_number="EC150")
+    assert resolution.abstained
+    assert "2 manufacturers" in resolution.reason
+    assert "Ecava" in resolution.reason and "Intellicom" in resolution.reason
+    # Naming the vendor resolves it.
+    assert match.resolve(connection, vendor="Ecava", order_number="EC150").resolved

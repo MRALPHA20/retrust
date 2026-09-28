@@ -447,7 +447,10 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
 
     return Assessment(
         product=product_label, verdict=verdict, score=round(composite, 1),
-        pillars=pillars, gates=gates, findings_count=len(findings),
+        # Distinct CVEs, not findings: one CVE named by two advisories is one
+        # thing to fix, and every label that shows this says "CVE(s)".
+        pillars=pillars, gates=gates,
+        findings_count=len({f.cve for f in findings}),
         undecided_count=len(undecided), confidence=round(confidence.coverage, 2),
         notes=notes,
     )

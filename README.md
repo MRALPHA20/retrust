@@ -67,7 +67,7 @@ never have to take these numbers on trust.
 | Version ranges decided deterministically | **89.1%** of 28,651 |
 | ...of ranges that *can* be decided from a version string | **90.5%** |
 | Product resolution precision (n = 4,000) | **99.9%** |
-| Product resolution recall (n = 4,000) | **99.9%** |
+| Product resolution recall (n = 4,000) | **99.7%** |
 
 Two things that keep these honest:
 
@@ -856,7 +856,7 @@ below the floor ReTrust returns nothing rather than a weak guess.
 | Rung | Method | Confidence | Round-trip accuracy |
 |---|---|---:|---:|
 | 1 | Manufacturer order number | 0.98 | 100% |
-| 2 | Vendor + product name, including longer family variants | 0.90 | 99.8% |
+| 2 | Vendor + product name, continuing at a component boundary | 0.90 | 99.8% |
 | 3 | Vendor + all query words present in the name | 0.70 | 100% |
 | 4 | Abstain, with a typed reason | — | — |
 

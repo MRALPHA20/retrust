@@ -59,6 +59,36 @@ class Resolution:
         return bool(self.matches) and not self.abstained
 
 
+_SEPARATOR = re.compile(r"[^a-z0-9]+")
+
+
+def _boundary_key(text):
+    """Normalise like name_key, but keep one mark where the separators were.
+
+    name_key strips punctuation entirely, which is right for matching and wrong
+    for deciding where a name ends: "RSLogix 5" and "RSLogix 500" both start
+    "rslogix5". Keeping a single mark lets a prefix test tell a component
+    boundary from a longer number.
+    """
+    return _SEPARATOR.sub("|", (text or "").lower()).strip("|")
+
+
+def _prefix_matches(wanted, candidate):
+    """Does `candidate` continue `wanted` at a component boundary?
+
+    "RSLogix 5" matched RSLogix 500 and RSLogix 5000 -- three products with three
+    different advisory sets -- because normalisation had already thrown away the
+    space that separated the components. Compared on boundary keys, a name may
+    only continue at a separator, so "SIMATIC S7-1500 CPU 1518" still reaches
+    "...1518-4 PN/DP MFP" while "5" no longer reaches "500".
+    """
+    if candidate == wanted:
+        return True
+    if not wanted or not candidate.startswith(wanted):
+        return False
+    return candidate[len(wanted)] == "|"
+
+
 def _rows_to_matches(rows, method):
     confidence = CONFIDENCE[method]
     return [
@@ -86,6 +116,32 @@ def resolve(connection, vendor=None, product=None, order_number=None):
         if rows and vendor:
             wanted = normalize_vendor(vendor)
             rows = [r for r in rows if r["vendor_key"] == wanted] or []
+        # A product name was given too, so it has to agree. It named the
+        # S7-1200 while the order number named the S7-1500, and the report
+        # carried the typed name above the other product's 1,063 CVEs.
+        if rows and product and (wanted_name := normalize_name(product)):
+            wanted_boundary = _boundary_key(product)
+            agreeing = [r for r in rows
+                        if _prefix_matches(wanted_boundary, _boundary_key(r["name"]))]
+            if not agreeing:
+                result.abstained = True
+                result.reason = (
+                    f"order number {order_number!r} names "
+                    f"{rows[0]['name']!r}, not {product!r}. Drop one of them: "
+                    "ReTrust will not decide which you meant.")
+                return result
+            rows = agreeing
+        # Without a vendor to disambiguate, an order number belonging to two
+        # manufacturers cannot be resolved. Merging them scored one product
+        # against another company's advisories and screened the wrong vendor.
+        if rows and not vendor and len({r["vendor_key"] for r in rows}) > 1:
+            named = sorted({r["vendor"] for r in rows})
+            result.abstained = True
+            result.reason = (
+                f"order number {order_number!r} belongs to {len(named)} "
+                f"manufacturers ({', '.join(named)}). Give --vendor to say "
+                "which.")
+            return result
         if rows:
             result.matches = _rows_to_matches(rows, "order_number")
             result.method, result.confidence = "order_number", CONFIDENCE["order_number"]
@@ -123,6 +179,9 @@ def resolve(connection, vendor=None, product=None, order_number=None):
     rows = connection.execute(
         "SELECT * FROM product WHERE vendor_key = ? AND (name_key = ? OR name_key LIKE ?)",
         (vendor_key, name_key, name_key + "%")).fetchall()
+    wanted_boundary = _boundary_key(product)
+    rows = [r for r in rows
+            if _prefix_matches(wanted_boundary, _boundary_key(r["name"]))]
     if rows:
         result.matches = _rows_to_matches(rows, "exact_name")
         result.method, result.confidence = "exact_name", CONFIDENCE["exact_name"]
@@ -176,7 +235,7 @@ def findings(connection, resolution, version=None):
     if not resolution.resolved:
         return []
 
-    out, seen = [], set()
+    out, seen = [], {}
     for match in resolution.matches:
         # Skip products whose range we can read and that clearly exclude this
         # version. When the range is unparseable we keep the CVE and flag it.
@@ -199,14 +258,23 @@ def findings(connection, resolution, version=None):
         for row in rows:
             key = (row["cve"], match.advisory_id)
             if key in seen:
+                # Two products of the same advisory can carry the same CVE with
+                # different ranges, and whichever SQLite returned first decided
+                # the flag. A range we could evaluate outranks one we could not:
+                # "checked against your version" is a stronger statement than
+                # "kept in scope because we could not tell".
+                if decided and not seen[key].decided:
+                    seen[key].decided = True
+                    seen[key].version_range = match.version_range
                 continue
-            seen.add(key)
-            out.append(Finding(
+            finding = Finding(
                 cve=row["cve"], advisory_id=match.advisory_id,
                 cvss=row["cvss"], cwe=row["cwe"], epss=row["epss"],
                 in_kev=bool(row["in_kev"]), ransomware=bool(row["ransomware"]),
                 version_range=match.version_range, decided=decided,
                 remediation=row["remediation"] or "unknown",
                 vector=row["vector"],
-            ))
+            )
+            seen[key] = finding
+            out.append(finding)
     return out

@@ -136,7 +136,9 @@ def _render_one(assessment, resolution, findings, context=None):
         lines.append(f"  matched by {resolution.method} "
                      f"(confidence {resolution.confidence:.2f}), "
                      f"{len(resolution.matches)} advisory product(s), "
-                     f"{len(findings)} CVE(s)")
+                     # Distinct CVEs: the same one named by two advisories is
+                     # one thing to fix, and this label says CVE.
+                     f"{len({f.cve for f in findings})} CVE(s)")
     elif assessment.verdict == "NOT ASSESSED":
         lines += [f"  reason: {resolution.reason}",
                   "\n  ReTrust abstains rather than guessing."]
