@@ -105,7 +105,7 @@ is nothing to resolve, nothing to pin, and no virtualenv to create.
 **Two commands from nothing to a working tool:**
 
 ```bash
-git clone https://github.com/<you>/retrust.git && cd retrust
+git clone https://github.com/MRALPHA20/retrust.git && cd retrust
 python3 -m retrust.cli setup
 ```
 

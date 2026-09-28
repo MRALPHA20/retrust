@@ -9,6 +9,12 @@ data/kev.json
 data/epss.csv
 data/epss.csv.gz
 
+# The CISA signing keyring, built by `retrust verify --fetch-key`. Key trust
+# comes from CISA's provider metadata agreeing with the corpus signatures, not
+# from this repository -- shipping it would make the repo a key source.
+data/csaf-keyring.gpg
+*.gpg~
+
 # Portable snapshots (~4 MB each). Ship these as release assets, not commits.
 *-snapshot.zip
 retrust-snapshot.zip
