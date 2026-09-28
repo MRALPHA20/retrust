@@ -324,3 +324,16 @@ def test_malformed_json_fails_like_its_siblings(tmp_path):
     path.write_text("{ not json")
     with pytest.raises(SystemExit, match="not valid JSON"):
         batch.read_candidates(path)
+
+
+def test_csv_cells_cannot_carry_spreadsheet_formulas(tmp_path):
+    """A hostile advisory must not put =HYPERLINK(...) in front of a buyer."""
+    path = tmp_path / "out.csv"
+    batch.write_csv([{"product": "=HYPERLINK(\"http://evil\")", "verdict": "AVOID",
+                      "score": 1.0, "gates": ["@import"], "reason": "-looks odd"}],
+                    str(path))
+    text = path.read_text()
+    assert "'=HYPERLINK" in text
+    assert "'@import" in text
+    assert "'-looks odd" in text
+    assert "\n=" not in text and ",=" not in text

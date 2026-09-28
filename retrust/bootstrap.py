@@ -14,8 +14,10 @@ resumes where it stopped.
 """
 
 import gzip
+import io
 import shutil
 import subprocess
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -30,9 +32,28 @@ EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 TIMEOUT = 120
 _USER_AGENT = "Mozilla/5.0 (compatible; ReTrust/0.1; +setup)"
 
+# KEV is ~2 MB and EPSS ~13 MB unpacked. A response past this is not the feed:
+# it is a broken or hostile mirror, and reading it without a ceiling hands that
+# mirror the machine's memory and disk. The same cap bounds gzip expansion,
+# because a compressed member can claim any size it likes.
+MAX_FEED_BYTES = 200 * 1024 * 1024
+
 
 class StepFailed(Exception):
     """A setup step failed in a way the user can act on."""
+
+
+def _read_capped(stream, url):
+    """Read a stream fully, refusing to go past MAX_FEED_BYTES."""
+    chunks, total = [], 0
+    while chunk := stream.read(1 << 20):
+        total += len(chunk)
+        if total > MAX_FEED_BYTES:
+            raise StepFailed(
+                f"{url} is over {MAX_FEED_BYTES // 1_000_000} MB, which no "
+                "feed this tool fetches has ever been. Refusing the rest.")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _download(url, destination, decompress=False):
@@ -41,13 +62,23 @@ def _download(url, destination, decompress=False):
     Writing straight to the destination would leave a truncated file behind if
     the connection dropped, and every later run would skip it as "already
     present" -- so the index would quietly be built on half a feed.
+
+    The final address must still be https: urllib follows redirects across
+    schemes, and a feed that lands on plain http arrives over a channel anyone
+    on the path can rewrite.
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_name(destination.name + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-        payload = response.read()
-    partial.write_bytes(gzip.decompress(payload) if decompress else payload)
+        landed = getattr(response, "url", url)
+        if urllib.parse.urlsplit(landed).scheme != "https":
+            raise StepFailed(f"{url} redirected to {landed}; refusing to fetch "
+                             "over anything but https")
+        payload = _read_capped(response, url)
+    if decompress:
+        payload = _read_capped(gzip.GzipFile(fileobj=io.BytesIO(payload)), url)
+    partial.write_bytes(payload)
     partial.replace(destination)
     return destination.stat().st_size
 

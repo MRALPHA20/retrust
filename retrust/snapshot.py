@@ -103,6 +103,14 @@ def restore(snapshot_path, data_dir="data", verify=True):
 
         with zipfile.ZipFile(snapshot_path) as bundle:
             for name, meta in manifest["files"].items():
+                # The manifest travels inside the archive, so its names are the
+                # attacker's if the archive is. Anything but the plain filenames
+                # a snapshot carries is refused before extraction: a name like
+                # "../.bashrc" would otherwise escape on the move into place.
+                if Path(name).name != name or name not in CONTENTS:
+                    raise SystemExit(
+                        f"snapshot manifest names {name!r}, which is not a "
+                        "file a ReTrust snapshot carries. Refusing to unpack.")
                 info = bundle.getinfo(name)
                 total += info.file_size
                 if total > MAX_UNPACKED_BYTES:

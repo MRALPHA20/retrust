@@ -198,11 +198,24 @@ contract, and tests hold it:
 | No path becomes a filename | routing is an explicit table, so traversal has no code to live in |
 | Nothing written, nothing executed | every request is the same function call the CLI makes |
 | Everything escaped | and a CSP of `default-src 'none'` on every response |
+| Host header checked | a DNS-rebinding page in a browser cannot read the index through it |
+| Nothing cached, nothing framed | `Cache-Control: no-store`, `frame-ancestors 'none'` |
+| Stalled connections dropped | one stuck client cannot hold the single-threaded server |
 
 Single-threaded on purpose: a SQLite connection belongs to the thread that
 opened it, and this is one person looking at their own index. Threading would
 buy nothing and cost either a connection pool or `check_same_thread=False`,
 which is how corruption gets in.
+
+The same posture runs through the rest of the tool. Feeds are fetched over
+https only -- a redirect that lands on plain http is refused -- and reads are
+capped, so a hostile mirror can fill neither memory nor disk, gzip bombs
+included. PGP key material is refused over anything but https and size-capped
+too. A snapshot's manifest travels inside the archive, so its file names are
+validated before anything is unpacked: `../` cannot escape the data directory.
+And CSV cells are neutralised against spreadsheet formula injection, because
+this tool's output is opened in Excel by procurement -- a hostile advisory must
+not be able to put `=HYPERLINK(...)` in front of a buyer.
 
 
 ```

@@ -33,11 +33,13 @@ def test_skip_refresh_drops_only_the_lists():
 class _Response:
     """Enough of urllib's response object to stand in for one."""
 
-    def __init__(self, payload):
+    def __init__(self, payload, url="https://example.invalid/f"):
         self.payload = payload
+        self.url = url
 
-    def read(self):
-        return self.payload
+    def read(self, size=-1):
+        out, self.payload = self.payload, b""
+        return out
 
     def __enter__(self):
         return self
@@ -61,6 +63,44 @@ def test_download_decompresses_gzip(tmp_path, monkeypatch):
     destination = tmp_path / "epss.csv"
     bootstrap._download("https://example.invalid/g", destination, decompress=True)
     assert destination.read_text() == "cve,epss\n"
+
+
+def test_a_download_that_lands_on_http_is_refused(tmp_path, monkeypatch):
+    """urllib follows redirects across schemes; security data must not."""
+    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+                        lambda *a, **k: _Response(b"x", url="http://mitm.example/f"))
+    with pytest.raises(bootstrap.StepFailed, match="https"):
+        bootstrap._download("https://example.invalid/f", tmp_path / "f.json")
+    assert not (tmp_path / "f.json").exists()
+
+
+def test_an_oversized_download_is_refused(tmp_path, monkeypatch):
+    """A hostile mirror must not be handed the machine's memory and disk."""
+    class _Endless:
+        url = "https://example.invalid/f"
+        def read(self, size=-1):
+            return b"x" * (1 << 20)
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+                        lambda *a, **k: _Endless())
+    with pytest.raises(bootstrap.StepFailed, match="Refusing"):
+        bootstrap._download("https://example.invalid/f", tmp_path / "f.json")
+    assert not (tmp_path / "f.json").exists()
+
+
+def test_a_gzip_bomb_is_refused(tmp_path, monkeypatch):
+    """A small .gz that expands past the cap stops at the cap."""
+    import gzip
+    bomb = gzip.compress(b"\0" * (bootstrap.MAX_FEED_BYTES + 2))
+    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+                        lambda *a, **k: _Response(bomb))
+    with pytest.raises(bootstrap.StepFailed, match="Refusing"):
+        bootstrap._download("https://example.invalid/g", tmp_path / "g.csv",
+                            decompress=True)
 
 
 def test_a_failed_download_leaves_no_file_behind(tmp_path, monkeypatch):

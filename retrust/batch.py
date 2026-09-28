@@ -213,6 +213,21 @@ def write_json(records, path, meta=None):
     return path
 
 
+def _excel_safe(value):
+    """Neutralise spreadsheet formula injection.
+
+    Product names, gate labels and reasons come from advisory data, and this
+    CSV is written to be opened in a spreadsheet by procurement. A cell that
+    begins with = + - @ or a tab is executed as a formula there, so one
+    hostile advisory could put =HYPERLINK(...) in front of a buyer. The
+    standard defence is a leading apostrophe, which spreadsheets read as
+    "text follows" and do not display.
+    """
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def write_csv(records, path):
     """Flat CSV: nested pillars become one column each."""
     pillar_names = sorted({name for r in records for name in r.get("pillars", {})})
@@ -230,7 +245,7 @@ def write_csv(records, path):
             for name in pillar_names:
                 row[f"pillar_{name.lower().replace(' ', '_')}"] = \
                     record.get("pillars", {}).get(name)
-            writer.writerow(row)
+            writer.writerow({k: _excel_safe(v) for k, v in row.items()})
     return path
 
 

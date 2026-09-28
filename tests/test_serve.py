@@ -175,6 +175,45 @@ def test_more_candidates_than_the_cap_are_dropped(handler):
 
 # --- headers ---------------------------------------------------------------
 
+def test_a_rebound_host_header_is_refused(handler):
+    """DNS rebinding: attacker.com resolving to 127.0.0.1 must not read pages."""
+    import http.client
+    httpd = serve.serve(handler, "127.0.0.1", 0, forever=False)
+    port = httpd.server_address[1]
+    caught = {}
+
+    def fetch():
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            connection.request("GET", "/", headers={"Host": "attacker.example"})
+            response = connection.getresponse()
+            caught["status"] = response.status
+            caught["body"] = response.read().decode("utf-8")
+        except Exception as error:
+            caught["error"] = error
+
+    client = threading.Thread(target=fetch, daemon=True)
+    client.start()
+    httpd.handle_request()
+    client.join(timeout=10)
+    httpd.server_close()
+    assert caught.get("status") == 403
+    assert "DNS-rebinding" in caught["body"]
+
+
+def test_a_local_host_header_is_answered(handler):
+    """The check refuses foreign names, not the names this machine goes by."""
+    status, _, _ = _get(handler, "/")           # urllib sends Host: 127.0.0.1
+    assert status == 200
+
+
+def test_responses_are_not_cacheable_or_frameable(handler):
+    _, headers, _ = _get(handler, "/")
+    assert headers["Cache-Control"] == "no-store"
+    assert headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
+
+
 def test_the_policy_forbids_fetching_and_executing(handler):
     _, headers, _ = _get(handler, "/")
     policy = headers["Content-Security-Policy"]

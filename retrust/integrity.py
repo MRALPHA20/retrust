@@ -199,6 +199,33 @@ def import_key_file(keyring, path):
     return str(keyring)
 
 
+# Provider metadata is a few KB and a public key a few more. Anything past
+# this is not key material.
+MAX_KEY_BYTES = 5 * 1024 * 1024
+
+
+def _fetch_key_material(url, timeout):
+    """Fetch bytes that trust decisions will rest on: https only, size-capped.
+
+    Key material fetched over a rewritable channel proves nothing, so a plain
+    http address -- typed or redirected to -- is refused rather than used.
+    """
+    import urllib.parse
+    import urllib.request
+    if urllib.parse.urlsplit(url).scheme != "https":
+        raise RuntimeError(f"{url} is not https; refusing to fetch key material "
+                           "over a channel anyone on the path can rewrite")
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        landed = getattr(response, "url", url)
+        if urllib.parse.urlsplit(landed).scheme != "https":
+            raise RuntimeError(f"{url} redirected to {landed}; refusing")
+        payload = response.read(MAX_KEY_BYTES + 1)
+    if len(payload) > MAX_KEY_BYTES:
+        raise RuntimeError(f"{url} exceeds {MAX_KEY_BYTES // 1024} KB, which "
+                           "key material never does")
+    return payload
+
+
 def advertised_keys(url=CISA_PROVIDER_METADATA, timeout=60):
     """The signing keys a CSAF publisher advertises, per the standard.
 
@@ -206,9 +233,7 @@ def advertised_keys(url=CISA_PROVIDER_METADATA, timeout=60):
     says which keys are theirs, in a document served from their own domain.
     """
     import json
-    import urllib.request
-    with urllib.request.urlopen(url, timeout=timeout) as response:
-        metadata = json.loads(response.read().decode("utf-8"))
+    metadata = json.loads(_fetch_key_material(url, timeout).decode("utf-8"))
     return [(str(k.get("fingerprint", "")).upper(), k.get("url", ""))
             for k in (metadata.get("public_openpgp_keys") or [])
             if k.get("url")]
@@ -222,7 +247,6 @@ def import_advertised_key(keyring, fingerprint, url=CISA_PROVIDER_METADATA,
     advertises, and the key the signatures were actually made with. Accepting
     either alone would let whichever one an attacker controlled decide.
     """
-    import urllib.request
     if not have_gpg():
         raise RuntimeError("gpg is not installed, so a key cannot be imported")
 
@@ -236,8 +260,7 @@ def import_advertised_key(keyring, fingerprint, url=CISA_PROVIDER_METADATA,
             f"not include {fingerprint}, the key these signatures were made "
             "with. Establish why before importing anything.")
 
-    with urllib.request.urlopen(matching[0], timeout=timeout) as response:
-        key = response.read()
+    key = _fetch_key_material(matching[0], timeout)
     if b"BEGIN PGP PUBLIC KEY BLOCK" not in key:
         raise RuntimeError(f"{matching[0]} did not return a PGP public key")
 

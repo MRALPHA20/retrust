@@ -163,3 +163,11 @@ def test_a_failure_tells_you_not_to_score_on_it():
 
 def test_an_empty_sweep_explains_itself():
     assert "No advisories found" in integrity.format_report([])
+
+
+def test_key_material_is_never_fetched_over_http():
+    """A key fetched over a rewritable channel proves nothing."""
+    import pytest
+
+    with pytest.raises(RuntimeError, match="https"):
+        integrity._fetch_key_material("http://www.cisa.gov/key.asc", timeout=5)

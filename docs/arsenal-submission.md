@@ -302,7 +302,11 @@ canonical URL and says where it came from.
   absent from ICS advisory data, and the number is 0.1%.
 - **It verifies its own inputs.** Digests and PGP signatures on all 3,937
   advisories, with key discovery following the CSAF standard, which is a fair
-  question to ask of any tool that scores from someone else's feed.
+  question to ask of any tool that scores from someone else's feed. The tool
+  itself is hardened to match: https-pinned, size-capped downloads; a local web
+  server that is loopback-bound, Host-checked against DNS rebinding, and framed
+  by a `default-src 'none'` CSP; snapshot manifests validated against path
+  escape; CSV output neutralised against spreadsheet formula injection.
 - **Accuracy is a command, not a claim.** Reviewers can reproduce every figure on
   their own index.
 - **It reports against its own interest.** The back-test result is unfavourable

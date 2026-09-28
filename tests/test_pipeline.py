@@ -268,3 +268,23 @@ def test_an_order_number_naming_two_vendors_abstains(tmp_path):
     assert "Ecava" in resolution.reason and "Intellicom" in resolution.reason
     # Naming the vendor resolves it.
     assert match.resolve(connection, vendor="Ecava", order_number="EC150").resolved
+
+
+def test_a_snapshot_naming_a_path_is_refused(tmp_path):
+    """A manifest travels inside the archive, so its names are untrusted."""
+    import json
+    import zipfile
+
+    import pytest
+
+    from retrust import snapshot
+
+    bundle_path = tmp_path / "evil.zip"
+    with zipfile.ZipFile(bundle_path, "w") as bundle:
+        bundle.writestr("retrust.db", b"x")
+        bundle.writestr(snapshot.MANIFEST, json.dumps({
+            "format": snapshot.FORMAT_VERSION,
+            "files": {"../escape.txt": {"sha256": "0" * 64, "bytes": 1}}}))
+    with pytest.raises(SystemExit, match="not a file a ReTrust snapshot"):
+        snapshot.restore(str(bundle_path), data_dir=str(tmp_path / "data"))
+    assert not (tmp_path / "escape.txt").exists()

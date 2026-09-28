@@ -41,7 +41,17 @@ No path is used as a filename, so no file outside the index can be reached.
 Nothing is written and no subprocess is run.
 Every value reaching a page goes through html.escape.
 Bound to 127.0.0.1 unless --host says otherwise, and that is printed when it is.
+The Host header must name this machine, so a DNS-rebinding page in a browser
+  cannot read the index through it.
+No response is cached (Cache-Control: no-store) and none may be framed.
+A connection that stalls is dropped after 10 seconds, so one stuck client
+  cannot hold the single-threaded server.
 """
+
+# The names a loopback-bound server may be addressed by. Anything else in the
+# Host header is a browser that resolved somebody else's domain to this
+# machine -- the DNS-rebinding trick -- and it is refused.
+LOOPBACK_NAMES = {"127.0.0.1", "localhost", "::1"}
 
 
 def _esc(text):
@@ -55,7 +65,8 @@ def _page(title, body, subtitle=""):
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{_esc(title)}</title><style>{report.CSS}{EXTRA}</style></head>"
         '<body><div class="wrap">'
-        f'<p class="meta">ReTrust &middot; {date.today().isoformat()}'
+        + MAST +
+        f'<p class="meta">{date.today().isoformat()}'
         + (f" &middot; {_esc(subtitle)}" if subtitle else "")
         + "</p>" + NAV + body +
         "<footer>Decision support, not a certification. Served locally from your "
@@ -63,7 +74,21 @@ def _page(title, body, subtitle=""):
         "</div></body></html>")
 
 
+# The nameplate. The terminal draws it in box characters and the report sets
+# it in the page header; here it is the masthead, so all three surfaces carry
+# the same identity.
+MAST = ('<header class="mast"><a class="mark" href="/">RETRUST</a>'
+        '<span class="tag">OT hardware risk, before the purchase order</span>'
+        '</header>')
+
 EXTRA = """
+.mast{display:flex;align-items:baseline;gap:1rem;margin:0 0 .35rem;flex-wrap:wrap}
+.mast .mark{font:700 .95rem/1 var(--mono);letter-spacing:.38em;
+     color:var(--ink);text-decoration:none}
+.mast .tag{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;
+     text-transform:uppercase;color:var(--faint)}
+a:focus-visible,.hit:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button:hover,button:focus{background:var(--soft);border-color:var(--soft)}
 .nav{display:flex;gap:1.2rem;margin:0 0 1.6rem;padding-bottom:.6rem;
      border-bottom:1px solid var(--rule);font-size:.82rem;letter-spacing:.08em;
      text-transform:uppercase;font-family:var(--mono)}
@@ -311,6 +336,16 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
     a filename, which is the whole class of traversal bug this avoids by not
     having the code that would contain it.
     """
+    # Enforced only on a loopback bind: served wider, the names clients use
+    # cannot be known here, and that exposure was the user's explicit choice.
+    guard_host = host in LOOPBACK_NAMES or host.strip("[]") in LOOPBACK_NAMES
+
+    def host_allowed(header):
+        if not guard_host or not (header or "").strip():
+            return True               # an absent Host cannot carry a rebind
+        name = urllib.parse.urlsplit(f"//{header.strip()}").hostname or ""
+        return name in LOOPBACK_NAMES
+
     def page_for(path, params):
         first = lambda key: (params.get(key) or [""])[0][:MAX_QUERY]
         if path == "/":
@@ -334,7 +369,18 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
         server_version = "ReTrust"
         sys_version = ""                  # the Python version is nobody's business
 
+        # A client that connects and never finishes its request would hold
+        # the single thread forever. Ten seconds is generous for a loopback.
+        timeout = 10
+
         def do_GET(self):
+            if not host_allowed(self.headers.get("Host")):
+                self._send(403, _page(
+                    "Refused", "<h1>Wrong name for this server</h1>"
+                    "<p>The request addressed this server by a name that is "
+                    "not local. That is what a DNS-rebinding page looks like, "
+                    "so it was refused.</p>"))
+                return
             parsed = urllib.parse.urlparse(self.path)
             params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             try:
@@ -360,9 +406,14 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             # works is the correct one: nothing may be fetched or executed.
             self.send_header("Content-Security-Policy",
                              "default-src 'none'; style-src 'unsafe-inline'; "
-                             "form-action 'self'; base-uri 'none'")
+                             "form-action 'self'; base-uri 'none'; "
+                             "frame-ancestors 'none'")
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
+            # Verdicts and sanctions screening have no business sitting in a
+            # browser cache after the tab closes.
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             if not getattr(self, "_head_only", False):
                 self.wfile.write(payload)
