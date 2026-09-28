@@ -82,8 +82,11 @@ def family(connection, vendor, product, limit=CONSIDER):
     subject_key = normalize_name(product)
     scored = []
     for row in rows:
-        if row["name_key"] == subject_key:
-            continue                      # the product asked about is not an option
+        # Both spellings: the caller passes the name the advisory uses, which
+        # can differ from what the buyer typed, and either one naming this row
+        # means it is the product asked about rather than an alternative to it.
+        if row["name_key"] == subject_key or row["name"].strip() == product.strip():
+            continue
         if not (depth := shared_prefix(product, row["name"])):
             continue
         scored.append((depth, row["advisories"], row["name"]))
@@ -103,13 +106,25 @@ def find(connection, vendor, product, assess, limit=8):
     Returns (options, skipped), where skipped counts the family members that
     could not be assessed at all.
     """
-    options, skipped = [], 0
+    options = []
+    skipped = {"unassessable": 0, "gated": 0, "no evidence": 0}
     for name, depth in family(connection, vendor, product):
-        assessment, _, _ = assess(vendor, name)
-        # An unassessable product would otherwise rank top: every pillar treats
-        # "no CVEs found" as good news. Count it, never offer it.
+        assessment, resolution, _ = assess(vendor, name)
+        if assessment.gates:
+            # Disqualified, which is a decision and not an absence of one.
+            # Reporting these as "could not be assessed" told the buyer to go
+            # and find more data about a product the tool had already ruled out.
+            skipped["gated"] += 1
+            continue
         if assessment.score is None or assessment.verdict not in RANK:
-            skipped += 1
+            skipped["unassessable"] += 1
+            continue
+        # The inversion this module exists not to make. Every pillar reads "no
+        # CVEs found" as good news, so a family member nobody has published
+        # about scores near 100 and heads the list. 413 products in the corpus
+        # have no CVE link at all, so this is reachable, not theoretical.
+        if not assessment.findings_count:
+            skipped["no evidence"] += 1
             continue
         options.append(Option(
             product=assessment.product, verdict=assessment.verdict,
@@ -151,11 +166,8 @@ def format_report(subject, options, skipped, considered=0, version=None):
     if not options:
         lines.append("No product in this vendor's family scored better and could"
                      " also be assessed.")
-        if skipped:
-            lines.append(_wrap(
-                f"{skipped} family member(s) were skipped because ReTrust could"
-                " not assess them. No advisories is not evidence of safety, so"
-                " they are not offered as safer."))
+        if any(skipped.values()):
+            lines += _skipped_lines(skipped)
         elif not considered:
             lines.append("Nothing in the corpus shares this product's family"
                          " name under this vendor.")
@@ -170,11 +182,27 @@ def format_report(subject, options, skipped, considered=0, version=None):
         better = sum(1 for o in options if o.score > subject.score)
         lines += ["", f"{better} of {len(options)} scored above "
                       f"{subject.product[:40]} ({subject.score:.1f})."]
-    if skipped:
-        lines.append(_wrap(
-            f"{skipped} further family member(s) could not be assessed and are"
-            " not listed. Absence of advisories is not evidence of safety."))
+    if any(skipped.values()):
+        lines += _skipped_lines(skipped)
     return "\n".join(lines)
+
+
+def _skipped_lines(skipped):
+    """Why each family member was left out, kept apart.
+
+    Rolling these into one count told a buyer that a product the tool had
+    disqualified was merely undocumented, which points them at the wrong action.
+    """
+    reasons = {
+        "gated": "are disqualified by a hard gate, so they are not offered as "
+                 "safer alternatives",
+        "unassessable": "could not be assessed at all. Absence of advisories is "
+                        "not evidence of safety, so they are not offered",
+        "no evidence": "have no advisory findings, so every pillar would read "
+                       "them as clean. That is missing data, not a good record",
+    }
+    return [_wrap(f"{count} family member(s) {reasons[reason]}.")
+            for reason, count in skipped.items() if count]
 
 
 def _wrap(text, width=76, indent=""):

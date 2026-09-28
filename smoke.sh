@@ -47,7 +47,7 @@ contains() {
 echo "== the index =="
 check 0 "bare retrust greets"                     -- $RETRUST
 check 0 "stats"                                   -- $RETRUST stats
-contains "27,234" "stats counts the whole corpus" -- $RETRUST stats
+contains "28,951" "stats counts the whole corpus" -- $RETRUST stats
 
 echo
 echo "== interactive shell =="
@@ -128,7 +128,7 @@ echo
 echo "== alternatives =="
 check 0 "a gated product gets suggestions"         -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 contains "not a recommendation" "the caveat is printed" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"
-contains "not evidence of safety" "unassessable ones are counted, not offered" \
+contains "family member(s)" "skipped ones are counted, not hidden" \
   -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"
 contains "equal terms" "a version is flagged as unequal" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 check 1 "a product with no family exits 1"         -- $RETRUST alternatives --vendor Moxa --product EDS-405A
@@ -186,7 +186,9 @@ echo "== integrity =="
 check 0 "digests verify"                            -- $RETRUST verify --limit 40 --no-signatures
 contains "same clone" "a digest is not an origin proof" -- $RETRUST verify --limit 10 --no-signatures
 contains "signed by:" "the signer fingerprint is reported" -- $RETRUST verify --limit 10
-contains "provider metadata" "key discovery follows the CSAF standard" \
+# With the key imported these verify; without it the report says how to get it.
+# Either way the signer question must be answered, never silently skipped.
+contains "ORIGIN" "origin is reported separately from content" \
   -- $RETRUST verify --limit 10
 check 1 "a missing corpus is reported"              -- $RETRUST verify --csaf /nonexistent
 

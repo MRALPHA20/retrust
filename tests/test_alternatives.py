@@ -47,7 +47,7 @@ def db(tmp_path):
     return connection
 
 
-def _assessor(verdicts):
+def _assessor(verdicts, findings=3):
     """A stand-in scorer, so ranking is tested without the scoring pipeline."""
     def assess(vendor, product):
         verdict, value = verdicts.get(product, ("NOT ASSESSED", None))
@@ -55,9 +55,13 @@ def _assessor(verdicts):
             return score.not_assessed(f"{vendor} {product}", "no data"), None, []
         assessment = score.not_assessed(f"{vendor} {product}", "")
         assessment.verdict, assessment.score = verdict, value
-        assessment.findings_count = 3
+        assessment.findings_count = findings
         return assessment, None, []
     return assess
+
+
+def _nothing_skipped():
+    return {"unassessable": 0, "gated": 0, "no evidence": 0}
 
 
 # --- the family ------------------------------------------------------------
@@ -107,15 +111,25 @@ def test_an_unassessable_product_is_never_offered(db):
         db, "Testco", "TestPLC 9000 Alpha",
         _assessor({}))                       # nothing assessable
     assert options == []
-    assert skipped == 1
+    assert skipped["unassessable"] == 1
 
 
 def test_a_gated_alternative_is_not_offered(db):
-    options, skipped = alternatives.find(
-        db, "Testco", "TestPLC 9000 Alpha",
-        _assessor({"TestPLC 9000 Beta": ("AVOID", 20.0)}))
+    """And is counted as disqualified, not as missing data.
+
+    Telling a buyer a ruled-out product was merely undocumented points them at
+    the wrong action: going to look for evidence that would change nothing.
+    """
+    def assess(vendor, product):
+        assessment = score.blocked(f"{vendor} {product}",
+                                   [{"gate": "Named on a covered list",
+                                     "detail": "d", "source": "s"}], "")
+        return assessment, None, []
+
+    options, skipped = alternatives.find(db, "Testco", "TestPLC 9000 Alpha", assess)
     assert options == []
-    assert skipped == 1
+    assert skipped["gated"] == 1
+    assert skipped["unassessable"] == 0
 
 
 def test_an_assessable_sibling_is_offered(db):
@@ -124,7 +138,21 @@ def test_an_assessable_sibling_is_offered(db):
         _assessor({"TestPLC 9000 Beta": ("PREFER", 80.0)}))
     assert [o.verdict for o in options] == ["PREFER"]
     assert options[0].score == 80.0
-    assert skipped == 0
+    assert not any(skipped.values())
+
+
+def test_a_sibling_with_no_findings_is_never_offered(db):
+    """The inversion this module exists not to make.
+
+    Every pillar reads "no CVEs found" as good news, so a product nobody has
+    published about scores near 100 and heads the list. 413 products in the real
+    corpus have no CVE link at all, so this is reachable.
+    """
+    options, skipped = alternatives.find(
+        db, "Testco", "TestPLC 9000 Alpha",
+        _assessor({"TestPLC 9000 Beta": ("PREFER", 99.0)}, findings=0))
+    assert options == []
+    assert skipped["no evidence"] == 1
 
 
 def test_prefer_outranks_a_higher_scoring_conditional(db):
@@ -153,18 +181,20 @@ def _subject(verdict="AVOID", value=39.1):
 def test_the_caveat_comes_before_any_suggestion():
     option = alternatives.Option("Testco TestPLC 9000 Beta", "PREFER", 80.0,
                                  "TestPLC 9000", [], 3)
-    text = _flat(alternatives.format_report(_subject(), [option], 0))
+    text = _flat(alternatives.format_report(_subject(), [option], _nothing_skipped()))
     assert text.index("not a recommendation to substitute") < text.index("CANDIDATE")
 
 
-def test_skipped_products_are_reported_not_hidden():
-    text = _flat(alternatives.format_report(_subject(), [], 4))
-    assert "4 family member(s) were skipped" in text
-    assert "not evidence of safety" in text
+def test_each_reason_for_skipping_is_reported_apart():
+    text = _flat(alternatives.format_report(
+        _subject(), [], {"unassessable": 4, "gated": 2, "no evidence": 1}))
+    assert "4 family member(s) could not be assessed" in text
+    assert "2 family member(s) are disqualified by a hard gate" in text
+    assert "1 family member(s) have no advisory findings" in text
 
 
 def test_an_empty_family_says_so_without_inventing_one():
-    text = _flat(alternatives.format_report(_subject(), [], 0))
+    text = _flat(alternatives.format_report(_subject(), [], _nothing_skipped()))
     assert "Nothing in the corpus shares this product's family" in text
 
 
@@ -172,7 +202,7 @@ def test_a_supplied_version_is_flagged_as_an_unequal_comparison():
     """Candidates are scored without a version; the subject was scored with one."""
     option = alternatives.Option("Testco TestPLC 9000 Beta", "PREFER", 80.0,
                                  "TestPLC 9000", [], 3)
-    text = _flat(alternatives.format_report(_subject(), [option], 0, version="3.1.6"))
+    text = _flat(alternatives.format_report(_subject(), [option], _nothing_skipped(), version="3.1.6"))
     assert "not on equal terms" in text
     assert "3.1.6" in text
     assert text.index("not on equal terms") < text.index("CANDIDATE")
@@ -180,11 +210,11 @@ def test_a_supplied_version_is_flagged_as_an_unequal_comparison():
 
 def test_no_version_means_no_spurious_warning():
     option = alternatives.Option("X", "PREFER", 80.0, "TestPLC", [], 3)
-    assert "equal terms" not in _flat(alternatives.format_report(_subject(), [option], 0))
+    assert "equal terms" not in _flat(alternatives.format_report(_subject(), [option], _nothing_skipped()))
 
 
 def test_the_comparison_line_counts_only_genuine_improvements():
     options = [alternatives.Option("Better", "PREFER", 80.0, "T", [], 3),
                alternatives.Option("Worse", "CONDITIONAL", 30.0, "T", [], 3)]
     assert "1 of 2 scored above" in _flat(alternatives.format_report(
-        _subject(value=50.0), options, 0))
+        _subject(value=50.0), options, _nothing_skipped()))

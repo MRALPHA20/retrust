@@ -194,12 +194,20 @@ def load(data_dir="data"):
                 # check. Only a distinctive legal name stops a purchase.
                 distinctive = " " in key
                 is_alias = name != entry["name"]
+                # A record the list left untyped says nothing about whether the
+                # thing named is even a company. Screening it is right; blocking
+                # a purchase on it is not. This is what stopped PLANET
+                # Technology, a Taiwanese switch maker, being hard-gated by an
+                # untyped "Planet Technology" on the Entity List. Vendors that
+                # genuinely belong on a gate -- Dahua, Hikvision -- are on the
+                # curated covered list as well, so nothing real is lost.
+                typed = (entry.get("type") or "").strip().lower() == "entity"
                 index.setdefault(key, []).append({
                     "name": entry["name"], "source": entry["source"],
                     "programs": entry.get("programs", ""),
                     "country": entry.get("country", ""),
                     "url": entry.get("url", ""),
-                    "blocking": listed and distinctive and not is_alias,
+                    "blocking": listed and distinctive and typed and not is_alias,
                     "matched_as": "alias" if is_alias else "name",
                     "kind": "screening_list",
                 })

@@ -245,7 +245,42 @@ def test_alias_matches_advise_but_do_not_block(tmp_path):
         index, "Scientific Production Enterprise Prima Limited")[0]
 
 
-def test_distinctive_legal_name_still_blocks(tmp_path):
+def test_an_untyped_record_reports_but_does_not_block(tmp_path):
+    """The PLANET Technology case.
+
+    A CSL record the list left untyped says nothing about whether the thing
+    named is even a company. Screening it is right; stopping a purchase on it is
+    not. PLANET Technology, a Taiwanese switch maker, was hard-gated by an
+    untyped "Planet Technology" on the Entity List.
+    """
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "screening.json").write_text(json.dumps([
+        {"name": "Planet Technology", "type": "", "alt_names": [],
+         "source": "Entity List (EL) - Bureau of Industry and Security",
+         "programs": "", "country": "", "url": ""},
+    ]))
+    index = supplychain.load(directory)
+    gates, notes = supplychain.screen(index, "Planet Technology")
+    assert gates == []                       # not blocked
+    assert notes and notes[0]["blocking"] is False
+    assert "collision" in " ".join(supplychain.notes_for(index, "Planet Technology"))
+
+
+def test_a_typed_entity_with_a_distinctive_name_blocks(tmp_path):
+    """The rule that replaced it: the list has to say this is an entity."""
+    directory = tmp_path / "data"
+    directory.mkdir()
+    (directory / "screening.json").write_text(json.dumps([
+        {"name": "Dahua Technology Company", "type": "Entity", "alt_names": [],
+         "source": "Entity List (EL) - Bureau of Industry and Security",
+         "programs": "", "country": "", "url": ""},
+    ]))
+    index = supplychain.load(directory)
+    assert supplychain.gates_for(index, "Dahua Technology Company")
+
+
+def _unused_distinctive_legal_name_still_blocks(tmp_path):
     directory = tmp_path / "data"
     directory.mkdir()
     (directory / "screening.json").write_text(json.dumps([

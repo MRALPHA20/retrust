@@ -100,6 +100,41 @@ def _walk(branches, inherited=None):
         yield from _walk(branch.get("branches"), attributes)
 
 
+def _from_relationships(tree, leaves):
+    """Leaves for the product ids CSAF defines through relationships.
+
+    A relationship mints a new product id for "this firmware installed on that
+    controller", and the vulnerabilities section then names that id rather than
+    either component. Walking only the branches loses them: 1,777 of 69,560
+    affected rows in CISA's corpus pointed at ids that existed nowhere, and 105
+    CVEs resolved to no product at all. The Modicon M580 firmware scored PREFER
+    90.2 with "no known CVEs" while its advisory listed 22 against it.
+
+    The identity inherited is the `product_reference` side, because that is the
+    component whose version a buyer types. Where that reference does not resolve
+    the relationship is skipped rather than guessed at -- only 7 of 1,724 in the
+    corpus, and a product identity assembled from a name string is worse than no
+    row at all.
+    """
+    known = {}
+    for attributes, entry in leaves:
+        if isinstance(entry, dict) and entry.get("product_id"):
+            known[entry["product_id"]] = (attributes, entry)
+
+    minted = []
+    for relationship in (tree.get("relationships") or []):
+        if not isinstance(relationship, dict):
+            continue
+        full = relationship.get("full_product_name") or {}
+        product_id = full.get("product_id")
+        source = known.get(relationship.get("product_reference"))
+        if not product_id or product_id in known or not source:
+            continue
+        attributes, entry = source
+        minted.append((dict(attributes), dict(entry, product_id=product_id)))
+    return minted
+
+
 def parse(path):
     """Read one CSAF file. Returns an Advisory, or None if it is not usable.
 
@@ -134,6 +169,7 @@ def _parse(path):
     tree = document.get("product_tree") or {}
     leaves = list(_walk(tree.get("branches")))
     leaves += [({}, p) for p in (tree.get("full_product_names") or [])]
+    leaves += _from_relationships(tree, leaves)
 
     for attributes, entry in leaves:
         if not isinstance(entry, dict):
