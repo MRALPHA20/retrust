@@ -25,7 +25,14 @@ from .version import is_determinate
 # a board revision, a ship date, or a bare hardware letter code.
 UNDECIDABLE_RANGE = re.compile(
     r"serial|BIOS|U-Boot|special.modification|distributed|without"
-    r"|Rev\.?[_\s]*\d|^[<>=\s]*[A-Z]{1,3}$|^[<>=\s]*[A-Z]\d{5,}",
+    r"|Rev\.?[_\s]*\d|^[<>=\s]*[A-Z]{1,3}$|^[<>=\s]*[A-Z]\d{5,}"
+    # A release named by its ship date ("<April/17/2023"): a buyer holds a
+    # firmware string, not a calendar, so no version can decide it.
+    r"|(?:January|February|March|April|May|June|July|August|September"
+    r"|October|November|December)[/ ]\d"
+    # Schneider writes module references into the version column
+    # ("BMXP3420302H"): the affected thing is the module, at any firmware.
+    r"|^[<>=\s]*(?:TSX|BMX)[A-Z0-9]{6,}$",
     re.I,
 )
 

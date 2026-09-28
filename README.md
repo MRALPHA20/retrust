@@ -88,8 +88,8 @@ measurements you re-run, not claims you accept:
 
 | Measurement | Result |
 |---|---:|
-| Version ranges decided deterministically | 89.2% of 28,651 |
-| ...of ranges that *can* be decided | 90.7% |
+| Version ranges decided deterministically | 95.2% of 28,651 |
+| ...of ranges that *can* be decided | 96.8% |
 | Product resolution precision / recall (n = 4,000) | 99.9% / 99.7% |
 | Hand-written buyer-query set (misspellings, shorthand) | 20/21 |
 

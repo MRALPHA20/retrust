@@ -19,13 +19,27 @@ import re
 
 # Ranges pinned to a serial number or board revision cannot be decided from a
 # version string at all, so we refuse them on purpose rather than guess.
-UNDECIDABLE = re.compile(r"serial|BIOS|U-Boot|special.modification|distributed", re.I)
+# "Rev. 1" is a board revision: hardware, not firmware, so no version string
+# a buyer holds can decide it. It sat here implicitly before -- the prefix
+# stripper happened to mangle it -- and the label stripper would now read it
+# as version 1, which is exactly the confident wrong answer to refuse.
+UNDECIDABLE = re.compile(
+    r"serial|BIOS|U-Boot|special.modification|distributed"
+    r"|\bRev(?:ision)?\.?[_\s]*\d", re.I)
 
 _OP = re.compile(r"(<=|>=|<|>|=)")
 # A leading component or kind word: "V4.5", "FW11", "firmware_SP473", "SW_v4.4".
 # Applied repeatedly, since vendors chain them ("firmware_SP473" -> "SP473" -> "473").
 _PREFIX = re.compile(r"^(?:V|R|FW|SW|HW|SV|SP|T|M|Rev|Version|Firmware|Build)[_\s.]*", re.I)
-_UPDATE = re.compile(r"[_\s]*(?:Update|SP|Service[_\s]?Pack|Build)[_\s]*(\d+)$", re.I)
+_UPDATE = re.compile(
+    r"[_\s]*(?:Update|Upd|SP|Service[_\s]?Pack|Build|Patch)[_\s]*(\d+)$", re.I)
+
+# A product or family tag welded onto the version with a separator: Mobotix
+# "MX-V4.0.1.15", Siemens "ROS_v3.11.5", "WinCC_TIA_Portal_V13", IDEC
+# "Ver.2.60". The token itself is never version information -- the separator
+# is what marks it as a label -- so it is dropped, repeatedly. Space-joined
+# words stay refused: "not affected" must not become "affected".
+_LABEL = re.compile(r"^[A-Za-z]{2,}[-_.]+")
 
 # Words vendors put between two comparators, or after one. Absorbed into a
 # bound they sort above every numeric component -- ">=V2.3_and_<V6.30.016"
@@ -35,9 +49,9 @@ _CONNECTIVE = re.compile(
     r"excluding|when|with)\b)",
     re.I)
 
-# "V2.x", "V1.00.xx": everything on that line. Read as an exact pin it matched
-# nothing, which is a confident False for every real version.
-_WILDCARD = re.compile(r"^(.*?)[._](?:x+|\*)$", re.I)
+# "V2.x", "V1.00.xx", Hitachi's "1.2 *": everything on that line. Read as an
+# exact pin it matched nothing, a confident False for every real version.
+_WILDCARD = re.compile(r"^(.*?)[._\s](?:x+|\*)$", re.I)
 
 # "34.011-34.014". Only when both sides carry a dot, so "6.1.1-3" stays the
 # single version it is.
@@ -61,10 +75,22 @@ def parse_version(text):
     while (m := _UPDATE.search(s)) and any(c.isdigit() for c in s[: m.start()]):
         update, s = (int(m.group(1)),) + update, s[: m.start()].strip()
 
+    # "3.6 (Build 170215)": the parenthesised suffix is the update the regex
+    # above would have read, had the vendor left the brackets off.
+    s = re.sub(r"\(((?:Update|Upd|SP|Build|Patch)[_\s]*\d+)\)$", r" \1", s,
+               flags=re.I)
+    if (m := _UPDATE.search(s)) and any(c.isdigit() for c in s[: m.start()]):
+        update, s = (int(m.group(1)),) + update, s[: m.start()].strip()
+
     # "15.2(6)E0a" -> "15.2.6E0a"; vendors put build numbers in parentheses.
+    # Yokogawa writes the whole version in them: "(R4.10)".
     s = re.sub(r"\((\d+)\)", r".\1", s).strip(" ._")
+    while s.startswith("(") and s.endswith(")"):
+        s = s[1:-1].strip(" ._")
     while s and not s[0].isdigit():     # strip chained V / FW / firmware_ prefixes
-        stripped = _PREFIX.sub("", s, count=1)
+        stripped = _LABEL.sub("", s, count=1)
+        if stripped == s:
+            stripped = _PREFIX.sub("", s, count=1)
         if stripped == s:
             return None                 # a word we do not recognise: refuse it
         s = stripped.strip(" ._")

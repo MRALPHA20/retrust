@@ -68,8 +68,8 @@ never have to take these numbers on trust.
 
 | Measurement | Result |
 |---|---|
-| Version ranges decided deterministically | **89.2%** of 28,651 |
-| ...of ranges that *can* be decided from a version string | **90.7%** |
+| Version ranges decided deterministically | **95.2%** of 28,651 |
+| ...of ranges that *can* be decided from a version string | **96.8%** |
 | Product resolution precision (n = 4,000) | **99.9%** |
 | Product resolution recall (n = 4,000) | **99.7%** |
 | Hand-written buyer-query set (misspellings, shorthand, wrong-field entries) | **20/21** |

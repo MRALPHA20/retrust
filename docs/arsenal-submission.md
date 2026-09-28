@@ -38,7 +38,7 @@ a silent one. A product that cannot be resolved gets no score at all, because
 every pillar reads "no CVEs found" as good news. `retrust sensitivity` flags any verdict
 surviving fewer than 90% of random weightings.
 
-`retrust eval` recomputes every accuracy figure from your own index: **89.2%** of
+`retrust eval` recomputes every accuracy figure from your own index: **95.2%** of
 28,651 version ranges decided deterministically, **99.9%** resolution precision
 and recall at n=4,000. And `retrust backtest` reports against the tool's own
 interest. Correlation with later disclosure is **+0.453**, the wrong direction,
@@ -76,7 +76,7 @@ requisition already contains. Only 60 of 28,951 product entries in CISA's OT
 advisory corpus carry a CPE string, 0.21%, which is why conventional vulnerability
 tooling fails on industrial equipment; declared order numbers are 137× more
 available. Hard gates for known-exploited vulnerabilities and supply-chain
-restrictions sit outside the weighted score. Accuracy (89.2% version-range
+restrictions sit outside the weighted score. Accuracy (95.2% version-range
 coverage, 99.9% resolution) and a back-test that reports against the tool's own
 interest are both reproducible with one command. It also implements CERT/CC's
 SSVC deployer tree and NIST CSWP 41 (Likely Exploited Vulnerabilities), and shows
@@ -252,7 +252,7 @@ canonical URL and says where it came from.
 - [x] **Every accuracy figure above re-measured from a fresh ingest**
       (3,937 advisories, 28,951 products, 2026-09-28): CPE 60 / 28,951 =
       **0.21%**, declared order numbers 8,211 = **28.36%** (137×), version-range
-      coverage **89.24%**, decidable accuracy **90.67%**, round-trip precision
+      coverage **95.21%**, decidable accuracy **96.83%**, round-trip precision
       **99.85%** and recall **99.70%** at n=4,000.
 - [x] **Back-test re-run after closing the cutoff leak**: pooled +0.453,
       within-vendor **+0.157** (p=0.001), leave-one-out **+0.019**, 6 negative /

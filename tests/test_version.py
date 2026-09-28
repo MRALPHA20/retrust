@@ -104,3 +104,40 @@ def test_is_determinate_matches_affects():
         assert affects(range_text, version) is not None
     for range_text in MUST_ABSTAIN:
         assert not is_determinate(range_text)
+
+
+@pytest.mark.parametrize("range_text,version,expected", [
+    # A label welded on with a separator is not version information.
+    ("MX-V4.0.1.15", "MX-V4.0.1.15", True),
+    ("MX-V4.0.1.15", "4.0.1.15", True),      # the buyer needn't retype the label
+    ("MX-V4.0.1.15", "4.0.2.23", False),
+    ("<ver._2.3.9.27", "2.3.9.26", True),
+    ("<=Ver.2.60", "2.61", False),
+    ("<ROS_v3.11.5", "ROS_v3.11.4", True),
+    # Chained labels, and Upd as a spelling of Update.
+    ("<WinCC_TIA_Portal_V13_SP1_Upd2", "WinCC_TIA_Portal_V13_SP1_Upd1", True),
+    ("<WinCC_TIA_Portal_V13_SP1_Upd2", "V13 SP1 Update 2", False),
+    # A fully parenthesised version, and a parenthesised build suffix.
+    ("<=(R4.10)", "R4.02", True),
+    ("<=(R4.10)", "R4.11", False),
+    ("< 3.6 (Build 170215)", "3.6 (Build 170214)", True),
+    # A wildcard separated by a space instead of a dot.
+    ("1.2 *", "1.2.5", True),
+    ("1.2 *", "1.3", False),
+    # SEL firmware idents order correctly within one model line.
+    (">=SEL-3530-R100-V0-Z001001-D20090915|<=SEL-3530-R107-V0-Z001001-D20120712",
+     "SEL-3530-R103-V0-Z001001-D20110101", True),
+    (">=SEL-3530-R100-V0-Z001001-D20090915|<=SEL-3530-R107-V0-Z001001-D20120712",
+     "SEL-3530-R108-V0-Z001001-D20130101", False),
+])
+def test_labelled_versions_decide(range_text, version, expected):
+    """Vendor labels welded onto versions must not block the decision."""
+    assert affects(range_text, version) is expected
+
+
+def test_a_board_revision_still_abstains():
+    """"Rev. 1" is hardware. The label stripper must not read it as firmware."""
+    assert affects("Rev._1", "1.0") is None
+    assert affects("Revision 3", "3") is None
+    # ...but a rev-suffixed firmware pin is still a version, not a board.
+    assert affects("MX-V4.0.2.33.r2", "MX-V4.0.2.33.r2") is True
