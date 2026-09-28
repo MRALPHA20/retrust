@@ -21,6 +21,7 @@ evidence of safety. Those are counted and reported, not offered.
 from dataclasses import dataclass
 
 from .index import normalize_name, normalize_vendor
+from .match import boundary_key, prefix_matches
 
 # How many of the shown candidates to score. Scoring is the expensive step, so
 # the family is narrowed first and only the closest names are assessed.
@@ -62,12 +63,17 @@ def shared_prefix(subject, candidate):
     return count
 
 
-def family(connection, vendor, product, limit=CONSIDER):
+def family(connection, vendor, product, limit=CONSIDER, exclude=()):
     """Products from the same vendor sharing at least one leading word.
 
     The family is the unit a buyer actually substitutes within: a SIMATIC for a
     SIMATIC. Crossing vendors would need equivalence data this tool does not
     have, so it is not offered.
+
+    `exclude` carries the name keys the subject already resolved to. Those rows
+    ARE the product asked about -- "6MD86 (CP200)" and "(CP300)" are the 6MD86
+    on its two processor boards -- and offering one recommended a product as a
+    substitute for itself.
     """
     vendor_key = normalize_vendor(vendor or "")
     subject_tokens = tokens(product)
@@ -80,12 +86,23 @@ def family(connection, vendor, product, limit=CONSIDER):
         " GROUP BY name_key", (vendor_key, f"%{subject_tokens[0]}%")).fetchall()
 
     subject_key = normalize_name(product)
+    subject_boundary = boundary_key(product)
     scored = []
     for row in rows:
         # Both spellings: the caller passes the name the advisory uses, which
         # can differ from what the buyer typed, and either one naming this row
         # means it is the product asked about rather than an alternative to it.
         if row["name_key"] == subject_key or row["name"].strip() == product.strip():
+            continue
+        if row["name_key"] in exclude:
+            continue
+        # So does a name that continues the subject's at a component boundary,
+        # or that the subject's continues: "6MD86 (CP300)" is the 6MD86 on a
+        # newer processor board, and offering it as the top alternative to the
+        # 6MD86 recommended a product as a substitute for itself.
+        candidate_boundary = boundary_key(row["name"])
+        if prefix_matches(subject_boundary, candidate_boundary) or \
+                prefix_matches(candidate_boundary, subject_boundary):
             continue
         if not (depth := shared_prefix(product, row["name"])):
             continue
@@ -96,7 +113,7 @@ def family(connection, vendor, product, limit=CONSIDER):
     return [(name, depth) for depth, _, name in scored[:limit]]
 
 
-def find(connection, vendor, product, assess, limit=8):
+def find(connection, vendor, product, assess, limit=8, exclude=()):
     """Score the family and keep the options worth showing.
 
     `assess` is the caller's scoring function, taking (vendor, product) and
@@ -108,7 +125,7 @@ def find(connection, vendor, product, assess, limit=8):
     """
     options = []
     skipped = {"unassessable": 0, "gated": 0, "no evidence": 0}
-    for name, depth in family(connection, vendor, product):
+    for name, depth in family(connection, vendor, product, exclude=exclude):
         assessment, resolution, _ = assess(vendor, name)
         if assessment.gates:
             # Disqualified, which is a decision and not an absence of one.

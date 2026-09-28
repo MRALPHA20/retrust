@@ -62,7 +62,7 @@ class Resolution:
 _SEPARATOR = re.compile(r"[^a-z0-9]+")
 
 
-def _boundary_key(text):
+def boundary_key(text):
     """Normalise like name_key, but keep one mark where the separators were.
 
     name_key strips punctuation entirely, which is right for matching and wrong
@@ -73,7 +73,7 @@ def _boundary_key(text):
     return _SEPARATOR.sub("|", (text or "").lower()).strip("|")
 
 
-def _prefix_matches(wanted, candidate):
+def prefix_matches(wanted, candidate):
     """Does `candidate` continue `wanted` at a component boundary?
 
     "RSLogix 5" matched RSLogix 500 and RSLogix 5000 -- three products with three
@@ -86,6 +86,11 @@ def _prefix_matches(wanted, candidate):
         return True
     if not wanted or not candidate.startswith(wanted):
         return False
+    # Version tokens are deliberately allowed to continue: "PCS 7 V9" reaches
+    # the "V9.0", "V9.1" and "V9.X" rows, which are the release line the buyer
+    # named. Refusing that (tried, measured) lost more true advisories than
+    # the one "V15"-reaches-"V15.1" case it prevented: 99.85%/99.70% became
+    # 99.77%/99.62% on a 4,000-product round trip.
     return candidate[len(wanted)] == "|"
 
 
@@ -120,9 +125,9 @@ def resolve(connection, vendor=None, product=None, order_number=None):
         # S7-1200 while the order number named the S7-1500, and the report
         # carried the typed name above the other product's 1,063 CVEs.
         if rows and product and (wanted_name := normalize_name(product)):
-            wanted_boundary = _boundary_key(product)
+            wanted_boundary = boundary_key(product)
             agreeing = [r for r in rows
-                        if _prefix_matches(wanted_boundary, _boundary_key(r["name"]))]
+                        if prefix_matches(wanted_boundary, boundary_key(r["name"]))]
             if not agreeing:
                 result.abstained = True
                 result.reason = (
@@ -179,9 +184,9 @@ def resolve(connection, vendor=None, product=None, order_number=None):
     rows = connection.execute(
         "SELECT * FROM product WHERE vendor_key = ? AND (name_key = ? OR name_key LIKE ?)",
         (vendor_key, name_key, name_key + "%")).fetchall()
-    wanted_boundary = _boundary_key(product)
+    wanted_boundary = boundary_key(product)
     rows = [r for r in rows
-            if _prefix_matches(wanted_boundary, _boundary_key(r["name"]))]
+            if prefix_matches(wanted_boundary, boundary_key(r["name"]))]
     if rows:
         result.matches = _rows_to_matches(rows, "exact_name")
         result.method, result.confidence = "exact_name", CONFIDENCE["exact_name"]

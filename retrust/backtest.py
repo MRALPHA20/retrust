@@ -480,9 +480,15 @@ def format_matched(matched, top=8):
 
     lines += [
         f"  pooled within-vendor rho                {matched.rho:>+9.3f}"
-        f"   p={matched.p_value:.3f} ({matched.permutations:,} shuffles, within vendor)",
-        f"  same, excluding {matched.largest_vendor[:22]:<22}  {matched.rho_without_largest:>+9.3f}"
-        "   (leave-one-out: does one vendor carry it?)",
+        f"   p={matched.p_value:.3f} ({matched.permutations:,} shuffles, within vendor)"]
+    # With a single usable stratum there is nothing to leave out, and printing
+    # +0.000 there reported a computation that never ran.
+    if matched.largest_vendor:
+        lines.append(
+            f"  same, excluding {matched.largest_vendor[:22]:<22}  "
+            f"{matched.rho_without_largest:>+9.3f}"
+            "   (leave-one-out: does one vendor carry it?)")
+    lines += [
         f"  vendors pointing each way               "
         f"{matched.negative_strata} negative / {matched.positive_strata} positive",
         "",

@@ -193,7 +193,8 @@ def _vendor_page(connection, dossier, context, name):
 
 
 def _about_page(stats, provenance, host, port):
-    rows = "".join(f"<tr><td>{_esc(k)}</td><td class=\"n\">{v:,}</td></tr>"
+    rows = "".join(f"<tr><td>{_esc(k.replace('_', ' '))}</td>"
+                   f"<td class=\"n\">{v:,}</td></tr>"
                    for k, v in stats.items())
     sources = "".join(
         f"<tr><td>{_esc(p['source'])}</td><td>{_esc(p['detail'])}</td>"

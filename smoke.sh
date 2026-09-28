@@ -128,8 +128,10 @@ echo
 echo "== alternatives =="
 check 0 "a gated product gets suggestions"         -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 contains "not a recommendation" "the caveat is printed" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"
+# The S7-1500 family no longer skips anyone: its former "skipped" members were
+# its own board variants, which the resolver now excludes as the same product.
 contains "family member(s)" "skipped ones are counted, not hidden" \
-  -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"
+  -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1200"
 contains "equal terms" "a version is flagged as unequal" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 check 1 "a product with no family exits 1"         -- $RETRUST alternatives --vendor Moxa --product EDS-405A
 check 1 "an unresolvable product exits 1"          -- $RETRUST alternatives --vendor Nobody --product Nothing

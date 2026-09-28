@@ -35,7 +35,12 @@ ORDER_NUMBER_PATTERNS = [
 _NOT_AN_ORDER_NUMBER = re.compile(
     r"^(?:V|FW|SW|REV)?[\d.]+$"                              # a bare version
     r"|\d\s*(?:V(?:AC|DC)?|A|W|Hz|[KMG]Hz|[KMG]B|mm|cm|kg|bit|port|ch)\b"  # a rating
-    r"|^(?:AND|THE|FOR|WITH|ALL|SEE|NOTE)\b",
+    r"|^(?:AND|THE|FOR|WITH|ALL|SEE|NOTE)\b"
+    # A standards citation or a Microsoft KB id in parentheses is a reference,
+    # not something anyone orders: "(IEC 61131-3)" linked two ABB drives as if
+    # they shared a part.
+    r"|^(?:IEC|ISO|IEEE|EN|DIN|ANSI|UL|CSA|NEMA)[\s-]*\d{3,}"
+    r"|^KB\d{6,}$",
     re.I,
 )
 
@@ -94,7 +99,15 @@ def _walk(branches, inherited=None):
     inherited = inherited or {}
     for branch in branches or []:
         attributes = dict(inherited)
-        attributes.setdefault(branch.get("category"), branch.get("name"))
+        category, name = branch.get("category"), branch.get("name")
+        if category == "product_name" and attributes.get(category) \
+                and name and name != attributes[category]:
+            # A product_name nested under another names a product of a family
+            # ("DCS880" -> "DEMag"). First-wins collapsed both leaves onto the
+            # family name, giving two different products one identity.
+            attributes[category] = f"{attributes[category]} {name}"
+        else:
+            attributes.setdefault(category, name)
         if "product" in branch:
             yield attributes, branch["product"]
         yield from _walk(branch.get("branches"), attributes)
@@ -171,80 +184,98 @@ def _parse(path):
     leaves += [({}, p) for p in (tree.get("full_product_names") or [])]
     leaves += _from_relationships(tree, leaves)
 
+    # Element by element, each under its own guard: parse()'s catch-all used
+    # to swallow the whole advisory when one product leaf or one score entry
+    # was malformed, and every other CVE in the file vanished with it.
     for attributes, entry in leaves:
-        if not isinstance(entry, dict):
+        try:
+            if product := _product(attributes, entry):
+                advisory.products.append(product)
+        except Exception:
             continue
-        product_id = entry.get("product_id")
-        if not product_id:
-            continue
-        name = entry.get("name", "")
-        helper = entry.get("product_identification_helper") or {}
-        declared = set(helper.get("model_numbers") or []) | set(helper.get("skus") or [])
-        order_numbers = set(declared)
-        order_numbers |= find_order_numbers(name)
-        order_numbers |= find_order_numbers(attributes.get("product_name", ""))
-
-        advisory.products.append(
-            Product(
-                product_id=product_id,
-                vendor=(attributes.get("vendor") or "").strip(),
-                name=(attributes.get("product_name") or name).strip(),
-                version_range=(
-                    attributes.get("product_version_range")
-                    or attributes.get("product_version")
-                    or ""
-                ).strip(),
-                order_numbers={o.strip() for o in order_numbers if o and o.strip()},
-                has_cpe=bool(helper.get("cpe")),
-                helper_order_number=bool(declared),
-            )
-        )
 
     for vulnerability in document.get("vulnerabilities") or []:
-        if not isinstance(vulnerability, dict):
+        try:
+            if parsed := _vulnerability(vulnerability):
+                advisory.vulnerabilities[parsed.pop("cve")] = parsed
+        except Exception:
             continue
-        cve = vulnerability.get("cve")
-        if not cve:
-            continue
-        status = vulnerability.get("product_status") or {}
-        affected = list(status.get("known_affected") or [])
-
-        # The vendor's highest score, preferring the newest CVSS version it
-        # gives, and the vector that produced that same score. Taking the
-        # vector from a different entry would describe a different flaw.
-        scores = vulnerability.get("scores") or []
-        rated = [[(float(b), (s.get(k) or {}).get("vectorString"))
-                  for s in scores
-                  if (b := (s.get(k) or {}).get("baseScore")) is not None]
-                 for k in ("cvss_v4", "cvss_v3", "cvss_v2")]
-        # Keyed on the score alone: max() over bare tuples would fall through to
-        # comparing the vectors when two entries tie, and a None vector beside a
-        # string one raises rather than picking either.
-        best = next((max(v, key=lambda rating: rating[0]) for v in rated if v),
-                    (None, None))
-        cvss, vector = best
-
-        # CSAF remediation categories, best first. "vendor_fix" means a patch
-        # exists; "mitigation"/"workaround" mean you must live with it; and
-        # "none_available" means neither.
-        categories = {(r.get("category") or "") for r in
-                      (vulnerability.get("remediations") or [])}
-        for best in ("vendor_fix", "mitigation", "workaround", "none_available"):
-            if best in categories:
-                remediation = best
-                break
-        else:
-            remediation = "unknown"
-
-        advisory.vulnerabilities[cve] = {
-            "product_ids": affected,
-            "cvss": cvss,
-            "cwe": (vulnerability.get("cwe") or {}).get("id"),
-            "vector": vector,
-            "remediation": remediation,
-        }
 
     return advisory if advisory.products else None
+
+
+def _list(value):
+    """The list a field should hold. A string here would iterate as letters."""
+    return value if isinstance(value, list) else []
+
+
+def _product(attributes, entry):
+    """One Product from a tree leaf, or None if the leaf names nothing."""
+    if not isinstance(entry, dict) or not entry.get("product_id"):
+        return None
+    name = entry.get("name", "")
+    helper = entry.get("product_identification_helper") or {}
+    declared = set(_list(helper.get("model_numbers"))) | set(_list(helper.get("skus")))
+    order_numbers = set(declared)
+    order_numbers |= find_order_numbers(name)
+    order_numbers |= find_order_numbers(attributes.get("product_name", ""))
+
+    return Product(
+        product_id=entry["product_id"],
+        vendor=(attributes.get("vendor") or "").strip(),
+        name=(attributes.get("product_name") or name).strip(),
+        version_range=(
+            attributes.get("product_version_range")
+            or attributes.get("product_version")
+            or ""
+        ).strip(),
+        order_numbers={o.strip() for o in order_numbers if o and o.strip()},
+        has_cpe=bool(helper.get("cpe")),
+        helper_order_number=bool(declared),
+    )
+
+
+def _vulnerability(vulnerability):
+    """One vulnerability record, keyed for Advisory.vulnerabilities, or None."""
+    if not isinstance(vulnerability, dict) or not vulnerability.get("cve"):
+        return None
+    status = vulnerability.get("product_status") or {}
+
+    # The vendor's highest score, preferring the newest CVSS version it
+    # gives, and the vector that produced that same score. Taking the
+    # vector from a different entry would describe a different flaw.
+    scores = vulnerability.get("scores") or []
+    rated = [[(float(b), (s.get(k) or {}).get("vectorString"))
+              for s in scores
+              if (b := (s.get(k) or {}).get("baseScore")) is not None]
+             for k in ("cvss_v4", "cvss_v3", "cvss_v2")]
+    # Keyed on the score alone: max() over bare tuples would fall through to
+    # comparing the vectors when two entries tie, and a None vector beside a
+    # string one raises rather than picking either.
+    best = next((max(v, key=lambda rating: rating[0]) for v in rated if v),
+                (None, None))
+    cvss, vector = best
+
+    # CSAF remediation categories, best first. "vendor_fix" means a patch
+    # exists; "mitigation"/"workaround" mean you must live with it; and
+    # "none_available" means neither.
+    categories = {(r.get("category") or "") for r in
+                  _list(vulnerability.get("remediations")) if isinstance(r, dict)}
+    for best in ("vendor_fix", "mitigation", "workaround", "none_available"):
+        if best in categories:
+            remediation = best
+            break
+    else:
+        remediation = "unknown"
+
+    return {
+        "cve": vulnerability["cve"],
+        "product_ids": list(status.get("known_affected") or []),
+        "cvss": cvss,
+        "cwe": (vulnerability.get("cwe") or {}).get("id"),
+        "vector": vector,
+        "remediation": remediation,
+    }
 
 
 def parse_directory(root):

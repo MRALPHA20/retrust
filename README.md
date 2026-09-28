@@ -38,8 +38,8 @@ corpus:
 |---|---:|---:|
 | **CPE**, the join key conventional scanners use | 60 | **0.21%** |
 | Order number the advisory declares (`model_numbers` / `skus`) | 8,211 | 28.36% |
-| Order number ReTrust recovers from the product name | 1,384 | 4.78% |
-| **Order number, either** (what ReTrust keys on) | **9,595** | **33.14%** |
+| Order number ReTrust recovers from the product name | 1,364 | 4.71% |
+| **Order number, either** (what ReTrust keys on) | **9,575** | **33.07%** |
 | Vendor name | 28,947 | 99.99% |
 | Product name | 28,951 | 100.00% |
 
@@ -64,8 +64,8 @@ never have to take these numbers on trust.
 
 | Measurement | Result |
 |---|---|
-| Version ranges decided deterministically | **89.1%** of 28,651 |
-| ...of ranges that *can* be decided from a version string | **90.5%** |
+| Version ranges decided deterministically | **89.2%** of 28,651 |
+| ...of ranges that *can* be decided from a version string | **90.7%** |
 | Product resolution precision (n = 4,000) | **99.9%** |
 | Product resolution recall (n = 4,000) | **99.7%** |
 
@@ -1016,7 +1016,7 @@ against *others from the same manufacturer* should dissolve it. It does:
 ```
 MATCHED COHORT AT 2022-01-01  (each product compared only with others from the same vendor)
   vendors with enough products                   21
-  products inside those vendors               3,814
+  products inside those vendors               3,822
   pooled within-vendor rho                   +0.157   p=0.001 (within-vendor shuffles)
   same, excluding Siemens                    +0.019   (leave-one-out)
   vendors pointing each way               6 negative / 14 positive
@@ -1039,7 +1039,7 @@ The honest conclusion is not "the score predicts" or "the score fails". It is
 that **once the vendor is held constant the effect largely dissolves**, and
 removing the one vendor that is half the sample leaves nothing measurable. The
 residual is small and its sign is not consistent between manufacturers (6 to
-14) or across cutoffs. With 3,814 products a small p-value means "not zero", not
+14) or across cutoffs. With 3,822 products a small p-value means "not zero", not
 "large enough to act on", and the report says so.
 
 Strata where every product scored alike, or none had a later CVE, are dropped

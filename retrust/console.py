@@ -216,8 +216,8 @@ def _summarise(db_path):
         ("match on", f"{counts['order_numbers']:,} order numbers"),
         # Not "CVEs in CISA KEV", which would read as a share of the count above:
         # these are whole catalogues as loaded, most of KEV naming no OT product.
-        ("signals", f"{counts['kev']:,} KEV entries, "
-                    f"{counts['epss']:,} EPSS scores"),
+        ("signals", f"{counts['kev_catalogue']:,} KEV entries, "
+                    f"{counts['epss_scores']:,} EPSS scores"),
     ], True
 
 

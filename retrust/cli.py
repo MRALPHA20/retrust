@@ -196,7 +196,7 @@ def cmd_ingest(args):
 
     print(f"\nIndex written to {args.db}")
     for key, value in index.stats(connection).items():
-        print(f"  {key:<15} {value:,}")
+        print(f"  {key.replace('_', ' '):<15} {value:,}")
 
     # ingest rebuilds the database from scratch, which takes the EPSS history
     # and the LEV estimates with it. Saying so beats a later `retrust lev`
@@ -209,7 +209,7 @@ def cmd_ingest(args):
 
 def cmd_stats(args):
     for key, value in index.stats(_open(args.db)).items():
-        print(f"  {key:<15} {value:,}")
+        print(f"  {key.replace('_', ' '):<15} {value:,}")
 
 
 def cmd_score(args):
@@ -1130,7 +1130,10 @@ def cmd_alternatives(args):
     options, skipped = alternatives.find(
         connection, vendor, name,
         lambda v, p: _assess(connection, v, p, None, None, context=context),
-        limit=args.limit)
+        limit=args.limit,
+        # Every row the request resolved to is the product asked about, under
+        # whatever spelling its advisory used. None of them is an alternative.
+        exclude={index.normalize_name(m.name) for m in resolution.matches})
     print(alternatives.format_report(subject, options, skipped,
                                      version=args.version))
     return 0 if options else 1
@@ -1223,7 +1226,7 @@ def cmd_setup(args):
     connection = _open(args.db)
     print("\nReady. The index holds:")
     for key, value in index.stats(connection).items():
-        print(f"  {key:<15} {value:,}")
+        print(f"  {key.replace('_', ' '):<15} {value:,}")
     print("\nTry:\n"
           "  retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6\n"
           "  retrust compare --candidate 'ABB|AC 800M' --candidate 'Moxa|EDS-405A'\n"

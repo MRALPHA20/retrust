@@ -327,6 +327,11 @@ def stats(connection):
         "vendors": one("SELECT COUNT(DISTINCT vendor_key) FROM product"),
         "cves": one("SELECT COUNT(DISTINCT cve) FROM affected"),
         "order_numbers": one("SELECT COUNT(DISTINCT number_key) FROM order_number"),
-        "kev": one("SELECT COUNT(*) FROM exploitation WHERE in_kev=1"),
-        "epss": one("SELECT COUNT(*) FROM exploitation WHERE epss IS NOT NULL"),
+        # Scoped to this corpus: beside the counts above, the raw size of the
+        # KEV catalogue read as "1,726 of these CVEs are known-exploited" when
+        # the true figure was 113. The whole catalogue stays its own row.
+        "cves_in_kev": one("SELECT COUNT(DISTINCT e.cve) FROM exploitation e"
+                           " JOIN affected a ON a.cve = e.cve WHERE e.in_kev=1"),
+        "kev_catalogue": one("SELECT COUNT(*) FROM exploitation WHERE in_kev=1"),
+        "epss_scores": one("SELECT COUNT(*) FROM exploitation WHERE epss IS NOT NULL"),
     }

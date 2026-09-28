@@ -233,17 +233,17 @@ def test_a_numeric_prefix_is_not_extended_by_more_digits(tmp_path):
     advisory sets.
     """
     from retrust import match
-    key = match._boundary_key
-    assert match._prefix_matches(key("RSLogix 5"), key("RSLogix 5"))
-    assert not match._prefix_matches(key("RSLogix 5"), key("RSLogix 500"))
-    assert not match._prefix_matches(key("RSLogix 5"), key("RSLogix 5000"))
+    key = match.boundary_key
+    assert match.prefix_matches(key("RSLogix 5"), key("RSLogix 5"))
+    assert not match.prefix_matches(key("RSLogix 5"), key("RSLogix 500"))
+    assert not match.prefix_matches(key("RSLogix 5"), key("RSLogix 5000"))
     # A real family member continues at a separator, and must survive. The
     # first of these is why the check cannot simply refuse a following digit:
     # normalisation had already eaten the hyphen in "1518-4".
-    assert match._prefix_matches(key("SIMATIC S7-1500 CPU 1518"),
+    assert match.prefix_matches(key("SIMATIC S7-1500 CPU 1518"),
                                  key("SIMATIC S7-1500 CPU 1518-4 PN/DP MFP"))
-    assert match._prefix_matches(key("RSLogix 5"), key("RSLogix 5 FactoryTalk"))
-    assert match._prefix_matches(key("SIMATIC S7-1500"), key("SIMATIC S7-1500 CPU"))
+    assert match.prefix_matches(key("RSLogix 5"), key("RSLogix 5 FactoryTalk"))
+    assert match.prefix_matches(key("SIMATIC S7-1500"), key("SIMATIC S7-1500 CPU"))
 
 
 def test_an_order_number_naming_two_vendors_abstains(tmp_path):

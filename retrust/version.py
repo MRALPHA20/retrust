@@ -31,7 +31,8 @@ _UPDATE = re.compile(r"[_\s]*(?:Update|SP|Service[_\s]?Pack|Build)[_\s]*(\d+)$",
 # bound they sort above every numeric component -- ">=V2.3_and_<V6.30.016"
 # excluded the whole 2.3 line, the lower edge the vendor had just named.
 _CONNECTIVE = re.compile(
-    r"[_\s](?:and|or|only|up|to|thru|through|until|including|when|with)(?:[_\s]|$)",
+    r"[_\s]((?:and|or|but|only|not|up|to|thru|through|until|including|"
+    r"excluding|when|with)\b)",
     re.I)
 
 # "V2.x", "V1.00.xx": everything on that line. Read as an exact pin it matched
@@ -53,11 +54,12 @@ def parse_version(text):
         return None
     s = text.strip()
 
-    # "V17 Update 5" sorts after "V17 Update 4". Only split off the suffix when a
+    # "V17 Update 5" sorts after "V17 Update 4". Only split off a suffix when a
     # version number remains in front of it, so "firmware_SP473" keeps its 473.
-    update = 0
-    if (m := _UPDATE.search(s)) and any(c.isdigit() for c in s[: m.start()]):
-        update, s = int(m.group(1)), s[: m.start()].strip()
+    # Taken repeatedly, because "V14 SP1 Update 14" nests one inside the other.
+    update = ()
+    while (m := _UPDATE.search(s)) and any(c.isdigit() for c in s[: m.start()]):
+        update, s = (int(m.group(1)),) + update, s[: m.start()].strip()
 
     # "15.2(6)E0a" -> "15.2.6E0a"; vendors put build numbers in parentheses.
     s = re.sub(r"\((\d+)\)", r".\1", s).strip(" ._")
@@ -147,14 +149,44 @@ def _constraints(text):
         token = re.sub(r"^[A-Za-z]\w*\s+(?=[<>=])", "", token)
         m = _OP.match(token)
         op, rest = (m.group(1), token[m.end():]) if m else ("=", token)
-        rest = re.sub(r"^[A-Za-z]\w*\s+", "", rest.strip())
+        rest = rest.strip()
+        # A component name may also sit before the number ("firmware 2.1.3");
+        # drop it -- unless the word is itself the version, as in "<V17 SP2",
+        # where dropping "V17" read the service pack as the whole bound: <2.
+        if (w := re.match(r"[A-Za-z]\w*\s+", rest)) and \
+                parse_version(w.group().strip()) is None:
+            rest = rest[w.end():]
         # Cut a trailing connective before parsing: "V2.3_and_" must read as
         # 2.3, not as a version whose last component is the word "and".
-        rest = _CONNECTIVE.split(rest, maxsplit=1)[0].strip("_ ")
-        if (v := parse_version(rest)) is None:
+        head, *tail = _CONNECTIVE.split(rest, maxsplit=1)
+        if (v := parse_version(head.strip("_ -"))) is None:
             return None
         out.append((op, v))
+        # The cut can throw away the other end of the window: ">=9.3.0 but not
+        # including 9.3.8" kept only the >= and matched every later version.
+        # When the tail names a version, keep it as the bound it is.
+        if tail and (found := _version_at_end(tail[1])):
+            bound, prose = found
+            if op in (">", ">="):
+                exclusive = re.search(r"\bnot|excluding|below|before\b",
+                                      f"{tail[0]} {prose}", re.I)
+                out.append(("<" if exclusive else "<=", bound))
+            else:
+                out.append((op, bound))  # "<11.0BD and 11.0CB": one more of the same
     return out or None
+
+
+def _version_at_end(text):
+    """The version a connective's tail ends with, and the prose before it.
+
+    Longest suffix first, so "V17 SP2" stays one version rather than "2".
+    Returns None when the tail holds no version at all ("and older").
+    """
+    words = re.split(r"([_\s]+)", text.strip("_ "))
+    for i in range(0, len(words), 2):
+        if (v := parse_version("".join(words[i:]).strip("_ "))) is not None:
+            return v, "".join(words[:i])
+    return None
 
 
 def _normalize(range_text):
@@ -166,19 +198,29 @@ def _normalize(range_text):
         return None
     text = range_text.strip()
 
-    # Some vendors emit a malformed VERS fragment mid-string (">=vers:/_V5.4").
-    text = re.sub(r"vers:[a-z]*/", "", text, flags=re.I).strip("_ ")
+    scheme = ""
+    if text.lower().startswith("vers:"):
+        scheme = text[len("vers:"):].split("/", 1)[0].strip().lower()
+
+    # Some vendors emit a malformed VERS fragment mid-string (">=vers:/_V5.4"),
+    # and ABB writes product names into the scheme slot, slash-separated
+    # ("vers:Relion_670/650/SAM600-IO/>=2.2.1.0|<=2.2.1.8"). A strip that only
+    # accepted letters left 49 decidable ABB ranges abstaining.
+    text = re.sub(r"vers:[^/\s<>=|]*/", "", text, flags=re.I).strip("_ ")
+    if scheme:
+        text = re.sub(r"^(?:[^/<>=|]*/)+", "", text).strip("_ ")
     text = _rewrite(text)
 
     # "vers:all/*" and a bare "*" really do mean every version. A vers: string
     # whose constraint part is missing ("vers:intdot/") is malformed, not
     # universal -- reading it as "all" marks every version of the product
-    # vulnerable because a vendor left a field blank.
-    scheme = ""
-    if (raw := range_text.strip()).lower().startswith("vers:"):
-        scheme = raw[len("vers:"):].split("/", 1)[0].strip().lower()
-    if text == "*" or text == "all" or (text == "" and scheme == "all"):
+    # vulnerable because a vendor left a field blank. So is one whose scheme
+    # slot holds a version ("vers:2.2.0/*"): the vendor meant that release
+    # line, and "all" would mark every other one too.
+    if text == "all" or (text == "" and scheme == "all"):
         return ("all", None)
+    if text == "*":
+        return ("all", None) if re.fullmatch(r"[a-z]*", scheme) else None
     if text == "":
         return None                     # malformed: abstain rather than guess
     if UNDECIDABLE.search(text):        # serial / revision / date scoped
@@ -226,6 +268,17 @@ def _intervals(constraints):
         current.append((op, bound))
     if current:
         groups.append(current)
+
+    # "<=6.30|>=2.3" splits into two one-sided windows whose union is every
+    # version ever released -- a range that answers True for everything. A
+    # vendor who wrote that meant the window [2.3, 6.30] backwards, so it is
+    # folded into one. A genuinely disjoint pair ("<=8.1|>=8.1.10") is kept.
+    if (len(groups) == 2
+            and all(op in ("<", "<=") for op, _ in groups[0])
+            and all(op in (">", ">=") for op, _ in groups[1])
+            and all(_holds("<=", low, high)
+                    for _, low in groups[1] for _, high in groups[0])):
+        return [groups[0] + groups[1]]
     return groups
 
 

@@ -42,8 +42,12 @@ _V2 = {
     "I": ("integrity", {"C": "high", "P": "low", "N": "none"}),
     "A": ("availability", {"C": "high", "P": "low", "N": "none"}),
 }
-# v4 keeps v3's spelling for the base metrics and adds Attack Requirements.
-_V4 = dict(_V3, AT=("requirements", {"N": "none", "P": "present"}))
+# v4 keeps v3's spelling for the base metrics, adds Attack Requirements, and
+# splits User Interaction three ways. P and A were unmapped at first, so a v4
+# flaw that needs a user actively tricked read as needing nobody at all.
+_V4 = dict(_V3,
+           AT=("requirements", {"N": "none", "P": "present"}),
+           UI=("interaction", {"N": "none", "P": "passive", "A": "required"}))
 
 REMOTE = "network"
 
@@ -76,10 +80,12 @@ class Vector:
     def hands_off(self):
         """No user had to be tricked into anything.
 
-        None for v2, which never asked. Absence is reported, never read as "no".
+        None for v2, which never asked. Absence is reported, never read as
+        "no". v4's passive interaction counts as hands-off: the user is merely
+        present, not deceived into acting.
         """
         interaction = self.metrics.get("interaction")
-        return None if interaction is None else interaction == "none"
+        return None if interaction is None else interaction in ("none", "passive")
 
     @property
     def wormable(self):
