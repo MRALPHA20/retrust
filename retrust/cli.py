@@ -927,8 +927,9 @@ def cmd_verify(args):
                      "Establish why before importing anything.")
         fingerprint = next(iter(keys))
         try:
-            print(f"Asking {integrity.KEYSERVER} for {fingerprint} ...")
-            print(f"  imported into {integrity.import_key(keyring, fingerprint)}")
+            print(f"Reading {integrity.CISA_PROVIDER_METADATA} ...")
+            print(f"  imported into "
+                  f"{integrity.import_advertised_key(keyring, fingerprint)}")
         except Exception as error:
             sys.exit(f"Could not import the key: {error}")
     print(f"Verifying advisories under {root} ...")

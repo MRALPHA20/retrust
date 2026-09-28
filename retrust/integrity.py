@@ -32,9 +32,17 @@ from pathlib import Path
 # 30 MB, and slurping every one whole to hash it is a waste of memory.
 BLOCK = 1 << 16
 
-# Where to ask for a public key once its fingerprint is known. Nothing is
-# trusted because a keyserver returned it; the fingerprint is checked against
-# the one the signatures name, and confirming THAT out of band is the user's job.
+# CSAF says a publisher advertises its signing keys in provider-metadata.json,
+# so that is where the key is fetched from rather than a keyserver. CISA's
+# metadata does not sit at the .well-known path the standard suggests; the URL
+# below is the canonical_url it publishes, and the one the BSI CSAF aggregator
+# points at.
+CISA_PROVIDER_METADATA = (
+    "https://www.cisa.gov/sites/default/files/csaf/provider-metadata.json")
+
+# Kept as a fallback only. A keyserver is a weaker source than the publisher's
+# own metadata, and neither is trusted on its own: whatever arrives has to match
+# the fingerprint the signatures name.
 KEYSERVER = "hkps://keys.openpgp.org"
 
 _FINGERPRINT = re.compile(r"issuer fpr v4 ([0-9A-F]{40})")
@@ -191,6 +199,73 @@ def import_key_file(keyring, path):
     return str(keyring)
 
 
+def advertised_keys(url=CISA_PROVIDER_METADATA, timeout=60):
+    """The signing keys a CSAF publisher advertises, per the standard.
+
+    Returns [(fingerprint, url)]. This is the right place to look: the publisher
+    says which keys are theirs, in a document served from their own domain.
+    """
+    import json
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        metadata = json.loads(response.read().decode("utf-8"))
+    return [(str(k.get("fingerprint", "")).upper(), k.get("url", ""))
+            for k in (metadata.get("public_openpgp_keys") or [])
+            if k.get("url")]
+
+
+def import_advertised_key(keyring, fingerprint, url=CISA_PROVIDER_METADATA,
+                          timeout=60):
+    """Fetch the publisher's advertised key, and refuse a fingerprint mismatch.
+
+    Two things have to agree before anything is imported: the key the publisher
+    advertises, and the key the signatures were actually made with. Accepting
+    either alone would let whichever one an attacker controlled decide.
+    """
+    import urllib.request
+    if not have_gpg():
+        raise RuntimeError("gpg is not installed, so a key cannot be imported")
+
+    advertised = advertised_keys(url, timeout)
+    if not advertised:
+        raise RuntimeError(f"{url} advertises no OpenPGP keys")
+    matching = [u for f, u in advertised if f == fingerprint.upper()]
+    if not matching:
+        raise RuntimeError(
+            f"{url} advertises {', '.join(f for f, _ in advertised)}, which does "
+            f"not include {fingerprint}, the key these signatures were made "
+            "with. Establish why before importing anything.")
+
+    with urllib.request.urlopen(matching[0], timeout=timeout) as response:
+        key = response.read()
+    if b"BEGIN PGP PUBLIC KEY BLOCK" not in key:
+        raise RuntimeError(f"{matching[0]} did not return a PGP public key")
+
+    keyring = Path(keyring)
+    keyring.parent.mkdir(parents=True, exist_ok=True)
+    finished = subprocess.run(
+        ["gpg", "--batch", "--no-default-keyring", "--keyring", str(keyring),
+         "--import"], input=key, capture_output=True, timeout=60)
+    if finished.returncode:
+        keyring.unlink(missing_ok=True)
+        raise RuntimeError(finished.stderr.decode("utf-8", "replace").strip())
+    return _confirm_fingerprint(keyring, fingerprint, matching[0])
+
+
+def _confirm_fingerprint(keyring, fingerprint, source):
+    """The imported key must be the one asked for, or the keyring is discarded."""
+    listed = subprocess.run(
+        ["gpg", "--batch", "--no-default-keyring", "--keyring", str(keyring),
+         "--fingerprint", "--with-colons"], capture_output=True, text=True,
+        timeout=30).stdout
+    if fingerprint.upper() not in listed.upper().replace(":", ""):
+        Path(keyring).unlink(missing_ok=True)
+        raise RuntimeError(
+            f"{source} returned a key that is not {fingerprint}; the keyring "
+            "has been discarded rather than used")
+    return str(keyring)
+
+
 def import_key(keyring, fingerprint, keyserver=KEYSERVER):
     """Fetch the key the signatures name, and refuse anything else.
 
@@ -219,16 +294,7 @@ def import_key(keyring, fingerprint, keyserver=KEYSERVER):
         raise RuntimeError((finished.stderr or finished.stdout).strip()
                            or f"{keyserver} returned no key for {fingerprint}")
 
-    listed = subprocess.run(
-        ["gpg", "--batch", "--no-default-keyring", "--keyring", str(keyring),
-         "--fingerprint", "--with-colons"], capture_output=True, text=True,
-        timeout=30).stdout
-    if fingerprint.upper() not in listed.upper().replace(":", ""):
-        keyring.unlink(missing_ok=True)
-        raise RuntimeError(
-            f"{keyserver} returned a key that is not {fingerprint}; the keyring "
-            "has been discarded rather than used")
-    return str(keyring)
+    return _confirm_fingerprint(keyring, fingerprint, keyserver)
 
 
 def format_report(results, root="", keyring_used=False, keys=None):
@@ -283,13 +349,11 @@ def format_report(results, root="", keyring_used=False, keys=None):
     if signed_ok == 0 and signed_none and not keyring_used:
         lines += [_wrap(
             "The signing key is not in a keyring here, so nothing was "
-            "established about the signer. `retrust verify --fetch-key` will "
-            "ask a keyserver for exactly the fingerprint above and refuse "
-            "anything else, but note that CISA does not currently publish this "
-            "key to the public keyservers, to its CSAF provider metadata, or to "
-            "the repository itself. Until it does, the signatures here cannot "
-            "be verified by a third party at all, and `--key FILE` is the only "
-            "route: obtain the key out of band and hand it over."), ""]
+            "established about the signer. Fetch it once with "
+            "`retrust verify --fetch-key`, which reads the key CISA advertises "
+            "in its CSAF provider metadata and refuses it unless the "
+            "fingerprint matches the one these signatures were made with. "
+            "`--key FILE` takes one you obtained yourself."), ""]
 
     for result in (hashed_bad + signed_bad)[:10]:
         lines.append(f"  FAILED  {Path(result.path).name}\n          {result.detail}")

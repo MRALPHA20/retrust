@@ -186,7 +186,7 @@ echo "== integrity =="
 check 0 "digests verify"                            -- $RETRUST verify --limit 40 --no-signatures
 contains "same clone" "a digest is not an origin proof" -- $RETRUST verify --limit 10 --no-signatures
 contains "signed by:" "the signer fingerprint is reported" -- $RETRUST verify --limit 10
-contains "does not currently publish this key" "the ecosystem gap is stated" \
+contains "provider metadata" "key discovery follows the CSAF standard" \
   -- $RETRUST verify --limit 10
 check 1 "a missing corpus is reported"              -- $RETRUST verify --csaf /nonexistent
 

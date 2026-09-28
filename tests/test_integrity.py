@@ -143,11 +143,17 @@ def test_more_than_one_signer_is_flagged():
     assert "partially substituted mirror" in text
 
 
-def test_the_report_states_the_key_is_not_publicly_available():
-    """The finding: CISA signs everything and publishes the key nowhere."""
+def test_the_report_says_how_to_get_the_key():
+    """And that it will refuse one whose fingerprint does not match."""
     text = _flat(integrity.format_report(_results(signed=None)))
-    assert "does not currently publish this key" in text
+    assert "--fetch-key" in text
+    assert "refuses it unless the fingerprint matches" in text
     assert "--key FILE" in text
+
+
+def test_key_discovery_uses_the_publisher_not_a_keyserver():
+    """CSAF says the publisher advertises its keys; that is the better source."""
+    assert "provider-metadata.json" in integrity.CISA_PROVIDER_METADATA
 
 
 def test_a_failure_tells_you_not_to_score_on_it():

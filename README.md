@@ -896,15 +896,24 @@ report says so rather than rolling both into one reassuring number.
 **One key signed all 3,937 advisories**, which is the expected shape; more than
 one is what a partially substituted mirror looks like, and gets flagged.
 
-**And here is the finding.** CISA signs every advisory and publishes the signing
-key nowhere a verifier can reach it: not on the public keyservers, not in its
-CSAF provider metadata, not in the repository. `--fetch-key` asks a keyserver for
-exactly the fingerprint the signatures name and refuses anything else, but today
-that returns nothing. Until CISA publishes the key, these signatures cannot be
-verified by a third party at all, and `--key FILE` is the only route for someone
-who has obtained it out of band. The corpus naming its own signer proves nothing
-by itself, which is why the tool tells you to confirm that fingerprint
-elsewhere rather than presenting it as evidence.
+**Fetching the key follows the standard, not a keyserver.** CSAF says a
+publisher advertises its signing keys in `provider-metadata.json`, so
+`--fetch-key` reads CISA's and imports the key it names, refusing it unless the
+fingerprint matches the one these signatures were actually made with. Two
+sources have to agree before anything is trusted: the key the publisher
+advertises and the key the signatures were made with. `--key FILE` takes one you
+obtained yourself.
+
+```
+ORIGIN    who signed it?
+  signature verified              3,937
+```
+
+**One wrinkle worth knowing.** CISA's provider metadata is not at the
+`.well-known/csaf/provider-metadata.json` path the standard suggests; it sits at
+`www.cisa.gov/sites/default/files/csaf/provider-metadata.json`, which is what the
+BSI CSAF aggregator points at. A verifier who looks only at the conventional
+location finds a 404 and concludes the key is unpublished. It is not.
 
 Exit code is non-zero if anything failed, so a build can refuse to score on a
 corpus it could not verify.
