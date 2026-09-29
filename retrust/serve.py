@@ -190,13 +190,17 @@ def _run_assessment(assess, vendor, product, version=None, order_number=None):
     return assess(vendor, product, version or None)
 
 
-def _score_page(connection, assess, context, vendor, product, version, order_number=""):
+def _score_page(connection, assess, context, vendor, product, version, order_number="",
+                submitted=False):
     """A verdict first, with editable inputs and the evidence below it."""
     form = _score_form(vendor, product, version, order_number)
     if not (vendor or product or order_number):
+        notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
+                  'or a vendor and product, before assessing.</p>' if submitted else '')
         return _page('Score', '<h1>Assess a product</h1><p class="lead">'
                      'Start with a manufacturer order number, or enter the vendor and model. '
-                     'Add the firmware version to narrow the affected vulnerabilities.</p>' + form)
+                     'Add the firmware version to narrow the affected vulnerabilities.</p>'
+                     + notice + form)
     assessment, resolution, findings = _run_assessment(assess, vendor, product, version, order_number)
     parameters = urllib.parse.urlencode(dict(vendor=vendor, product=product,
                                              version=version, order_number=order_number))
@@ -264,7 +268,7 @@ def _candidate_rows(params):
             for value in params.get('c', [])[:MAX_CANDIDATES] if value.strip()]
 
 
-def _compare_page(assess, context, candidates):
+def _compare_page(assess, context, candidates, submitted=False):
     """A shortlist with separate input fields and ranked, explainable results."""
     filled = [(list(c) + ['', '', ''])[:3] for c in candidates][:MAX_CANDIDATES]
     boxes = ''
@@ -280,8 +284,11 @@ def _compare_page(assess, context, candidates):
             'up to 12 candidates.</p><button type="submit">Compare candidates →</button></form>')
     heading = ('<h1>Compare your candidates</h1><p class="lead">Put the shortlist on equal terms. '
                'Scores compare the evidence; an engineer still needs to confirm functional suitability.</p>')
-    if not filled:
-        return _page('Procurement comparison', heading + form)
+    if not filled or any(not (v or p) for v, p, _ in filled):
+        notice = ('<p class="notice" role="alert">Enter a vendor or product in a '
+                  'candidate row before comparing. Firmware alone does not identify '
+                  'a product.</p>' if submitted else '')
+        return _page('Procurement comparison', heading + notice + form)
     blocks = [assess(v, p, f or None) for v, p, f in filled]
     rank = {'PREFER': 0, 'CONDITIONAL': 1, 'AVOID': 2, 'NOT ASSESSED': 3}
     blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
@@ -641,7 +648,7 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
         return name in LOOPBACK_NAMES
 
     def page_for(path, params):
-        first = lambda key: (params.get(key) or [""])[0][:MAX_QUERY]
+        first = lambda key: (params.get(key) or [""])[0][:MAX_QUERY].strip()
         if path == "/demo":
             return _demo_page()
         if path in ("/export.html", "/export.json"):
@@ -651,10 +658,14 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             return _search_page(connection, stats, first("q"))
         if path == "/score":
             return _score_page(connection, assess, context, first("vendor"),
-                               first("product"), first("version"), first("order_number"))
+                               first("product"), first("version"), first("order_number"),
+                               submitted=any(key in params for key in
+                                             ("vendor", "product", "version", "order_number")))
         if path == "/compare":
             return _compare_page(assess, context,
-                                 _candidate_rows(params))
+                                 _candidate_rows(params),
+                                 submitted=any(key == "c" or key.startswith(
+                                     ("vendor_", "product_", "version_")) for key in params))
         if path == "/alternatives":
             return _alternatives_page(connection, assess, first("vendor"),
                                       first("product"), first("version"))

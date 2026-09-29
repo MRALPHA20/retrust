@@ -113,6 +113,29 @@ def test_the_landing_counts_come_from_the_index(handler, db):
     assert f'{stats["vendors"]:,} vendor spellings' in body
 
 
+@pytest.mark.parametrize("path, message", [
+    ("/score?vendor=&product=&version=3.1.6&order_number=",
+     "Enter a manufacturer order number"),
+    ("/score?vendor=%20%20&product=%09", "Enter a manufacturer order number"),
+    ("/compare?vendor_0=&product_0=&version_0=3.1.6",
+     "Enter a vendor or product in a candidate row"),
+])
+def test_empty_submissions_explain_how_to_continue(handler, path, message):
+    status, _, body = _get(handler, path)
+    assert status == 200
+    assert 'role="alert"' in body
+    assert message in body
+    assert "stub" not in body  # No assessment was attempted.
+    if "3.1.6" in path:
+        assert 'value="3.1.6"' in body
+
+
+@pytest.mark.parametrize("path", ["/score", "/compare"])
+def test_initial_forms_do_not_show_submission_errors(handler, path):
+    _, _, body = _get(handler, path)
+    assert 'role="alert"' not in body
+
+
 def test_the_timeline_page_keeps_its_caveat(handler):
     _, _, body = _get(handler, "/timeline?vendor=Testco")
     assert "not safety" in body
