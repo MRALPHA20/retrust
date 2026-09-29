@@ -8,6 +8,7 @@ reproducible and a demo never depends on conference wifi.
 
 import re
 import sqlite3
+import tempfile
 from pathlib import Path
 
 from . import csaf
@@ -120,61 +121,139 @@ def provenance(connection):
         "SELECT source, detail, captured FROM provenance ORDER BY source")]
 
 
-def build(db_path, csaf_root, progress=None):
-    """Ingest every CSAF advisory under `csaf_root` into a fresh index."""
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(db_path).unlink(missing_ok=True)
-    connection = connect(db_path)
-    counts = {"advisories": 0, "products": 0, "cve_links": 0}
+def build(db_path, csaf_root, progress=None, kev_path=None, epss_path=None):
+    """Ingest every CSAF advisory under one or several roots into a fresh index.
+
+    `csaf_root` is a path or a list of paths: the CISA corpus and any vendor
+    trusted-provider feeds fetched beside it. Each root gets its own
+    provenance row, so a report can say which publishers fed the index.
+    """
+    roots = [csaf_root] if isinstance(csaf_root, (str, Path)) else list(csaf_root)
+    roots = list(dict.fromkeys(str(Path(root).resolve()) for root in roots))
+    for root in roots:
+        if not Path(root).is_dir():
+            raise ValueError(f"No CSAF directory at {root}; existing index preserved")
+    destination = Path(db_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Build beside the destination so replacement is atomic on the same file
+    # system. No reader can see an index with only some of its inputs loaded.
+    with tempfile.TemporaryDirectory(prefix=".retrust-build-", dir=destination.parent) as tmp:
+        staged = Path(tmp) / "retrust.db"
+        connection = connect(staged)
+        try:
+            counts = _build_contents(connection, roots, progress)
+            if not counts["advisories"]:
+                raise ValueError("No usable CSAF advisories; existing index preserved")
+            if kev_path or epss_path:
+                counts["exploitation"] = load_exploitation(connection, kev_path, epss_path)
+            connection.commit()
+            if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                raise ValueError("Index validation failed; existing index preserved")
+        finally:
+            connection.close()
+        staged.replace(destination)
+    return connect(destination), counts
+
+
+def _build_contents(connection, roots, progress):
+    counts = {"advisories": 0, "products": 0, "cve_links": 0, "by_root": {}}
 
     with connection:
-        for advisory in csaf.parse_directory(csaf_root):
-            connection.execute(
-                "INSERT OR REPLACE INTO advisory VALUES (?,?,?,?)",
-                (advisory.advisory_id, advisory.title, advisory.released,
-                 Path(advisory.source).name),
-            )
-            counts["advisories"] += 1
-
-            for product in advisory.products:
-                cursor = connection.execute(
-                    "INSERT INTO product (advisory_id, product_id, vendor, vendor_key,"
-                    " name, name_key, version_range, has_cpe, helper_order_number)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)",
-                    (
-                        advisory.advisory_id, product.product_id,
-                        product.vendor, normalize_vendor(product.vendor),
-                        product.name, normalize_name(product.name),
-                        product.version_range, int(product.has_cpe),
-                        int(product.helper_order_number),
-                    ),
-                )
-                counts["products"] += 1
-                connection.executemany(
-                    "INSERT INTO order_number VALUES (?,?,?)",
-                    [(key, n, cursor.lastrowid) for n in product.order_numbers
-                     if (key := normalize_order_number(n))],
-                )
-
-            rows = [
-                (advisory.advisory_id, product_id, cve, data["cvss"], data["cwe"],
-                 data.get("remediation", "unknown"), data.get("vector"))
-                for cve, data in advisory.vulnerabilities.items()
-                for product_id in data["product_ids"]
-            ]
-            connection.executemany("INSERT INTO affected VALUES (?,?,?,?,?,?,?)", rows)
-            counts["cve_links"] += len(rows)
-
-            if progress and counts["advisories"] % 500 == 0:
-                progress(counts)
+        for root in roots:
+            counts["by_root"][str(root)] = _ingest_root(connection, root, counts, progress)
 
     # Record what was ingested, not where it happened to sit on this machine:
     # the absolute path is noise in a shared report and leaks local directory
-    # structure into every snapshot and JSON export.
-    record_provenance(connection, "CISA OT advisories (CSAF 2.0)",
-                      f"{counts['advisories']:,} advisories, "
-                      f"{counts['products']:,} products")
-    return connection, counts
+    # structure into every snapshot and JSON export. One row per root, so a
+    # report can say which publishers fed the index.
+    if len(roots) == 1:
+        record_provenance(connection, _root_label(roots[0]),
+                          f"{counts['advisories']:,} advisories, "
+                          f"{counts['products']:,} products")
+    else:
+        for root in roots:
+            record_provenance(connection, _root_label(root),
+                              f"{counts['by_root'][str(root)]:,} advisories")
+        record_provenance(connection, "CSAF corpus (all sources)",
+                          f"{counts['advisories']:,} advisories, "
+                          f"{counts['products']:,} products")
+    return counts
+
+
+def _ingest_root(connection, root, counts, progress):
+    """Every advisory under one root, into the open transaction."""
+    processed = 0
+    for advisory in csaf.parse_directory(root):
+        processed += 1
+        # Later roots replace earlier copies of the same advisory, including
+        # all children. This supports an explicitly preferred vendor feed and
+        # prevents old affected rows surviving a revised document.
+        if connection.execute("SELECT 1 FROM advisory WHERE id=?",
+                              (advisory.advisory_id,)).fetchone():
+            key = (advisory.advisory_id,)
+            counts["advisories"] -= 1
+            counts["products"] -= connection.execute(
+                "SELECT COUNT(*) FROM product WHERE advisory_id=?", key).fetchone()[0]
+            counts["cve_links"] -= connection.execute(
+                "SELECT COUNT(*) FROM affected WHERE advisory_id=?", key).fetchone()[0]
+            connection.execute("DELETE FROM order_number WHERE product_rowid IN "
+                               "(SELECT rowid_ FROM product WHERE advisory_id=?)", key)
+            connection.execute("DELETE FROM product WHERE advisory_id=?", key)
+            connection.execute("DELETE FROM affected WHERE advisory_id=?", key)
+        connection.execute(
+            "INSERT OR REPLACE INTO advisory VALUES (?,?,?,?)",
+            (advisory.advisory_id, advisory.title, advisory.released,
+             Path(advisory.source).name),
+        )
+        counts["advisories"] += 1
+
+        for product in advisory.products:
+            cursor = connection.execute(
+                "INSERT INTO product (advisory_id, product_id, vendor, vendor_key,"
+                " name, name_key, version_range, has_cpe, helper_order_number)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    advisory.advisory_id, product.product_id,
+                    product.vendor, normalize_vendor(product.vendor),
+                    product.name, normalize_name(product.name),
+                    product.version_range, int(product.has_cpe),
+                    int(product.helper_order_number),
+                ),
+            )
+            counts["products"] += 1
+            connection.executemany(
+                "INSERT INTO order_number VALUES (?,?,?)",
+                [(key, n, cursor.lastrowid) for n in product.order_numbers
+                 if (key := normalize_order_number(n))],
+            )
+
+        rows = [
+            (advisory.advisory_id, product_id, cve, data["cvss"], data["cwe"],
+             data.get("remediation_by_product", {}).get(
+                 product_id, data.get("remediation", "unknown")), data.get("vector"))
+            for cve, data in advisory.vulnerabilities.items()
+            for product_id in data["product_ids"]
+        ]
+        connection.executemany("INSERT INTO affected VALUES (?,?,?,?,?,?,?)", rows)
+        counts["cve_links"] += len(rows)
+
+        if progress and counts["advisories"] % 500 == 0:
+            progress(counts)
+    return processed
+
+
+def _root_label(root):
+    """A publisher-shaped name for a corpus root.
+
+    The CISA clone keeps its historical label; a fetched provider directory
+    is named by the host it came from, which data/CSAF-providers/<host>
+    already encodes.
+    """
+    name = Path(root).name
+    parent = Path(root).parent.name
+    if parent == "CSAF-providers":
+        return f"{name} (CSAF provider feed)"
+    return "CISA OT advisories (CSAF 2.0)"
 
 
 def load_epss_history(connection, paths, progress=None):

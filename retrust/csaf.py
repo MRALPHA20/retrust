@@ -196,7 +196,7 @@ def _parse(path):
 
     for vulnerability in document.get("vulnerabilities") or []:
         try:
-            if parsed := _vulnerability(vulnerability):
+            if parsed := _vulnerability(vulnerability, tree.get("product_groups")):
                 advisory.vulnerabilities[parsed.pop("cve")] = parsed
         except Exception:
             continue
@@ -235,7 +235,7 @@ def _product(attributes, entry):
     )
 
 
-def _vulnerability(vulnerability):
+def _vulnerability(vulnerability, product_groups=None):
     """One vulnerability record, keyed for Advisory.vulnerabilities, or None."""
     if not isinstance(vulnerability, dict) or not vulnerability.get("cve"):
         return None
@@ -268,6 +268,27 @@ def _vulnerability(vulnerability):
     else:
         remediation = "unknown"
 
+    # Remediation scope belongs to the product, not just the CVE. A patch for
+    # one controller must not make another controller appear repairable.
+    groups = {g.get("group_id"): set(_list(g.get("product_ids")))
+              for g in _list(product_groups) if isinstance(g, dict)}
+    per_product = {}
+    for product_id in _list(status.get("known_affected")):
+        applicable = set()
+        for remedy in _list(vulnerability.get("remediations")):
+            if not isinstance(remedy, dict):
+                continue
+            scoped = "product_ids" in remedy or "group_ids" in remedy
+            targets = set(_list(remedy.get("product_ids")))
+            for group_id in _list(remedy.get("group_ids")):
+                targets.update(groups.get(group_id, ()))
+            if not scoped or product_id in targets:
+                applicable.add(remedy.get("category"))
+        per_product[product_id] = next(
+            (category for category in ("vendor_fix", "mitigation", "workaround",
+                                       "none_available") if category in applicable),
+            "unknown")
+
     return {
         "cve": vulnerability["cve"],
         "product_ids": list(status.get("known_affected") or []),
@@ -275,6 +296,7 @@ def _vulnerability(vulnerability):
         "cwe": (vulnerability.get("cwe") or {}).get("id"),
         "vector": vector,
         "remediation": remediation,
+        "remediation_by_product": per_product,
     }
 
 

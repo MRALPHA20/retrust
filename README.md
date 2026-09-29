@@ -2,8 +2,8 @@
 
 **Score OT hardware for cyber risk before you buy it.**
 
-Existing tools tell you about equipment you already own. ReTrust answers the
-question a procurement team actually asks: *of these candidate PLCs, which one
+ReTrust supports shortlist review before deployment. It answers a procurement
+question: *of these candidate PLCs, which one
 should we put on the purchase order?* It works entirely from public advisory
 data, keys on the manufacturer order number a requisition already contains,
 and shows the evidence behind every number it prints.
@@ -15,11 +15,27 @@ $ retrust compare \
     --candidate "Siemens|SIMATIC S7-1500|3.1.6" \
     --candidate "Hikvision|IP Camera"
 
-CANDIDATE                                 VERDICT       SCORE  CVES  ROBUST  NOTES
-ABB AC 800M                               PREFER         82.2    10    93%
-Moxa EDS-405A                             CONDITIONAL    56.1    10    77%
-Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.8  1011   gated  Known exploited vulnerability
-Hikvision IP Camera                       AVOID           --      -     -     Named on a covered list
+  CANDIDATE COMPARISON ───────────────────────────────────────────────────────
+
+  ABB AC 800M
+  PREFER  ·  82.2/100
+  CVEs 10  ·  ROBUST 93%
+
+  Moxa EDS-405A
+  CONDITIONAL  ·  56.1/100
+  CVEs 10  ·  ROBUST 77%
+
+  Siemens SIMATIC S7-1500 (firmware 3.1.6)
+  AVOID  ·  39.6/100
+  CVEs 942  ·  ROBUST gated
+  Known exploited vulnerability
+
+  Hikvision IP Camera
+  AVOID  ·  no score
+  ROBUST not sampled
+  Named on a covered list
+
+  AVOID: 2  ·  CONDITIONAL: 1  ·  PREFER: 1
 ```
 
 ## How it works
@@ -38,7 +54,7 @@ flowchart LR
     GATE -->|tripped| AVOID["AVOID<br/>cannot be averaged away"]
     GATE -->|clear| SCORE["Five weighted pillars<br/>+ evidence quality"]
     SCORE --> OUT["PREFER / CONDITIONAL / AVOID<br/>terminal, HTML report, JSON, web UI"]
-    IDX -.->|"retrust eval, backtest"| PROOF["Reproducible accuracy figures"]
+    IDX -.->|"retrust eval, backtest"| PROOF["Reproducible evaluation results"]
 ```
 
 Everything runs offline on your machine once `setup` has fetched the sources.
@@ -53,6 +69,26 @@ git clone https://github.com/MRALPHA20/retrust.git && cd retrust
 python3 -m retrust.cli setup
 ```
 
+Open the local browser workspace:
+
+```bash
+python3 -m retrust.cli serve
+```
+
+Visit **http://127.0.0.1:8765/** to search, assess by order number, compare
+candidates with separate fields, and download HTML or JSON evidence. The
+**guided demo** at `/demo` walks through the complete procurement workflow.
+See the [live demo runbook](docs/demo-runbook.md) for a five-minute presentation.
+
+To use the shorter `retrust` command below, install the CLI in a virtual environment:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -e .
+```
+
+Without installation, replace `retrust` with `python3 -m retrust.cli`.
 Then score something from a real requisition:
 
 ```bash
@@ -73,13 +109,24 @@ hard gate that fired — never a bare number.
 Start with `retrust search <anything>` if you don't know the exact spelling —
 misspellings return a shortlist instead of nothing.
 
+### Interactive terminal
+
+Run `python3 -m retrust.cli shell`. Type `search`, `score`, `order`, `compare`,
+`vendor`, `batch`, `alternatives`, `lev`, `ssvc`, `diff`, `timeline`, `questions`,
+`save`, or `quit`. The old numeric choices still work.
+
+The terminal uses cyan section headings, verdict colors and pillar bars. Full
+product names and evidence wrap to the terminal width. `save` exports the last
+assessment as HTML, JSON or CSV; JSON retains its query for `diff` later.
+`--no-color`, `NO_COLOR`, and redirected output keep the text free of ANSI colors.
+Terminal background and fonts follow your terminal's own settings.
+
 ## Why order numbers, not CPE
 
-Measured across all 28,951 product entries in CISA's OT advisory corpus,
-**60 carry a CPE string — 0.21%**. That is why conventional vulnerability
-tooling is quiet about industrial gear. Manufacturer order numbers (Siemens
-MLFB, Rockwell catalogue numbers) are **137× more available** and are what a
-buyer types onto a requisition anyway. ReTrust keys on those.
+In this local CISA OT corpus, 60 of 28,951 product entries carry CPE (0.21%).
+Declared manufacturer order numbers occur on 8,211 entries (28.36%), about
+137 times as many. This supports an order-number-led workflow for this dataset;
+it does not measure other tools' performance.
 
 ## Accuracy, and how to check it
 
@@ -88,17 +135,24 @@ measurements you re-run, not claims you accept:
 
 | Measurement | Result |
 |---|---:|
-| Version ranges decided deterministically | 95.2% of 28,651 |
-| ...of ranges that *can* be decided | 96.8% |
-| Product resolution precision / recall (n = 4,000) | 99.9% / 99.7% |
+| Version ranges decided deterministically | 94.91% of 28,651 |
+| ...of ranges that *can* be decided | 96.80% |
+| Source-advisory recovery precision / recall (n = 4,000) | 99.85% / 99.70% |
 | Hand-written buyer-query set (misspellings, shorthand) | 20/21 |
 
-`retrust backtest` reports **against the tool's own interest**: the score
-correlates *positively* with later disclosure volume (+0.453), because CVE
-counts measure disclosure maturity, not risk. Hold the vendor constant and it
-collapses to +0.157; drop the vendor that is half the sample and **+0.019 —
-nothing** remains. `--sweep` shows the same pattern at five cutoffs. A scoring
-tool that cannot show its own failure mode has not earned its verdicts.
+The round-trip measures whether the originating advisory is returned; it does
+not count every extra match. Version coverage measures whether a range can be
+parsed, not accuracy against independently labelled firmware cases.
+
+The current historical backtest gives score versus later CVE disclosure rho
++0.456, falling to +0.258 within vendors and +0.045 when Siemens is excluded.
+These diagnostics do not validate prediction of compromise. See the
+[benchmark report](docs/benchmark-report.md) for methods and limitations and the
+[tool comparison](docs/tool-comparison.md) for official-source capability summaries.
+
+Read the [illustrated PDF overview](docs/ReTrust-Guide.pdf) for the complete
+explanation, worked example and measured results. Rebuild it with `make guide`
+after installing the optional documentation dependencies: `pip install -e '.[docs]'`.
 
 ## Honest by design
 
@@ -144,7 +198,8 @@ tool that cannot show its own failure mode has not earned its verdicts.
 | `stats` | counts from the index |
 | `config` | show or create the scoring weights; `--appetites` lists shipped risk appetites |
 | `snapshot` | pin the data into one portable file |
-| `ingest` | build the index from a CSAF directory |
+| `ingest` | build the index from one or several CSAF directories |
+| `provider URL` | fetch a vendor's own CSAF feed beside the CISA corpus |
 | `refresh` | update the certification and sanctions lists |
 | `screenshot` | render an HTML report to PNG |
 | `demo` | run everything end to end |

@@ -204,3 +204,66 @@ def test_run_reports_progress_for_every_step(tmp_path, monkeypatch):
     assert results["index"]["ok"] is True
     assert any("[1/1]" in line for line in lines)
     assert any("1 advisory" in line for line in lines)
+
+
+# --- vendor trusted-provider feeds ------------------------------------------
+
+def _provider_world(tmp_path, monkeypatch, tlp="WHITE"):
+    """A fake provider: metadata, one ROLIE feed, two advisories with sidecars."""
+    documents = {
+        "https://vendor.example/csaf/provider-metadata.json": json.dumps({
+            "distributions": [{"rolie": {"feeds": [
+                {"tlp_label": tlp,
+                 "url": "https://vendor.example/csaf/feed.json"}]}}]}),
+        "https://vendor.example/csaf/feed.json": json.dumps({"feed": {"entry": [
+            {"id": "SSA-1", "link": [
+                {"rel": "self", "href": "https://vendor.example/csaf/ssa-1.json"},
+                {"rel": "hash", "href": "https://vendor.example/csaf/ssa-1.json.sha512"}]},
+            {"id": "SSA-2", "link": [
+                {"rel": "self", "href": "https://vendor.example/csaf/ssa-2.json"}]},
+        ]}}),
+        "https://vendor.example/csaf/ssa-1.json": '{"document": {}}',
+        "https://vendor.example/csaf/ssa-1.json.sha512": "abc  ssa-1.json",
+        "https://vendor.example/csaf/ssa-2.json": '{"document": {}}',
+    }
+
+    def fake_urlopen(request, timeout=None):
+        url = request.full_url if hasattr(request, "full_url") else request
+        if url not in documents:
+            raise OSError(f"unexpected fetch: {url}")
+        return _Response(documents[url].encode(), url=url)
+
+    monkeypatch.setattr(bootstrap.urllib.request, "urlopen", fake_urlopen)
+    return documents
+
+
+def test_a_provider_feed_lands_with_its_sidecars(tmp_path, monkeypatch):
+    _provider_world(tmp_path, monkeypatch)
+    result = bootstrap.fetch_provider(
+        "https://vendor.example/csaf/provider-metadata.json", str(tmp_path))
+    target = tmp_path / "CSAF-providers" / "vendor.example"
+    assert result["fetched"] == 2 and result["failed"] == 0
+    assert (target / "ssa-1.json").exists()
+    assert (target / "ssa-1.json.sha512").exists()   # verification travels too
+    assert (target / "ssa-2.json").exists()
+
+
+def test_a_second_run_is_an_incremental_refresh(tmp_path, monkeypatch):
+    _provider_world(tmp_path, monkeypatch)
+    url = "https://vendor.example/csaf/provider-metadata.json"
+    bootstrap.fetch_provider(url, str(tmp_path))
+    again = bootstrap.fetch_provider(url, str(tmp_path))
+    assert again["fetched"] == 0 and again["already_present"] == 2
+
+
+def test_a_non_white_feed_is_refused_as_not_public(tmp_path, monkeypatch):
+    _provider_world(tmp_path, monkeypatch, tlp="AMBER")
+    with pytest.raises(bootstrap.StepFailed, match="TLP:WHITE"):
+        bootstrap.fetch_provider(
+            "https://vendor.example/csaf/provider-metadata.json", str(tmp_path))
+
+
+def test_provider_metadata_is_never_fetched_over_http(tmp_path):
+    with pytest.raises(bootstrap.StepFailed, match="https"):
+        bootstrap.fetch_provider("http://vendor.example/metadata.json",
+                                 str(tmp_path))

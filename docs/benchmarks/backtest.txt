@@ -1,0 +1,45 @@
+Scoring every product on advisories published before 2022-01-01,
+then measuring against what was disclosed after it.
+
+BACK-TEST AT 2022-01-01
+  products scored on pre-cutoff data only     5,848
+
+  correlation                                rho
+  score vs CVEs after the cutoff          +0.456   p=0.001 (1,000 shuffles)
+  score vs CVEs before the cutoff         -0.014   (is the score just re-reading history?)
+  CVEs before vs CVEs after               +0.184   (how much does volume persist?)
+
+  verdict at cutoff    products  median    mean  any later  KEV after
+  PREFER                  3,199       0    4.81       32%          5
+  CONDITIONAL             2,624       0    0.23        6%          0
+  AVOID                      25       0    0.12        4%          0
+
+  A higher score went with MORE later CVEs (rho = +0.456), which is the opposite of what a risk score should do if CVE count were the right yardstick. It is not: the score rewards vendors who run a real disclosure programme, and those vendors publish more CVEs. One Siemens CPU here had 2 CVEs before the cutoff and over a thousand after, because a single advisory bundled hundreds of upstream Linux CVEs.
+  The score is not merely re-reading past volume: its correlation with CVEs already known at the cutoff is -0.014, while past volume predicts future volume at +0.184.
+  Confirmed exploitation would be the sound outcome to test, but only 2 product(s) across 2 vendor(s) later appeared in KEV. That is too few, and too concentrated, to support a rate, so no such claim is made here.
+  This is observational. Widely deployed equipment attracts more researchers and so accumulates more CVEs however well it was built, and a product discontinued after the cutoff collects none and looks clean.
+
+MATCHED COHORT AT 2022-01-01  (each product compared only with others from the same vendor)
+  vendors with enough products                   21
+  products inside those vendors               3,822
+  vendors dropped, no score or outcome variation 37
+  pooled within-vendor rho                   +0.258   p=0.001 (1,000 shuffles, within vendor)
+  same, excluding Siemens                    +0.045   (leave-one-out: does one vendor carry it?)
+  vendors pointing each way               5 negative / 15 positive
+
+  vendor                             products     rho  median score  CVEs after
+  Siemens                               1,945  +0.260          82.1      14,841
+  Mitsubishi Electric                     440  +0.017          74.7         437
+  Rockwell Automation                     240  +0.267          63.4         117
+  Honeywell                               230  +0.098          65.8          31
+  Schneider Electric                      172  +0.054          71.1          31
+  Schneider Electric Software, LLC        144  -0.142          74.9          61
+  Moxa                                    111  +0.045          59.9           2
+  ABB                                     103  +0.156          71.6           2
+
+  Even within a vendor, a higher score went with slightly more later CVEs (rho = +0.258). The magnitude is the point: holding the vendor constant collapsed the effect, so most of the pooled correlation was a vendor effect rather than anything about the score. What remains is product-level exposure -- a flagship PLC draws more research than a niche sensor from the same catalogue.
+  With 3,822 products the p-value is small for an effect this size; significance here means 'not zero', not 'large enough to act on'. The split of 5 vendors negative against 15 positive says the direction is not consistent between manufacturers.
+  Dropping Siemens changes materially the result (+0.258 to +0.045). That vendor bundles hundreds of upstream CVEs into single advisories, so it dominates any count-based outcome. Treat the pooled number as describing that vendor more than the score.
+  Counting CVEs still measures disclosure volume; this design removes the vendor-level part of that, not the product-level part.
+
+JSON written to reports/qa/backtest-current.json

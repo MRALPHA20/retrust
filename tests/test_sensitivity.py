@@ -88,7 +88,7 @@ def test_inverted_bands_are_rejected(tmp_path):
 
 def test_all_zero_weights_rejected(tmp_path):
     path = tmp_path / "c.json"
-    path.write_text(json.dumps({"weights": {"exploitation": 0, "severity": 0}}))
+    path.write_text(json.dumps({"weights": {key: 0 for key in score.DEFAULT_WEIGHTS}}))
     with pytest.raises(SystemExit, match="must not all be zero"):
         config.load(path)
 

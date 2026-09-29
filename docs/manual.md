@@ -6,8 +6,8 @@ For the short version, start at the [README](../README.md).
 
 **Score OT hardware for cyber risk before you buy it.**
 
-Existing tools tell you about equipment you already own. ReTrust answers the
-question a procurement team actually asks: *of these candidate PLCs, which one
+ReTrust supports shortlist review before deployment. It answers a procurement
+question: *of these candidate PLCs, which one
 should we put on the purchase order?* It works from public advisory data, keys
 on the manufacturer order number a purchase requisition already contains, and
 shows the evidence behind every number.
@@ -26,7 +26,7 @@ ABB AC 800M                               PREFER         82.2    10    93%
 Schneider Electric Modicon M340           PREFER         76.4    49    80%
 Moxa EDS-405A                             CONDITIONAL    56.1    10    77%
 Rockwell Automation ControlLogix          CONDITIONAL    54.8    35    98%
-Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.8  1011   gated  Known exploited vulnerability
+Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.6   942   gated  Known exploited vulnerability
 Hikvision IP Camera                       AVOID           --      -     -     Named on a covered list
 ```
 
@@ -34,25 +34,20 @@ Hikvision IP Camera                       AVOID           --      -     -     Na
 
 ## Why order numbers, not CPE
 
-Every conventional vulnerability tool joins products to CVEs through CPE
-strings. Measured across all 28,951 product entries in CISA's OT advisory
-corpus:
+Measured across 28,951 product entries in the local CISA OT corpus:
 
 | Identifier available on the product entry | Entries | Share |
 |---|---:|---:|
-| **CPE**, the join key conventional scanners use | 60 | **0.21%** |
+| **CPE** | 60 | **0.21%** |
 | Order number the advisory declares (`model_numbers` / `skus`) | 8,211 | 28.36% |
 | Order number ReTrust recovers from the product name | 1,364 | 4.71% |
 | **Order number, either** (what ReTrust keys on) | **9,575** | **33.07%** |
 | Vendor name | 28,947 | 99.99% |
 | Product name | 28,951 | 100.00% |
 
-CPE is effectively absent from ICS advisory data, which is why general-purpose
-tooling performs so poorly on OT gear. Declared order numbers are **137×** more
-available, and the ones ReTrust recovers from product names bring that to 160×.
-An order number is also what a buyer types onto a requisition in the first
-place, so `6ES7518-4AX00-1AB0` is a key both sides of the transaction already
-use. ReTrust keys on those instead.
+Declared order numbers occur on about 137 times as many entries as CPE in this
+corpus; recovered numbers raise that to about 160 times. This motivates the
+input strategy, but does not establish how other tools perform on OT equipment.
 
 `retrust eval` recomputes that whole table from your own index, so it is a
 measurement you can check, not a claim you have to accept. The declared
@@ -68,38 +63,21 @@ never have to take these numbers on trust.
 
 | Measurement | Result |
 |---|---|
-| Version ranges decided deterministically | **95.2%** of 28,651 |
-| ...of ranges that *can* be decided from a version string | **96.8%** |
-| Product resolution precision (n = 4,000) | **99.9%** |
-| Product resolution recall (n = 4,000) | **99.7%** |
+| Version ranges decided deterministically | **94.91%** of 28,651 |
+| ...of ranges that *can* be decided from a version string | **96.80%** |
+| Source-advisory recovery precision (n = 4,000) | **99.85%** |
+| Source-advisory recovery recall (n = 4,000) | **99.70%** |
 | Hand-written buyer-query set (misspellings, shorthand, wrong-field entries) | **20/21** |
 
-Two things that keep these honest:
+The round-trip test shortens names, but also supplies an order number when
+available. Success means the source advisory appears among matches; extra
+incorrect matches are not penalized. The 21 buyer queries are an authored set,
+not independent validation. Range coverage is not affected-version accuracy.
+See the [benchmark report](benchmark-report.md) for denominators and limitations.
 
-- **The round-trip test does not feed the corpus string back verbatim.** It
-  strips the parenthetical order number, drops punctuation and case, and keeps
-  only the first four words, roughly what a buyer types. Testing exact strings
-  against themselves reports a meaningless 100%.
-- **The buyer-query set is authored the other way round**: real requisition
-  habits -- misspelled vendors, "Schneider" for "Schneider Electric", dropped
-  hyphens, a catalogue number typed into the product field -- each recorded
-  with the answer a human analyst would give, in
-  [examples/buyer-queries.csv](examples/buyer-queries.csv). Expectations record
-  the *correct* answer, not the current behaviour, so a row the tool fails
-  stays visible as a miss. One is failed on purpose today, and the file says
-  why.
-- **Ranges that cannot be decided are counted separately, not hidden.** A range
-  pinned to a serial number or a board revision (`<= first 5 digits of serial
-  number 26061`) is undecidable for any version-based tool. ReTrust abstains and
-  says why.
-
-**What this does not claim.** These figures measure resolving a *named* product
-to its advisories. They are not device-fingerprinting accuracy. Identifying
-equipment from passive network traffic is a much harder problem, where the
-commercial state of the art is around 83%. Different question, different number.
-
-A printable guide covering all of this is at
-[docs/ReTrust-Guide.pdf](docs/ReTrust-Guide.pdf), regenerated by `make guide`.
+The [printable overview](ReTrust-Guide.pdf) includes an official-source
+[tool comparison](tool-comparison.md). Rebuild with `make guide` after installing
+`pip install -e '.[docs]'` from the repository root.
 
 ## Install
 
@@ -231,57 +209,54 @@ this tool's output is opened in Excel by procurement -- a hostile advisory must
 not be able to put `=HYPERLINK(...)` in front of a buyer.
 
 
-```
+```text
 $ retrust shell
+  ReTrust  /  interactive session
+  Evidence before commitment.
+  ────────────────────────────────────────────────────────────────────────────
+  HOLDS  3,937 advisories, 28,951 product entries, 814 vendors
 
-┌─ ReTrust ── INTERACTIVE SESSION ─────────────────────────────────────────┐
-│  HOLDS     3,937 advisories, 28,951 product entries, 814 vendors         │
-└──────────────────────────────────────────────────────────────────────────┘
-
-┌─────┬────────────────────────────────────────────────────────────────────┐
-│   1 │ Search the corpus       find a vendor, product or order number     │
-│   2 │ Score one product       verdict, pillars and the evidence          │
-│   3 │ Compare candidates      rank several for one decision              │
-│   4 │ Alternatives            others in the family, scored the same way  │
-│   5 │ Vendor profile          what the index holds on a manufacturer     │
-│   6 │ Score a BOM file        a CSV or JSON list of candidates           │
-│   7 │ Likely exploited        NIST LEV, has it probably happened already │
-│   8 │ SSVC decisions          what buying this commits you to            │
-│   9 │ What changed            re-score a saved result against today      │
-│  10 │ Advisory timeline       the record drawn as a shape, per year      │
-│  11 │ RFQ annex               what to ask the vendor, from the evidence  │
-│   s │ Save the last result    HTML, JSON or CSV                          │
-├─────┼────────────────────────────────────────────────────────────────────┤
-│   q │ Quit                                                               │
-└─────┴────────────────────────────────────────────────────────────────────┘
-
-  > 3
-Add candidates one at a time. Blank vendor when you are done.
-Candidate 1 vendor: ABB
-  Product: AC 800M
-  Firmware version (optional):
-Candidate 2 vendor: Siemens
-  Product: SIMATIC S7-1500
-  Firmware version (optional): 3.1.6
-Candidate 3 vendor:
-
-  $ retrust compare --candidate "ABB|AC 800M" --candidate "Siemens|SIMATIC S7-1500|3.1.6"
-
-CANDIDATE                                 VERDICT      SCORE  NOTES
-ABB AC 800M                               PREFER        81.5
-Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID         39.1  Known exploited vulnerability
+  CHOOSE A COMMAND ───────────────────────────────────────────────────────────
+  search         Search the corpus
+                 find a vendor, product or order number
+  score          Score one product
+                 verdict, pillars and the evidence
+  order          Assess by order number
+                 use the part number from the nameplate
+  compare        Compare candidates
+                 rank several for one decision
+  alternatives   Alternatives
+                 others in the family, scored the same way
+  vendor         Vendor profile
+                 what the index holds on a manufacturer
+  batch          Score a BOM file
+                 a CSV or JSON list of candidates
+  lev            Likely exploited
+                 NIST LEV, has it probably happened already
+  ssvc           SSVC decisions
+                 what buying this commits you to
+  diff           What changed
+                 re-score a saved result against today
+  timeline       Advisory timeline
+                 the record drawn as a shape, per year
+  questions      RFQ annex
+                 what to ask the vendor, from the evidence
+  save           Save the last result
+                 HTML, JSON or CSV
+  quit / Leave the workspace
+  Type a command. Blank answers go back; optional fields can be skipped.
 ```
 
 **It prints the command it just ran.** The menu is not meant to hide the flags
 forever: anyone running the same comparison a third time should be able to paste
 that line into a script, and they can only do that having seen it.
 
-**Saving is a separate choice from producing.** The last result is held, so `s`
+**Saving is a separate choice from producing.** The last result is held, so `save`
 offers HTML, JSON or CSV after you have seen the answer. Nobody has to decide in
 advance which format they wanted.
 
-Blank always means go back, a wrong answer costs the answer rather than the
-session, and Ctrl-C returns to the menu.
+Blank skips optional fields. Two blank responses at a required prompt cancel the
+action. Ctrl-C returns from an action to the menu; at the menu it exits.
 
 ## Find what you are looking for
 
@@ -429,7 +404,8 @@ retrust snapshot --restore retrust-snapshot.zip
 | `stats` | counts from the index |
 | `config` | show or create the scoring weights; `--appetites` lists shipped risk appetites |
 | `snapshot` | pin the data into one portable file |
-| `ingest` | build the index from a CSAF directory |
+| `ingest` | build the index from one or several CSAF directories |
+| `provider URL` | fetch a vendor's own CSAF feed beside the CISA corpus |
 | `refresh` | update the certification and sanctions lists |
 | `screenshot` | render an HTML report to PNG |
 | `demo` | run everything end to end |
@@ -503,7 +479,7 @@ better advisory record.
 $ retrust alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 
 ALTERNATIVES TO  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  39.1   Known exploited vulnerability
+  AVOID  39.6   Known exploited vulnerability
 
 ReTrust does not know whether any of these will do the same job. It holds
 advisory history, not specifications: no I/O counts, no form factors, no
@@ -680,12 +656,12 @@ retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 
 ```
 CANDIDATE                                     VERDICT      SCORE  NOTES
-ABB AC 800M                                   PREFER        81.5
+ABB AC 800M                                   PREFER        82.2
 Schneider Electric Modicon M340               PREFER        77.2
 Rockwell Automation ControlLogix              CONDITIONAL   56.4
 Moxa EDS-405A                                 CONDITIONAL   55.9
 Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP  AVOID         44.6  Known exploited vulnerability
-Siemens SIMATIC S7-1500 (firmware 3.1.6)      AVOID         39.1  Known exploited vulnerability
+Siemens SIMATIC S7-1500 (firmware 3.1.6)      AVOID         39.6  Known exploited vulnerability
 Hikvision IP Camera                           AVOID          --   Named on a covered list
 Acme Widgets Nonexistent 9000                 NOT ASSESSED   --   vendor not in the advisory corpus
 
@@ -893,12 +869,15 @@ same way is the empirical footing for the exploitation pillar.
 Four strategies, strongest first. Each rung reports its own confidence, and
 below the floor ReTrust returns nothing rather than a weak guess.
 
-| Rung | Method | Confidence | Round-trip accuracy |
+| Rung | Method | Confidence | Source-advisory recovery |
 |---|---|---:|---:|
 | 1 | Manufacturer order number | 0.98 | 100% |
 | 2 | Vendor + product name, continuing at a component boundary | 0.90 | 99.8% |
 | 3 | Vendor + all query words present in the name | 0.70 | 100% |
 | 4 | Abstain, with a typed reason | — | — |
+
+Confidence values are heuristics, not calibrated probabilities. The round-trip
+method does not penalize extra matches; see the benchmark report.
 
 A wrong answer about whether a PLC is vulnerable costs more than "needs review",
 so abstention is a feature rather than a failure.
@@ -963,9 +942,9 @@ corpus it could not verify.
 |---|---|---|
 | CISA ICS advisories (CSAF 2.0) | authoritative product→CVE mappings | `cisagov/CSAF` on GitHub |
 | CISA KEV | confirmed exploitation, ransomware linkage | JSON feed |
-| FIRST EPSS | exploitation probability, covers 99.7% of OT CVEs | daily CSV |
+| FIRST EPSS | exploitation probability, covers 99.70% of OT CVEs | daily CSV |
 | ISASecure | IEC 62443-4-1/4-2/3-3 certificates | scraped listings |
-| Common Criteria | 2,122 certified products | official CSV |
+| Common Criteria | Published certified products | official CSV |
 | Consolidated Screening List | 26,144 sanctioned/restricted entities | trade.gov CSV |
 | FCC Covered List / NDAA §889 | named covered entities | curated, cited in-repo |
 
@@ -1012,104 +991,26 @@ verifies every SHA-256 and refuses a modified bundle.
 
 ## Does the score predict anything?
 
-`retrust backtest` scores every product using only advisories published before a
-cutoff date, then measures against what was disclosed afterwards. Run it and you
-get this, on CISA's own corpus:
+The fresh 28 September 2026 backtest uses a 2022-01-01 cutoff and 1,000 seeded
+permutations. It does not validate prediction of real-world compromise.
 
-```
-BACK-TEST AT 2022-01-01
-  products scored on pre-cutoff data only     5,848
+| Diagnostic | Products | Spearman rho |
+|---|---:|---:|
+| Score versus later CVE disclosure | 5,848 | +0.456 |
+| Within vendor | 3,822 | +0.258 |
+| Within vendor, excluding Siemens | See raw results | +0.045 |
 
-  correlation                                rho
-  score vs CVEs after the cutoff          +0.453   p=0.001 (1,000 shuffles)
-  score vs CVEs before the cutoff         -0.007   (is the score just re-reading history?)
-  CVEs before vs CVEs after               +0.184   (how much does volume persist?)
-```
+Pooled and within-vendor permutation p-values are 0.001. The weakening positive
+association is consistent with disclosure/exposure effects, but does not prove
+a causal explanation. Only two products across two vendors qualify for the
+later-KEV outcome. That is too sparse for an exploitation-rate claim.
 
-**That positive number is the interesting part, and it is not a validation.** A
-higher score went with *more* later CVEs, the opposite of what a risk score
-should do if CVE count were the right yardstick.
+The current snapshot covers one cutoff. Run `retrust backtest --sweep` to explore
+other dates; earlier sweep figures are not current release measurements.
+See [benchmark methods and raw evidence](benchmark-report.md).
 
-It is not the right yardstick. The score rewards vendors who run a real
-disclosure programme, and those vendors publish more CVEs. The extreme case here
-is a Siemens CPU with 2 CVEs before the cutoff and **1,029 after**, because one
-advisory bundled hundreds of upstream Linux CVEs. Counting CVEs measures how much
-a vendor discloses, which is what the scoring rules deliberately refuse to
-penalise.
-
-The decomposition is printed for exactly this reason. The score barely tracks
-*past* CVE count (−0.007), so it is not simply re-reading history; it tracks
-*future* count (+0.453) because it tracks disclosure maturity. And that is not a
-property of one date: `retrust backtest --sweep` redraws the whole decomposition
-at five cutoffs, and this is what it prints on the current corpus:
-
-```
-CUTOFF SWEEP  (the same decomposition, drawn at different dates)
-
-  cutoff        cohort   pooled      p   within      p  -largest  strata -/+  KEV after
-  2019-01-01     2,962   +0.495  0.005   +0.394  0.005    +0.128         8/9          0
-  2020-01-01     3,803   +0.484  0.005   +0.267  0.005    +0.099        5/15          0
-  2021-01-01     4,847   +0.482  0.005   +0.236  0.005    +0.109        4/15          0
-  2022-01-01     5,848   +0.453  0.005   +0.157  0.005    +0.019        6/14          2
-  2023-01-01     6,952   +0.355  0.005   -0.109  0.005    +0.036        5/12         20
-```
-
-Pooled positive at every cutoff, collapsing once the vendor is held constant,
-collapsing further once the dominant vendor is dropped. The one within-vendor
-sign flip, at 2023, is in the direction a *predictive* score would show -- and
-the leave-one-out column says not to make anything of it (+0.036).
-
-The sound outcome would be confirmed exploitation. A product later appearing in
-CISA's KEV catalogue unambiguously went badly, whatever its vendor's disclosure
-habits. On this corpus only **29 products across 2 vendors** qualify, so the tool
-reports that sparsity rather than computing a rate from it.
-
-### Matched cohort: holding the vendor constant
-
-If the pooled correlation is a vendor effect, comparing each product only
-against *others from the same manufacturer* should dissolve it. It does:
-
-```
-MATCHED COHORT AT 2022-01-01  (each product compared only with others from the same vendor)
-  vendors with enough products                   21
-  products inside those vendors               3,822
-  pooled within-vendor rho                   +0.157   p=0.001 (within-vendor shuffles)
-  same, excluding Siemens                    +0.019   (leave-one-out)
-  vendors pointing each way               6 negative / 14 positive
-```
-
-Three readings, in order:
-
-| Design | rho | What it means |
-|---|---:|---|
-| Pooled across all vendors | **+0.453** | confounded; disclosure practice varies by vendor |
-| Within vendor | **+0.157** | most of the effect *was* the vendor |
-| Within vendor, excluding Siemens | **+0.019** | nothing left once one vendor goes |
-
-Siemens is half the matched sample and bundles hundreds of upstream Linux CVEs
-into single advisories, so it dominates any count-based outcome. Drop it and
-what remains is **+0.019**: nothing measurable. That is why the tool reports
-leave-one-out beside the pooled figure instead of a single number.
-
-The honest conclusion is not "the score predicts" or "the score fails". It is
-that **once the vendor is held constant the effect largely dissolves**, and
-removing the one vendor that is half the sample leaves nothing measurable. The
-residual is small and its sign is not consistent between manufacturers (6 to
-14) or across cutoffs. With 3,822 products a small p-value means "not zero", not
-"large enough to act on", and the report says so.
-
-Strata where every product scored alike, or none had a later CVE, are dropped
-rather than averaged in, because they would inflate the apparent sample without
-adding information.
-
-This is what a back-test is for: not to award the score a pass mark, but to show
-which outcome variables are usable and which are confounded. Nothing leaks across
-the cutoff: a test asserts that adding post-cutoff advisories cannot move a
-pre-cutoff score, and the permutation null shuffles *within* each vendor so it
-preserves the stratification.
-
-```bash
-retrust backtest --cutoff 2022-01-01 --json results.json
+```sh
+retrust backtest --cutoff 2022-01-01 --permutations 1000 --json results.json
 ```
 
 ## Extending it
@@ -1132,9 +1033,9 @@ smallest complete example to copy.
 
 ## Limitations
 
-- **Common Criteria barely covers OT.** Of nine major OT vendors checked against
-  its 2,122 certified products, only two appear; the list is dominated by smart
-  cards. ISASecure is the OT-relevant scheme and is small (155 certificates).
+- **Certification coverage is incomplete.** Confirm the exact product, certificate
+  scope and validity with the cited scheme; a vendor-level match is not proof
+  that a particular device is certified.
 - Country-of-origin screening is not implemented. No authoritative public
   product-level source exists, and corporate domicile is a weak proxy that would
   need labelling as such.

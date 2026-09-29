@@ -69,6 +69,9 @@ code{white-space:nowrap}
 .gate b{color:var(--avoid)}
 .gate .src{display:block;margin-top:.3rem;font-size:.82rem;color:var(--faint)}
 .tw{overflow-x:auto;margin:1rem 0}
+.tw:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.table-scroll-hint{display:none}
+@media(max-width:700px){.tw table{min-width:760px}.table-scroll-hint{display:block;font-size:12px;color:var(--faint);padding:8px 12px;margin:0}}
 table{border-collapse:collapse;width:100%;font-size:.93rem;background:var(--panel);
  border:1px solid var(--rule);font-variant-numeric:tabular-nums}
 th,td{text-align:left;padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top}
@@ -235,7 +238,9 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
 
 
 def _pillar_table(assessment, weights):
-    parts = ['<div class="tw"><table><thead><tr><th>Pillar</th><th>Score</th>'
+    parts = ['<div class="tw" tabindex="0" role="region" aria-label="Pillar evidence, scroll horizontally for more columns">'
+             '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
+             '<table><thead><tr><th>Pillar</th><th>Score</th>'
              '<th style="width:18%">&nbsp;</th><th>Weight</th><th>Coverage</th>'
              '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
@@ -265,7 +270,9 @@ def _cve_table(findings):
     hand on the rows marked "needs review": saying a range could not be parsed
     without saying which range leaves them nowhere to start.
     """
-    parts = ['<div class="tw"><table><thead><tr><th>Most significant CVEs</th>'
+    parts = ['<div class="tw" tabindex="0" role="region" aria-label="CVE evidence, scroll horizontally for more columns">'
+             '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
+             '<table><thead><tr><th>Most significant CVEs</th>'
              '<th>CVSS</th><th>EPSS</th><th>KEV</th><th>Advisory</th>'
              '<th>Affected range</th></tr></thead><tbody>']
     for f in findings:
@@ -299,12 +306,15 @@ def _summary_table(blocks, stabilities):
             f'<td class="n">{"&mdash;" if assessment.score is None else assessment.findings_count}</td>'
             f'<td class="n">{robust}</td>'
             f'<td>{_esc(note)}</td></tr>')
-    return ('<div class="tw"><table><thead><tr><th>Candidate</th><th>Verdict</th>'
+    return ('<div class="tw" tabindex="0" role="region" aria-label="Candidate comparison, scroll horizontally for more columns">'
+            '<p class="table-scroll-hint">Scroll sideways to see all candidates’ evidence →</p>'
+            '<table><thead><tr><th>Candidate</th><th>Verdict</th>'
             '<th>Score</th><th>CVEs</th><th>Robust</th><th>Deciding factor</th>'
             '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>'
             '<p class="tnote">Robust is the share of random weightings that give the '
-            'same verdict. Below 90%, the ranking depends on how you weigh the '
-            'pillars rather than on the evidence.</p>')
+            'most common verdict. Below 90%, that verdict is sensitive to the '
+            'pillar weights. This measures each verdict, not the stability of '
+            'the ranking. A dash means it was not sampled.</p>')
 
 
 def body(blocks, stabilities=None, weights=None):

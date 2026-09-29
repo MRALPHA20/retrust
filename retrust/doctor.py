@@ -108,6 +108,17 @@ def run(data_dir="data", db_path="data/retrust.db"):
         checks.append(Check("corpus", "missing", f"{corpus} is absent",
                             "retrust setup"))
 
+    # Vendor trusted-provider feeds fetched beside the CISA corpus. Each is
+    # its own row: the reader should see which publishers feed this index.
+    providers = data / "CSAF-providers"
+    if providers.is_dir():
+        for feed_dir in sorted(p for p in providers.iterdir() if p.is_dir()):
+            files = sum(1 for f in feed_dir.glob("*.json")
+                        if not f.name.endswith((".sha512", ".asc")))
+            checks.append(Check(f"provider {feed_dir.name}", "ok",
+                                f"{files:,} advisory files on disk -- indexed"
+                                " only if the last ingest named this root"))
+
     # The exploitation signals, at their own cadences.
     checks.append(_aged("KEV feed", data / "kev.json", AGE_LIMITS["kev"],
                         "retrust setup --force", "the KEV gate cannot fire"))

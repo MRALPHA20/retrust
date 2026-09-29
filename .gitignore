@@ -9,6 +9,11 @@ data/kev.json
 data/epss.csv
 data/epss.csv.gz
 
+# Vendor trusted-provider feeds fetched by `retrust provider` (hundreds of
+# advisories plus their digest and signature sidecars). Fetched data, like the
+# corpus itself: rebuilt by one command, so it does not belong in the history.
+data/CSAF-providers/
+
 # The CISA signing keyring, built by `retrust verify --fetch-key`. Key trust
 # comes from CISA's provider metadata agreeing with the corpus signatures, not
 # from this repository -- shipping it would make the repo a key source.
@@ -52,3 +57,7 @@ htmlcov/
 
 # EPSS history snapshots (~107 MB), fetched by `retrust lev --update`.
 data/epss-history/
+
+# Document rendering intermediates and duplicate deliverable output.
+/tmp/
+/output/

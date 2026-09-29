@@ -42,12 +42,9 @@ snapshot:
 demo:
 	python3 -m retrust.cli demo
 
-# The user guide, printed from its own HTML so it carries the tool's design.
+# Build the illustrated overview from retained measurements. Install .[docs].
 guide:
-	@command -v chromium >/dev/null || { echo "chromium not found"; exit 1; }
-	chromium --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
-	  --print-to-pdf=docs/ReTrust-Guide.pdf "file://$(CURDIR)/docs/user-guide.html"
-	@echo "docs/ReTrust-Guide.pdf"
+	python3 tools/build_overview.py
 
 # Regenerate the screenshots used in the documentation, so they cannot drift.
 docs: demo

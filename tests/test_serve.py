@@ -95,7 +95,10 @@ def _get(handler, path):
     "/alternatives", "/alternatives?vendor=Testco&product=TestPLC",
     "/timeline", "/timeline?vendor=Testco",
     "/timeline?vendor=Testco&product=TestPLC",
-    "/annex", "/annex?vendor=Testco&product=TestPLC"])
+    "/annex", "/annex?vendor=Testco&product=TestPLC",
+    "/ssvc", "/ssvc?vendor=Testco&product=TestPLC&exposure=open"
+    "&automatable=yes&impact=high",
+    "/lev", "/lev?vendor=Testco&product=TestPLC"])
 def test_every_route_answers(handler, path):
     status, _, body = _get(handler, path)
     assert status == 200
@@ -119,6 +122,18 @@ def test_the_annex_page_is_pasteable_text(handler):
     _, _, body = _get(handler, "/annex?vendor=Testco&product=TestPLC")
     assert "RFQ SECURITY ANNEX" in body
     assert "<pre" in body                    # the annex is a document, not a widget
+
+
+def test_the_lev_page_abstains_without_history(handler):
+    """The fixture index has no EPSS history; the page must say so, not zero."""
+    _, _, body = _get(handler, "/lev?vendor=Testco&product=TestPLC")
+    assert "No EPSS history loaded" in body
+
+
+def test_the_ssvc_form_carries_the_plant_questions(handler):
+    _, _, body = _get(handler, "/ssvc")
+    assert "describes your plant" in body
+    assert "<select" in body
 
 
 def test_the_annex_text_endpoint_is_plain_text(handler):
@@ -280,3 +295,75 @@ def test_report_body_is_what_render_puts_in_its_page(db):
     blocks = [(assessment, Resolution(query="x", abstained=True, reason="r"), [])]
     inner = report.body(blocks, weights={"exploitation": 1.0})
     assert inner and inner in report.render(blocks, weights={"exploitation": 1.0})
+
+
+@pytest.mark.parametrize('path', ['/demo', '/export.html?vendor=Testco&product=TestPLC',
+                                  '/export.json?vendor=Testco&product=TestPLC'])
+def test_demo_and_download_routes_answer(handler, path):
+    status, headers, body = _get(handler, path)
+    assert status == 200
+    if path.startswith('/export'):
+        assert 'attachment; filename="retrust-assessment.' in headers['Content-Disposition']
+        if '.json' in path:
+            assert headers['Content-Type'].startswith('application/json')
+            assert json.loads(body)['results'][0]['query']['vendor'] == 'Testco'
+        else:
+            assert 'ReTrust procurement assessment' in body
+            assert 'How this was produced' in body
+    else:
+        assert 'four-step walkthrough' in body
+
+
+def test_structured_comparison_fields_reach_the_scorer(db):
+    from retrust import dossier, score
+    from retrust.match import Resolution
+    calls = []
+
+    def assess(vendor, product, version=None):
+        calls.append((vendor, product, version))
+        return score.not_assessed(product, 'test'), Resolution(query=product), []
+
+    handler = serve.build_handler(db, assess, {'weights': {}}, dossier,
+                                  index.stats(db), [], '127.0.0.1', 0)
+    _, _, body = _get(handler, '/compare?vendor_0=Testco&product_0=TestPLC&version_0=2.5'
+                     '&vendor_1=&product_1=&version_1=')
+    assert calls == [('Testco', 'TestPLC', '2.5')]
+    assert 'name="vendor_0"' in body
+    assert 'Vendor|Product|Version' not in body
+
+
+def test_order_number_reaches_assessment_and_export(db):
+    from retrust import dossier, score
+    from retrust.match import Resolution
+    calls = []
+
+    def assess(vendor, product, version=None, order_number=None):
+        calls.append((vendor, product, version, order_number))
+        return score.not_assessed(order_number, 'test'), Resolution(query=order_number), []
+
+    handler = serve.build_handler(db, assess, {'weights': {}}, dossier,
+                                  index.stats(db), [], '127.0.0.1', 0)
+    _get(handler, '/score?order_number=TC-9000-A1&version=2.5')
+    _, _, output = _get(handler, '/export.json?order_number=TC-9000-A1&version=2.5')
+    assert calls == [('', '', '2.5', 'TC-9000-A1')] * 2
+    assert json.loads(output)['results'][0]['query']['order_number'] == 'TC-9000-A1'
+
+
+def test_web_download_cannot_inject_html(handler):
+    _, _, output = _get(handler, '/export.html?vendor=%3Cscript%3Ealert(1)%3C%2Fscript%3E&product=P')
+    assert '<script>' not in output
+    assert '&lt;script&gt;' in output
+
+
+def test_web_search_finds_an_order_number_held_only_in_helpers(db):
+    with db:
+        row = db.execute('SELECT rowid_ FROM product LIMIT 1').fetchone()[0]
+        db.execute('INSERT INTO order_number VALUES (?,?,?)', ('UNIQUE42PART', 'UNIQUE-42-PART', row))
+    hits = serve._search_hits(db, 'UNIQUE-42-PART')
+    assert len(hits) == 1
+    assert hits[0].vendor == 'Testco Electric'
+
+
+def test_web_search_understands_vendor_and_model(db):
+    hits = serve._search_hits(db, 'Testco TestPLC 9000')
+    assert hits and hits[0].vendor == 'Testco Electric'

@@ -19,6 +19,12 @@ from . import console
 # reader needs is on the panel below it, where q sits under its own rule.
 BANNER = "interactive session"
 
+# Descriptive commands are easier to remember; numeric inputs remain aliases.
+COMMANDS = {"1": "search", "2": "score", "3": "compare", "4": "alternatives",
+            "5": "vendor", "6": "batch", "7": "lev", "8": "ssvc",
+            "9": "diff", "10": "timeline", "11": "questions", "s": "save",
+            "o": "order"}
+
 # A blank answer means "I have changed my mind", everywhere, so no prompt can
 # trap somebody who opened it by accident.
 CANCELLED = object()
@@ -41,7 +47,8 @@ class Result:
 
 def ask(prompt, default=None, required=False, reader=input):
     """One question. Blank cancels unless a default or an answer is required."""
-    label = f"{prompt} [{default}]: " if default else f"{prompt}: "
+    label = console.paint(f"  {prompt}", "accent")
+    label += f" [{default}]: " if default else ": "
     while True:
         try:
             answer = reader(label).strip()
@@ -65,23 +72,31 @@ def ask_yes(prompt, default=False, reader=input):
 def choose(actions, reader=input):
     """Show the menu and return the chosen key, or None to quit."""
     print()
-    print(console.hairline("┌", "┐", "┬"))
+    print(console.heading("Choose a command"))
     for key, (label, description, _) in actions.items():
-        print(console.row(f"{console.pad(label, console.LABEL)}{description}", key))
-    # Quit is not a ninth thing this tool does, so it goes below its own rule
-    # rather than being read as one.
-    print(console.hairline("├", "┤", "┼"))
-    print(console.row("Quit", "q"))
-    print(console.hairline("└", "┘", "┴"))
+        command = COMMANDS.get(key, key)
+        if console.terminal_width() >= 72:
+            print("  " + console.pad(console.paint(command, "command"), 15)
+                  + console.paint(label, "title"))
+            print(console.prose(description, indent="                 ", style="label"))
+        else:
+            print(console.prose(f"{command} / {label}", style="accent"))
+            print(console.prose(description, indent="    ", style="label"))
+    print(console.prose("quit / Leave the workspace", style="label"))
+    print(console.prose("Type a command. Blank answers go back; optional fields can be skipped.",
+                        style="label"))
     while True:
         try:
-            answer = reader("\n  > ").strip().lower()
-        except EOFError:
+            answer = reader(console.paint("\n  retrust > ", "accent")).strip().lower()
+        except (EOFError, KeyboardInterrupt):
             return None
         if answer in ("q", "quit", "exit"):
             return None
         if answer in actions:
             return answer
+        for key in actions:
+            if answer == COMMANDS.get(key):
+                return key
         if answer:
             print(f"  {answer!r} is not on the menu.")
 
@@ -125,7 +140,7 @@ def run(actions, writers, banner=BANNER, reader=input, greet=None):
     # The caller writes its greeting as a sentence; a status strip is a list of
     # readings, so the full stop goes, and the legend matches the one bare
     # `retrust` puts these same three numbers under.
-    print(console.nameplate(banner,
+    print(console.welcome(banner,
                             [("holds", str(greet).rstrip("."))] if greet else []))
     result = Result()
     while (key := choose(actions, reader)) is not None:
@@ -137,10 +152,13 @@ def run(actions, writers, banner=BANNER, reader=input, greet=None):
             # through the wrong menu entry should land back on the menu.
             print("\n  Cancelled.")
             continue
-        except Exception as error:      # one bad answer must not end the session
+        except (Exception, SystemExit) as error:  # command validation stays in the menu
             print(f"\n  {label} failed: {error}")
             continue
         if produced is not None:
             result = produced
+        if result.savable:
+            print(console.prose("Result ready. Type save to export HTML, JSON or CSV.",
+                                style="accent"))
     print("\nBye.")
     return result

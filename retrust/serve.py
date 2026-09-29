@@ -21,7 +21,9 @@ import http.server
 import urllib.parse
 from datetime import date
 
-from . import alternatives, questions, report, search, timeline
+from . import alternatives, batch, lev, questions, report, search, sensitivity, ssvc, timeline
+from .webui import page as _page
+from . import index as index_module
 from .index import normalize_name
 from .match import _vendor_key
 
@@ -59,177 +61,239 @@ def _esc(text):
     return html.escape(str(text or ""), quote=True)
 
 
-def _page(title, body, subtitle=""):
-    """One page, in the report's own stylesheet so both surfaces match."""
-    return (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>{_esc(title)}</title><style>{report.CSS}{EXTRA}</style></head>"
-        '<body><div class="wrap">'
-        + MAST +
-        f'<p class="meta">{date.today().isoformat()}'
-        + (f" &middot; {_esc(subtitle)}" if subtitle else "")
-        + "</p>" + NAV + body +
-        "<footer>Decision support, not a certification. Served locally from your "
-        "own index; nothing leaves this machine.</footer>"
-        "</div></body></html>")
-
-
-# The nameplate. The terminal draws it in box characters and the report sets
-# it in the page header; here it is the masthead, so all three surfaces carry
-# the same identity.
-MAST = ('<header class="mast"><a class="mark" href="/">RETRUST</a>'
-        '<span class="tag">OT hardware risk, before the purchase order</span>'
-        '</header>')
-
-EXTRA = """
-/* Links keep the ink and mark themselves with the underline alone, so colour
-   stays reserved for state. Without this they render browser-blue, the one
-   colour ISA-101 never hands out for free. */
-a{color:var(--ink);text-underline-offset:3px;text-decoration-color:var(--faint)}
-a:hover{text-decoration-color:var(--ink)}
-.mast{display:flex;align-items:baseline;gap:1rem;margin:0 0 .35rem;flex-wrap:wrap}
-.mast .mark{font:700 .95rem/1 var(--mono);letter-spacing:.38em;
-     color:var(--ink);text-decoration:none}
-.mast .tag{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;
-     text-transform:uppercase;color:var(--faint)}
-a:focus-visible,.hit:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-button:hover,button:focus{background:var(--soft);border-color:var(--soft)}
-.nav{display:flex;gap:1.2rem;margin:0 0 1.6rem;padding-bottom:.6rem;
-     border-bottom:1px solid var(--rule);font-size:.82rem;letter-spacing:.08em;
-     text-transform:uppercase;font-family:var(--mono)}
-.nav a{color:var(--faint);text-decoration:none}
-.nav a:hover,.nav a:focus{color:var(--ink)}
-form{margin:0 0 1.6rem}
-label{display:block;font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;
-      text-transform:uppercase;color:var(--faint);margin:0 0 .3rem}
-input[type=text]{width:100%;max-width:34rem;padding:.55rem .7rem;font:inherit;
-     background:var(--panel);color:var(--ink);border:1px solid var(--rule)}
-input[type=text]:focus{outline:2px solid var(--ink);outline-offset:-2px}
-button{margin-top:.8rem;padding:.5rem 1.4rem;font:inherit;cursor:pointer;
-       background:var(--ink);color:var(--field);border:1px solid var(--ink)}
-.rows{display:grid;gap:.5rem;max-width:34rem}
-.hit{display:block;padding:.5rem .7rem;border:1px solid var(--rule);
-     background:var(--panel);text-decoration:none;color:var(--ink)}
-.hit:hover{border-color:var(--ink)}
-.hit .w{display:block;font-family:var(--mono);font-size:.74rem;color:var(--faint);
-        letter-spacing:.06em;margin-top:.15rem}
-.empty{color:var(--soft);font-size:.92rem}
-"""
-
-NAV = ('<nav class="nav"><a href="/">Search</a><a href="/score">Score</a>'
-       '<a href="/compare">Compare</a><a href="/alternatives">Alternatives</a>'
-       '<a href="/timeline">Timeline</a><a href="/annex">Annex</a>'
-       '<a href="/vendor">Vendor</a><a href="/about">About</a></nav>')
+def _search_hits(connection, query):
+    """Prefer complete matches and actually search the order-number index."""
+    numbers = search.order_numbers(connection, query, limit=MAX_RESULTS)
+    products = search.products(connection, query, limit=MAX_RESULTS)
+    # Buyers often type the manufacturer and model in the same box. Vendor
+    # identity has its own normalization; it need not occur in the model name.
+    words = query.split()
+    for end in range(min(4, len(words) - 1), 0, -1):
+        vendor_key = _vendor_key(connection, ' '.join(words[:end]))
+        if vendor_key:
+            products = search.products(connection, ' '.join(words[end:]),
+                                       vendor=vendor_key, limit=MAX_RESULTS)
+            break
+    found = numbers + products
+    strong = [hit for hit in found if hit.method in ('exact', 'prefix', 'tokens')]
+    # Partial token matches are a fallback, not filler beside an exact result.
+    found = strong or found
+    unique = {}
+    for hit in found:
+        unique.setdefault((hit.vendor, hit.name), hit)
+    return list(unique.values())[:MAX_RESULTS]
 
 
 def _search_page(connection, stats, query):
-    """The landing page: a box, and what the corpus holds that matches it."""
+    """A starting point for a buyer, backed by the actual local index."""
     form = (
-        '<form method="get" action="/"><label for="q">Product, vendor or order '
-        f'number</label><input type="text" id="q" name="q" value="{_esc(query)}" '
-        'autofocus><button type="submit">Search</button></form>')
+        '<form class="search-form" method="get" action="/">'
+        '<label for="q">Product, vendor or order number</label><div class="search-line">'
+        f'<input type="text" id="q" name="q" value="{_esc(query)}" '
+        'placeholder="Try SIMATIC S7-1500, Moxa or a manufacturer part number" '
+        f'maxlength="{MAX_QUERY}" required>'
+        '<button type="submit">Find a product <span aria-hidden="true">&nbsp; →</span></button></div>'
+        '<p class="helper">Use the name on your requisition. An order number gives the most precise match.</p></form>')
+    chips = ('<div class="chips"><span>Try a search</span>' + ''.join(
+        f'<a class="chip" href="/?q={urllib.parse.quote(q)}">{_esc(q)}</a>'
+        for q in ('S7-1500', 'Moxa EDS-405A', 'Modicon M340')) + '</div>')
     if not query:
-        # The counts are the index's own, so this page cannot go stale the way
-        # a number typed in once already did.
-        return _page("ReTrust", "<h1>Search the corpus</h1>" + form +
-                     f'<p class="empty">{stats["products"]:,} product entries '
-                     f'under {stats["vendors"]:,} vendor spellings. Scoring '
-                     "needs the spelling the advisory used, so start here.</p>")
+        metrics = '<div class="metrics">' + ''.join(
+            f'<div class="metric" aria-label="{stats[key]:,} {label}"><strong>{stats[key]:,}</strong><span>{label}</span>'
+            f'<small>{detail}</small></div>' for key, label, detail in (
+                ('products', 'product entries', 'SEARCHABLE HARDWARE'),
+                ('advisories', 'security advisories', 'PUBLIC VENDOR EVIDENCE'),
+                ('cves', 'distinct vulnerabilities', 'TRACEABLE FINDINGS'))) + '</div>'
+        body = (
+            '<section class="hero"><div><p class="eyebrow">Know what you are buying</p>'
+            '<h1>Better hardware decisions.<br><em>Evidence first.</em></h1>'
+            '<p class="lead">Understand the cyber risk of industrial equipment before '
+            'it reaches your plant. Find a product, check the evidence, and compare your options.</p>'
+            '</div><div class="hero-mark" aria-hidden="true"><span>R↗</span></div></section>'
+            + metrics + '<section class="panel"><div class="panel-heading">'
+            '<h2>Start with a product</h2><span>01 / Explore</span></div>' + form + chips + '</section>'
+            '<div class="split"><section class="panel"><div class="panel-heading">'
+            '<h2>From requisition to decision</h2><span>The workflow</span></div>'
+            '<ol class="steps"><li><span class="step-number">1</span><div><b>Identify the hardware</b>'
+            '<p>Match a product name or manufacturer order number.</p></div></li>'
+            '<li><span class="step-number">2</span><div><b>Understand the verdict</b>'
+            '<p>Review exploitation, severity, available fixes, and the quality of the evidence.</p></div></li>'
+            '<li><span class="step-number">3</span><div><b>Bring evidence to the purchase order</b>'
+            '<p>Compare candidates and prepare questions for the supplier.</p></div></li></ol></section>'
+            '<section class="panel"><div class="panel-heading"><h2>Explore an example</h2>'
+            '<span>Live assessments</span></div>'
+            '<a class="example" href="/score?vendor=ABB&amp;product=AC%20800M">'
+            '<span><strong>ABB · AC 800M</strong><small>Inspect the five scoring pillars</small></span><span class="arrow">↗</span></a>'
+            '<a class="example" href="/score?vendor=Siemens&amp;product=SIMATIC%20S7-1500&amp;version=3.1.6">'
+            '<span><strong>Siemens · SIMATIC S7-1500</strong><small>See how firmware changes the assessment</small></span><span class="arrow">↗</span></a>'
+            '<a class="example" href="/demo"><span><strong>Take the guided demo</strong>'
+            '<small>Walk through a complete procurement decision</small></span><span class="arrow">↗</span></a>'
+            '</section></div>'
+            f'<p class="helper">Search covers {stats["vendors"]:,} vendor spellings. '
+            'Examples use your local evidence; results can change with the data.</p>')
+        return _page("ReTrust", body)
 
-    hits = search.products(connection, query, limit=MAX_RESULTS)
+    hits = _search_hits(connection, query)
     rows = "".join(
         f'<a class="hit" href="/score?vendor={urllib.parse.quote(h.vendor)}'
-        f'&amp;product={urllib.parse.quote(h.name)}">{_esc(h.vendor)} / '
-        f'{_esc(h.name)}<span class="w">matched by {_esc(h.method)} &middot; '
-        f'{h.advisories:,} advisor{"y" if h.advisories == 1 else "ies"}'
-        + (f' &middot; {_esc(h.order_numbers[0])}' if h.order_numbers else "")
-        + "</span></a>" for h in hits)
+        f'&amp;product={urllib.parse.quote(h.name)}"><strong>{_esc(h.vendor)}</strong> / '
+        f'{_esc(h.name)}<span class="w">{h.advisories:,} advisory record(s)'
+        + (f' · {_esc(h.order_numbers[0])}' if h.order_numbers else '')
+        + ' · Open assessment →</span></a>' for h in hits)
     if not hits:
         vendors = search.vendors(connection, query, limit=8)
         rows = "".join(
             f'<a class="hit" href="/vendor?name={urllib.parse.quote(v.vendor)}">'
-            f'{_esc(v.vendor)}<span class="w">{v.products:,} product entries '
-            f"&middot; matched by {_esc(v.method)}</span></a>" for v in vendors)
-        rows = (rows and "<h2>Vendors matching that</h2>" + rows) or \
-            '<p class="empty">Nothing in the corpus matches that.</p>'
-    return _page(f"Search: {query}", "<h1>Search the corpus</h1>" + form +
-                 f'<div class="rows">{rows}</div>', f"{len(hits)} result(s)")
+            f'{_esc(v.vendor)}<span class="w">{v.products:,} product entries · View vendor profile →</span></a>'
+            for v in vendors)
+        rows = (rows and '<h2>Matching vendors</h2>' + rows) or (
+            '<div class="panel"><h2>No matching product yet</h2><p class="empty">'
+            'Try a shorter model name, the manufacturer, or the order number on the requisition. '
+            'Missing evidence does not mean the equipment is safe.</p>'
+            '<a href="/score">Enter product details manually →</a></div>')
+    heading = ('<h1>Find your hardware</h1><p class="lead">Select a result to inspect its risk '
+               'and add the firmware version you plan to buy.</p>')
+    return _page(f"Search: {query}", heading + '<section class="panel">' + form + chips + '</section>'
+                 f'<div class="section-title"><h2>Results for “{_esc(query)}”</h2>'
+                 f'<span>{len(hits)} product result(s)' + (' · first 25 shown' if len(hits) == MAX_RESULTS else '')
+                 + f'</span></div><div class="rows">{rows}</div>')
 
 
-def _score_page(connection, assess, context, vendor, product, version):
-    """One product, rendered by the same function that writes the PDF report."""
-    if not (vendor or product):
-        return _page("Score", "<h1>Score a product</h1>" + _score_form("", "", ""))
-    assessment, resolution, findings = assess(vendor, product, version)
-    body = ("<h1>Score a product</h1>" + _score_form(vendor, product, version)
-            + report.body(
-                [(assessment, resolution, findings)], weights=context["weights"]))
+def _demo_page():
+    stages = (
+        ('Identify the exact hardware', 'Search by the order number from a requisition. '
+         'Check the matched model before assessing its firmware.', '/?q=6ES7518-4AX00-1AB0', 'Find a Siemens controller'),
+        ('Explain a verdict', 'Open an assessment and follow the score back to its five pillars. '
+         'Check evidence coverage as well as the headline number.', '/score?vendor=ABB&product=AC%20800M', 'Assess ABB AC 800M'),
+        ('Compare a shortlist', 'Review three examples together. These are different equipment classes '
+         'to demonstrate the workflow, not interchangeable engineering alternatives.',
+         '/compare?c=ABB%7CAC%20800M&c=Moxa%7CEDS-405A&c=Siemens%7CSIMATIC%20S7-1500%7C3.1.6', 'Open example comparison'),
+        ('Ask better supplier questions', 'Turn the findings into an RFQ security annex. '
+         'Take the plain text back to your procurement team.', '/annex?vendor=Moxa&product=EDS-405A', 'Prepare supplier questions'),
+    )
+    cards = ''.join(
+        f'<section class="panel"><span class="step-number">{i}</span><h2>{title}</h2><p>{description}</p>'
+        f'<a class="button secondary" href="{_esc(url)}">{action} →</a></section>'
+        for i, (title, description, url, action) in enumerate(stages, 1))
+    return _page('Demo', '<p class="eyebrow">A four-step walkthrough</p>'
+                 '<h1>Show the decision.<br>Then show the evidence.</h1>'
+                 '<p class="lead">A guided tour for a first look or a live presentation. '
+                 'Every example runs against this machine’s index.</p>'
+                 '<div class="demo-cards">' + cards + '</div>'
+                 '<p class="helper">A verdict is decision support. Product fit, plant context, '
+                 'and the supplier’s answer still belong in the purchasing decision.</p>', active='/demo')
+
+
+def _run_assessment(assess, vendor, product, version=None, order_number=None):
+    if order_number:
+        return assess(vendor, product, version or None, order_number=order_number)
+    return assess(vendor, product, version or None)
+
+
+def _score_page(connection, assess, context, vendor, product, version, order_number=""):
+    """A verdict first, with editable inputs and the evidence below it."""
+    form = _score_form(vendor, product, version, order_number)
+    if not (vendor or product or order_number):
+        return _page('Score', '<h1>Assess a product</h1><p class="lead">'
+                     'Start with a manufacturer order number, or enter the vendor and model. '
+                     'Add the firmware version to narrow the affected vulnerabilities.</p>' + form)
+    assessment, resolution, findings = _run_assessment(assess, vendor, product, version, order_number)
+    parameters = urllib.parse.urlencode(dict(vendor=vendor, product=product,
+                                             version=version, order_number=order_number))
+    body = ('<h1>Product assessment</h1><p class="lead">A procurement verdict, '
+            'with the evidence behind every number.</p>'
+            '<details><summary>Edit product details and firmware</summary>' + form + '</details>'
+            '<div class="actions">'
+            f'<a class="button secondary" href="/export.html?{_esc(parameters)}">Download report ↓</a>'
+            f'<a class="button secondary" href="/export.json?{_esc(parameters)}">Download JSON ↓</a>'
+            '<a class="button secondary" href="/">Find another product</a></div>')
+    if not version and resolution.resolved:
+        body += ('<p class="notice"><b>Firmware not specified.</b> All known affected versions '
+                 'are in scope. Add the firmware you plan to buy using “Edit product details” above.</p>')
+    body += report.body([(assessment, resolution, findings)], weights=context['weights'])
     if resolution.resolved:
-        # The next two questions a buyer asks, one click away rather than a
-        # form to refill: who makes this, and what else is in the family.
         named = resolution.matches[0]
-        query = (f"vendor={urllib.parse.quote(named.vendor)}"
-                 f"&amp;product={urllib.parse.quote(named.name)}")
-        candidate = "|".join(filter(None, [named.vendor, named.name, version]))
-        body += (f'<p class="empty"><a href="/vendor?name='
-                 f'{urllib.parse.quote(named.vendor)}">Vendor profile: '
-                 f'{_esc(named.vendor)}</a> &middot; '
-                 f'<a href="/alternatives?{query}'
-                 + (f"&amp;version={urllib.parse.quote(version)}" if version else "")
-                 + '">Alternatives in this family</a> &middot; '
-                 f'<a href="/timeline?{query}">Advisory timeline</a> &middot; '
-                 f'<a href="/annex?{query}'
-                 + (f"&amp;version={urllib.parse.quote(version)}" if version else "")
-                 + '">RFQ annex</a> &middot; '
-                 f'<a href="/compare?c={urllib.parse.quote(candidate)}">'
-                 'Start a comparison with this</a></p>')
-    if not resolution.resolved:
+        query = urllib.parse.urlencode(dict(vendor=named.vendor, product=named.name, version=version))
+        candidate = '|'.join([named.vendor, named.name, version or ''])
+        body += ('<section class="panel" style="margin-top:24px"><h2>Take the next step</h2><div class="actions">'
+                 f'<a class="button secondary" href="/compare?c={urllib.parse.quote(candidate)}">Compare this product →</a>'
+                 f'<a class="button secondary" href="/annex?{_esc(query)}">Prepare supplier questions →</a>'
+                 f'<a class="button secondary" href="/alternatives?{_esc(query)}">Find alternatives →</a></div>'
+                 f'<p class="helper"><a href="/vendor?name={urllib.parse.quote(named.vendor)}">Vendor profile</a>'
+                 f' · <a href="/timeline?{_esc(query)}">Advisory timeline</a></p></section>')
+    else:
         suggestions = search.suggest(connection, vendor=vendor, product=product)
-        rows = "".join(
+        rows = ''.join(
             f'<a class="hit" href="/score?vendor={urllib.parse.quote(h.vendor)}'
-            f'&amp;product={urllib.parse.quote(h.name)}">{_esc(h.vendor)} / '
-            f'{_esc(h.name)}<span class="w">matched by {_esc(h.method)}</span></a>'
-            for h in suggestions["products"][:8])
+            f'&amp;product={urllib.parse.quote(h.name)}">{_esc(h.vendor)} / {_esc(h.name)}</a>'
+            for h in suggestions['products'][:8])
         if rows:
             body += f'<h2>Did you mean</h2><div class="rows">{rows}</div>'
-    return _page(f"Score: {assessment.product}", body)
+    return _page(f'Score: {assessment.product}', body)
 
 
-def _score_form(vendor, product, version):
-    return (
-        '<form method="get" action="/score">'
-        f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
-        f'<label for="p" style="margin-top:.8rem">Product</label><input type="text" id="p" name="product" value="{_esc(product)}">'
-        f'<label for="f" style="margin-top:.8rem">Firmware version (optional)</label>'
-        f'<input type="text" id="f" name="version" value="{_esc(version)}">'
-        "<button type=\"submit\">Score</button></form>")
+def _field(id_, name, label, value='', placeholder=''):
+    return (f'<div><label for="{id_}">{label}</label><input type="text" id="{id_}" '
+            f'name="{name}" value="{_esc(value)}" placeholder="{_esc(placeholder)}" '
+            f'maxlength="{MAX_QUERY}"></div>')
+
+
+def _score_form(vendor, product, version, order_number=''):
+    return ('<form class="form-panel" method="get" action="/score">'
+            '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number', order_number,
+                                                 'e.g. 6ES7518-4AX00-1AB0') + '</div>'
+            '<p class="form-divider">Or identify it by vendor and product. If you enter both, they must agree.</p>'
+            '<div class="form-grid">' + _field('v', 'vendor', 'Vendor', vendor, 'e.g. Siemens')
+            + _field('p', 'product', 'Product / model', product, 'e.g. SIMATIC S7-1500')
+            + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6') + '</div>'
+            '<p class="helper">Unsure of the model name? <a href="/">Search the advisory index first.</a></p>'
+            '<button type="submit">Assess product →</button></form>')
+
+
+def _candidate_rows(params):
+    """Accept structured form fields and retain existing shareable ?c= links."""
+    if any(key.startswith('vendor_') for key in params):
+        rows = []
+        for i in range(MAX_CANDIDATES):
+            parts = [(params.get(f'{field}_{i}') or [''])[0][:MAX_QUERY].strip()
+                     for field in ('vendor', 'product', 'version')]
+            if any(parts):
+                rows.append(parts)
+        return rows
+    return [[p.strip() for p in value[:MAX_QUERY].split('|', 2)]
+            for value in params.get('c', [])[:MAX_CANDIDATES] if value.strip()]
 
 
 def _compare_page(assess, context, candidates):
-    """Several products ranked for one decision, as the terminal does it."""
-    filled = [c for c in candidates if c.strip()][:MAX_CANDIDATES]
-    boxes = "".join(
-        f'<label for="c{i}">Candidate {i + 1} &mdash; Vendor|Product|Version</label>'
-        f'<input type="text" id="c{i}" name="c" value="{_esc(filled[i] if i < len(filled) else "")}" '
-        'style="margin-bottom:.6rem">' for i in range(max(3, len(filled) + 1)))
-    form = f'<form method="get" action="/compare">{boxes}<button type="submit">Compare</button></form>'
+    """A shortlist with separate input fields and ranked, explainable results."""
+    filled = [(list(c) + ['', '', ''])[:3] for c in candidates][:MAX_CANDIDATES]
+    boxes = ''
+    for i in range(min(MAX_CANDIDATES, max(3, len(filled) + 1))):
+        vendor, product, version = filled[i] if i < len(filled) else ('', '', '')
+        boxes += (f'<fieldset><legend>Candidate {i + 1}</legend><div class="form-grid">'
+                  + _field(f'cv{i}', f'vendor_{i}', 'Vendor', vendor, 'e.g. Moxa')
+                  + _field(f'cp{i}', f'product_{i}', 'Product / model', product, 'e.g. EDS-405A')
+                  + _field(f'cf{i}', f'version_{i}', 'Firmware (optional)', version, 'e.g. 3.0')
+                  + '</div></fieldset>')
+    form = ('<form method="get" action="/compare">' + boxes
+            + '<p class="helper">Leave unused candidates blank. Another row appears after comparing, '
+            'up to 12 candidates.</p><button type="submit">Compare candidates →</button></form>')
+    heading = ('<h1>Compare your candidates</h1><p class="lead">Put the shortlist on equal terms. '
+               'Scores compare the evidence; an engineer still needs to confirm functional suitability.</p>')
     if not filled:
-        return _page("Compare", "<h1>Compare candidates</h1>" + form +
-                     '<p class="empty">One per box, pipe-separated. Everything '
-                     "after the vendor is optional.</p>")
-
-    blocks = []
-    for raw in filled:
-        parts = [p.strip() for p in raw.split("|")]
-        blocks.append(assess(parts[0], parts[1] if len(parts) > 1 else None,
-                             parts[2] if len(parts) > 2 else None))
-    rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+        return _page('Procurement comparison', heading + form)
+    blocks = [assess(v, p, f or None) for v, p, f in filled]
+    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'AVOID': 2, 'NOT ASSESSED': 3}
     blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
-    return _page("Procurement comparison",
-                 "<h1>Compare candidates</h1>" + form
-                 + report.body(blocks, weights=context["weights"]),
-                 f"{len(blocks)} candidate(s)")
+    stabilities = {a.product: sensitivity.stability(*a.inputs, samples=300,
+                    bands=context.get('bands')) for a, _, _ in blocks if a.inputs}
+    warning = ('<p class="notice">Some candidates have firmware specified and others do not. '
+               'Add a version for each to compare on equal terms.</p>'
+               if any(f for _, _, f in filled) and not all(f for _, _, f in filled) else '')
+    return _page('Procurement comparison', heading + warning
+                 + '<details><summary>Edit candidates or add another</summary>' + form + '</details>'
+                 + report.body(blocks, stabilities=stabilities, weights=context['weights']),
+                 f'{len(blocks)} candidate(s)')
 
 
 def _alternatives_page(connection, assess, vendor, product, version):
@@ -389,6 +453,90 @@ def _annex_page(connection, assess, dossier, context, vendor, product, version):
     return _page(f"Annex: {subject or 'RFQ'}", body)
 
 
+def _select(name, label, options, chosen):
+    """One labelled dropdown, in the same legend style as the text inputs."""
+    rendered = "".join(
+        f'<option value="{_esc(option)}"'
+        + (" selected" if option == chosen else "") + f">{_esc(option)}</option>"
+        for option in options)
+    return (f'<label for="{name}" style="margin-top:.8rem">{_esc(label)}</label>'
+            f'<select id="{name}" name="{name}">{rendered}</select>')
+
+
+def _ssvc_page(connection, assess, vendor, product, version,
+               exposure, automatable, impact):
+    """CERT/CC's deployer tree, with the three plant facts asked out loud."""
+    form = (
+        '<form method="get" action="/ssvc">'
+        f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
+        f'<label for="p" style="margin-top:.8rem">Product</label>'
+        f'<input type="text" id="p" name="product" value="{_esc(product)}">'
+        f'<label for="f" style="margin-top:.8rem">Firmware version (optional)</label>'
+        f'<input type="text" id="f" name="version" value="{_esc(version)}">'
+        + _select("exposure", "System exposure (describes your plant)",
+                  ssvc.EXPOSURE, exposure)
+        + _select("automatable", "Can an attacker automate it?",
+                  ("yes", "no"), automatable)
+        + _select("impact", "Human impact", ssvc.HUMAN_IMPACT, impact)
+        + '<button type="submit">Decide</button></form>')
+    if not (vendor and product):
+        return _page("SSVC", "<h1>SSVC decisions</h1>" + form +
+                     "<p class=\"empty\">Every finding placed on CERT/CC's "
+                     "deployer tree. Three of the four decision points describe "
+                     "your plant, not the product, so they are asked rather "
+                     "than assumed.</p>")
+    assessment, resolution, findings = assess(vendor, product, version or None)
+    if not resolution.resolved:
+        return _page("SSVC", "<h1>SSVC decisions</h1>" + form +
+                     f'<p class="empty">{_esc(resolution.reason)}</p>')
+    decisions = ssvc.assess(findings, exposure, automatable, impact)
+    text = ssvc.format_report(assessment.product, decisions, exposure,
+                              automatable, impact,
+                              undecided=sum(1 for f in findings if not f.decided))
+    return _page(f"SSVC: {assessment.product}",
+                 "<h1>SSVC decisions</h1>" + form +
+                 '<pre class="tw" style="white-space:pre-wrap">'
+                 f"{_esc(text)}</pre>")
+
+
+def _lev_page(connection, assess, vendor, product):
+    """NIST CSWP 41 estimates, or the honest abstention when history is absent."""
+    form = (
+        '<form method="get" action="/lev">'
+        f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
+        f'<label for="p" style="margin-top:.8rem">Product</label>'
+        f'<input type="text" id="p" name="product" value="{_esc(product)}">'
+        '<button type="submit">Estimate</button></form>')
+    if not (vendor and product):
+        return _page("LEV", "<h1>Likely exploited</h1>" + form +
+                     '<p class="empty">NIST CSWP 41: from the EPSS history, '
+                     "how likely each finding has already been exploited. A "
+                     "lower bound from a model -- a prompt to go and look, "
+                     "never a finding that it happened.</p>")
+    if not index_module.has_epss_history(connection):
+        return _page("LEV", "<h1>Likely exploited</h1>" + form +
+                     '<p class="empty">No EPSS history loaded, so LEV cannot '
+                     "be estimated. `retrust lev --update` fetches it "
+                     "(67 daily snapshots, about four minutes).</p>")
+    assessment, resolution, findings = assess(vendor, product)
+    if not resolution.resolved:
+        return _page("LEV", "<h1>Likely exploited</h1>" + form +
+                     f'<p class="empty">{_esc(resolution.reason)}</p>')
+    cves = sorted({f.cve for f in findings})
+    history = index_module.epss_history(connection, cves)
+    signals = {f.cve: f for f in findings}
+    cached = index_module.lev_estimates(connection)
+    estimates = [lev.estimate(c, history.get(c, []), in_kev=signals[c].in_kev,
+                              current_epss=signals[c].epss) for c in cves]
+    text = lev.format_report(
+        assessment.product, estimates,
+        corpus_share=lev.baseline(cached)["share"] if cached else None)
+    return _page(f"LEV: {assessment.product}",
+                 "<h1>Likely exploited</h1>" + form +
+                 '<pre class="tw" style="white-space:pre-wrap">'
+                 f"{_esc(text)}</pre>")
+
+
 def _vendor_page(connection, dossier, context, name):
     form = ('<form method="get" action="/vendor"><label for="n">Manufacturer</label>'
             f'<input type="text" id="n" name="name" value="{_esc(name)}">'
@@ -416,7 +564,22 @@ def _about_page(stats, provenance, host, port):
     sources = "".join(
         f"<tr><td>{_esc(p['source'])}</td><td>{_esc(p['detail'])}</td>"
         f"<td class=\"n\">{_esc(p['captured'])}</td></tr>" for p in provenance)
-    return _page("About", f"""<h1>About this index</h1>
+    return _page("About", f"""<h1>Data &amp; methodology</h1>
+<p class="lead">Follow the decision back to its inputs. These are the sources
+loaded into this workspace and the rules that turn them into an assessment.</p>
+<section class="panel"><h2>How a verdict is reached</h2>
+<ol class="steps">
+<li><span class="step-number">1</span><div><b>Resolve the hardware</b>
+<p>Use the manufacturer order number or vendor and product name. Unresolved
+products receive NOT ASSESSED. Unknown version ranges stay in scope.</p></div></li>
+<li><span class="step-number">2</span><div><b>Apply disqualifying evidence</b>
+<p>Known exploitation and supplier screening can trigger an AVOID gate,
+regardless of the weighted score.</p></div></li>
+<li><span class="step-number">3</span><div><b>Weigh five pillars</b>
+<p>Exploitation, severity, patch availability, vendor practice, and certification
+contribute to the score. Higher is better. Evidence quality is reported separately.</p></div></li>
+</ol></section>
+<h2>What the index contains</h2>
 <div class="tw"><table><thead><tr><th>Holds</th><th>Count</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
 <h2>Where the data came from</h2>
@@ -429,6 +592,30 @@ def _about_page(stats, provenance, host, port):
 
 class PlainText(str):
     """A page that is text, not markup. _send switches the content type on it."""
+
+
+class Download(str):
+    """Generated in memory with a fixed filename; no server-side file writes."""
+
+    def __new__(cls, text, filename, content_type):
+        value = super().__new__(cls, text)
+        value.filename, value.content_type = filename, content_type
+        return value
+
+
+def _export(assess, context, provenance, path, vendor, product, version, order_number):
+    block = _run_assessment(assess, vendor, product, version, order_number)
+    if path.endswith('.json'):
+        query = dict(vendor=vendor, product=product, version=version, order_number=order_number)
+        payload = batch.envelope([batch.to_detail(*block, query=query)], {
+            'provenance': provenance, 'weights': context['weights'],
+            'config_source': context.get('config_source', ''),
+            'generated': date.today().isoformat()})
+        return Download(batch.dumps(payload), 'retrust-assessment.json', 'application/json')
+    return Download(report.render([block], title='ReTrust procurement assessment',
+                    provenance=provenance, weights=context['weights'],
+                    config_source=context.get('config_source', '')),
+                    'retrust-assessment.html', 'text/html')
 
 
 def build_handler(connection, assess, context, dossier, stats, provenance,
@@ -447,19 +634,27 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
     def host_allowed(header):
         if not guard_host or not (header or "").strip():
             return True               # an absent Host cannot carry a rebind
-        name = urllib.parse.urlsplit(f"//{header.strip()}").hostname or ""
+        try:
+            name = urllib.parse.urlsplit(f"//{header.strip()}").hostname or ""
+        except ValueError:
+            return False
         return name in LOOPBACK_NAMES
 
     def page_for(path, params):
         first = lambda key: (params.get(key) or [""])[0][:MAX_QUERY]
+        if path == "/demo":
+            return _demo_page()
+        if path in ("/export.html", "/export.json"):
+            return _export(assess, context, provenance, path,
+                           first("vendor"), first("product"), first("version"), first("order_number"))
         if path == "/":
             return _search_page(connection, stats, first("q"))
         if path == "/score":
             return _score_page(connection, assess, context, first("vendor"),
-                               first("product"), first("version"))
+                               first("product"), first("version"), first("order_number"))
         if path == "/compare":
             return _compare_page(assess, context,
-                                 [c[:MAX_QUERY] for c in params.get("c", [])])
+                                 _candidate_rows(params))
         if path == "/alternatives":
             return _alternatives_page(connection, assess, first("vendor"),
                                       first("product"), first("version"))
@@ -473,6 +668,15 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             return PlainText(_annex_text(connection, assess, dossier, context,
                                          first("vendor"), first("product"),
                                          first("version")))
+        if path == "/ssvc":
+            return _ssvc_page(connection, assess, first("vendor"),
+                              first("product"), first("version"),
+                              first("exposure") or "controlled",
+                              first("automatable") or "yes",
+                              first("impact") or "medium")
+        if path == "/lev":
+            return _lev_page(connection, assess, first("vendor"),
+                             first("product"))
         if path == "/vendor":
             return _vendor_page(connection, dossier, context, first("name"))
         if path == "/about":
@@ -513,10 +717,13 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
 
         def _send(self, status, markup):
             payload = markup.encode("utf-8")
-            kind = ("text/plain" if isinstance(markup, PlainText) else "text/html")
+            kind = (markup.content_type if isinstance(markup, Download) else
+                    "text/plain" if isinstance(markup, PlainText) else "text/html")
             self.send_response(status)
             self.send_header("Content-Type", f"{kind}; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
+            if isinstance(markup, Download):
+                self.send_header("Content-Disposition", f'attachment; filename="{markup.filename}"')
             # The pages are self-contained, so the strictest policy that still
             # works is the correct one: nothing may be fetched or executed.
             self.send_header("Content-Security-Policy",

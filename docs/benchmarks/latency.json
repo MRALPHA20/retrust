@@ -1,0 +1,83 @@
+{
+  "date": "2026-09-28",
+  "platform": "Linux-6.18.12+kali-amd64-x86_64-with-glibc2.42",
+  "python": "3.13.9",
+  "cpu": "AMD Ryzen 5 5500U with Radeon Graphics",
+  "logical_cpus": 12,
+  "method": "20 serial fresh CLI processes per case after one warm-up; OS cache warm; stdout discarded; wall clock includes Python startup; nearest-rank p95; shared development machine",
+  "database_bytes": 43016192,
+  "database_sha256": "7c1e38886df7fc4ce06fed9f889bc8304c4030c2d6d597eb947050252d1189ed",
+  "results": [
+    {
+      "case": "Search S7-1500",
+      "command": [
+        "python3",
+        "-m",
+        "retrust.cli",
+        "search",
+        "S7-1500"
+      ],
+      "runs": 20,
+      "median_ms": 158.94,
+      "p95_ms": 182.89,
+      "min_ms": 147.22,
+      "max_ms": 193.58
+    },
+    {
+      "case": "Assess ABB AC 800M",
+      "command": [
+        "python3",
+        "-m",
+        "retrust.cli",
+        "score",
+        "--vendor",
+        "ABB",
+        "--product",
+        "AC 800M"
+      ],
+      "runs": 20,
+      "median_ms": 504.63,
+      "p95_ms": 542.52,
+      "min_ms": 487.11,
+      "max_ms": 543.74
+    },
+    {
+      "case": "Assess Siemens by order number",
+      "command": [
+        "python3",
+        "-m",
+        "retrust.cli",
+        "score",
+        "--order-number",
+        "6ES7518-4AX00-1AB0",
+        "--version",
+        "3.1.6"
+      ],
+      "runs": 20,
+      "median_ms": 507.79,
+      "p95_ms": 530.17,
+      "min_ms": 491.47,
+      "max_ms": 539.8
+    },
+    {
+      "case": "Compare two candidates (300 samples)",
+      "command": [
+        "python3",
+        "-m",
+        "retrust.cli",
+        "compare",
+        "--candidate",
+        "ABB|AC 800M",
+        "--candidate",
+        "Moxa|EDS-405A",
+        "--samples",
+        "300"
+      ],
+      "runs": 20,
+      "median_ms": 544.69,
+      "p95_ms": 570.74,
+      "min_ms": 529.9,
+      "max_ms": 589.52
+    }
+  ]
+}

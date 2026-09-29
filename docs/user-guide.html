@@ -132,11 +132,7 @@ $ retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</pre></l
 <div class="page-break"></div>
 <h2>1 &nbsp; What it is for</h2>
 
-<p>Every other OT security tool analyses equipment you already own. Asset inventory
-platforms fingerprint what is on the wire; firmware tools take apart images you
-already have. ReTrust answers a different question, at the one moment a security
-decision is still cheap: <b>of these candidate PLCs, which one should go on the
-purchase order?</b></p>
+<p>ReTrust helps a procurement team review named OT candidates before deployment, using the public security evidence available for each option.</p>
 
 <p>It reads public advisory data, keys on the manufacturer order number a purchase
 requisition already contains, and shows the evidence behind every number it
@@ -145,25 +141,20 @@ reproducible and a demonstration never depends on the network.</p>
 
 <h3>Why order numbers, and not CPE</h3>
 
-<p>Every conventional vulnerability tool joins products to CVEs through CPE strings.
-Measured across all 28,951 product entries in CISA's OT advisory corpus:</p>
+<p>Measured across all 28,951 product entries in CISA's OT advisory corpus:</p>
 
 <table>
   <thead><tr><th>Identifier on the product entry</th><th>Entries</th><th>Share</th></tr></thead>
   <tbody>
-    <tr><td><b>CPE</b>, the join key conventional scanners use</td><td class="n">60</td><td class="n">0.21%</td></tr>
+    <tr><td><b>CPE</b></td><td class="n">60</td><td class="n">0.21%</td></tr>
     <tr><td>Order number the advisory declares</td><td class="n">8,211</td><td class="n">28.36%</td></tr>
-    <tr><td>Order number ReTrust recovers from the product name</td><td class="n">1,384</td><td class="n">4.78%</td></tr>
-    <tr><td><b>Order number, either</b> &mdash; what ReTrust keys on</td><td class="n">9,595</td><td class="n">33.14%</td></tr>
+    <tr><td>Order number ReTrust recovers from the product name</td><td class="n">1,364</td><td class="n">4.71%</td></tr>
+    <tr><td><b>Order number, either</b> &mdash; what ReTrust keys on</td><td class="n">9,575</td><td class="n">33.07%</td></tr>
     <tr><td>Vendor name</td><td class="n">28,947</td><td class="n">99.99%</td></tr>
   </tbody>
 </table>
 
-<p>CPE is effectively absent from industrial advisory data, which is why
-general-purpose tooling performs so badly on OT gear. Declared order numbers are
-<b>137&times;</b> more available, and <span class="id">6ES7518-4AX00-1AB0</span>
-is what a buyer types onto a requisition in the first place. Run
-<code>retrust eval</code> to recompute that table from your own database.</p>
+<p>Declared order numbers are about 137 times more available than CPE in this corpus. This motivates the identifier strategy; it does not measure competing tools. Run <code>retrust eval</code> to reproduce it.</p>
 
 <h2>2 &nbsp; How it works</h2>
 
@@ -209,7 +200,7 @@ which advisory products that refers to, strongest strategy first, and reports
 which rung answered.</p>
 
 <table>
-  <thead><tr><th>Rung</th><th>Method</th><th>Confidence</th><th>Measured accuracy</th></tr></thead>
+  <thead><tr><th>Rung</th><th>Method</th><th>Confidence</th><th>Source-advisory recovery</th></tr></thead>
   <tbody>
     <tr><td class="n">1</td><td>Manufacturer order number</td><td class="n">0.98</td><td class="n">100%</td></tr>
     <tr><td class="n">2</td><td>Vendor + product name</td><td class="n">0.90</td><td class="n">99.8%</td></tr>
@@ -312,38 +303,53 @@ guide.</p>
 
 <h2>4 &nbsp; Using it</h2>
 
-<p>There are two ways to drive ReTrust, and they do the same things. Commands with
-flags suit a script or a pipeline. A menu suits somebody who would rather be
-asked.</p>
+<p>Use CLI commands for scripts, the interactive terminal for guided questions, or <code>retrust serve</code> for the browser workspace.</p>
 
 <h3>The menu</h3>
 
 <pre class="cmd">$ retrust shell</pre>
-<pre>┌─────┬────────────────────────────────────────────────────────────────────┐
-│   1 │ Search the corpus       find a vendor, product or order number     │
-│   2 │ Score one product       verdict, pillars and the evidence          │
-│   3 │ Compare candidates      rank several for one decision              │
-│   4 │ Alternatives            others in the family, scored the same way  │
-│   5 │ Vendor profile          what the index holds on a manufacturer     │
-│   6 │ Score a BOM file        a CSV or JSON list of candidates           │
-│   7 │ Likely exploited        NIST LEV, has it probably happened already │
-│   8 │ SSVC decisions          what buying this commits you to            │
-│   9 │ What changed            re-score a saved result against today      │
-│  10 │ Advisory timeline       the record drawn as a shape, per year      │
-│  11 │ RFQ annex               what to ask the vendor, from the evidence  │
-│   s │ Save the last result    HTML, JSON or CSV                          │
-├─────┼────────────────────────────────────────────────────────────────────┤
-│   q │ Quit                                                               │
-└─────┴────────────────────────────────────────────────────────────────────┘
+<pre>  ReTrust  /  interactive session
+  Evidence before commitment.
+  ────────────────────────────────────────────────────────────────────────────
+  HOLDS  3,937 advisories, 28,951 product entries, 814 vendors
+
+  CHOOSE A COMMAND ───────────────────────────────────────────────────────────
+  search         Search the corpus
+                 find a vendor, product or order number
+  score          Score one product
+                 verdict, pillars and the evidence
+  order          Assess by order number
+                 use the part number from the nameplate
+  compare        Compare candidates
+                 rank several for one decision
+  alternatives   Alternatives
+                 others in the family, scored the same way
+  vendor         Vendor profile
+                 what the index holds on a manufacturer
+  batch          Score a BOM file
+                 a CSV or JSON list of candidates
+  lev            Likely exploited
+                 NIST LEV, has it probably happened already
+  ssvc           SSVC decisions
+                 what buying this commits you to
+  diff           What changed
+                 re-score a saved result against today
+  timeline       Advisory timeline
+                 the record drawn as a shape, per year
+  questions      RFQ annex
+                 what to ask the vendor, from the evidence
+  save           Save the last result
+                 HTML, JSON or CSV
+  quit / Leave the workspace
+  Type a command. Blank answers go back; optional fields can be skipped.</pre>
 
 <p>Two things make it more than a wrapper. Every choice <b>prints the command line
 it is equivalent to</b> before it runs, so anyone using the menu graduates to
 scripting without being taught. And the last result is <b>held</b>, so saving is
-a separate decision from producing: press <code>s</code> once you have seen the
+a separate decision from producing: type <code>save</code> once you have seen the
 answer and choose HTML, JSON or CSV then.</p>
 
-<p>Blank always means go back. A wrong answer costs the answer, not the session.
-Ctrl-C returns to the menu.</p>
+<p>Blank skips optional fields. Two blanks at a required prompt cancel the action. Ctrl-C returns from an action to the menu; at the menu it exits.</p>
 
 <h3>Finding the name to type</h3>
 
@@ -368,19 +374,64 @@ what you typed.</p>
 <h3>Scoring one product</h3>
 
 <pre class="cmd">$ retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6</pre>
-<pre>AVOID  39.1/100   Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP
-  matched by order_number (confidence 0.98), 32 advisory product(s), 1011 CVE(s)
+<pre>  PRODUCT ASSESSMENT ─────────────────────────────────────────────────────────
+
+  Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0) (firmware
+  3.1.6)
+  AVOID  ·  40.2/100
+  Matched by order_number (confidence 0.98) · 16 advisory product(s) · 477
+  CVE(s)
 
   HARD GATE: Known exploited vulnerability
-    8 CVE(s) in CISA KEV catalogue
-    source: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
+    4 CVE(s) appear in CISA&#x27;s KEV catalogue: CVE-2023-44487, CVE-2023-4911,
+    CVE-2025-39964, CVE-2026-31431
+    Source: CISA Known Exploited Vulnerabilities catalogue
 
-  Exploitation         0.0   coverage 100%
-      - 8 CVE(s) in CISA KEV
-      - peak EPSS 1.000
-  Severity            41.0   coverage 100%
-      - highest CVSS 9.8
-      - 21/1011 rated critical (9.0+), 264 high</pre>
+  EVIDENCE BY PILLAR ─────────────────────────────────────────────────────────
+
+  Exploitation  ·  3.0/100  ·  coverage 100%
+    - 4 CVE(s) in CISA KEV (confirmed exploitation)
+    - peak EPSS 1.000
+    - 10 CVE(s) with EPSS &gt;= 0.10
+
+  Severity  ·  44.1/100  ·  coverage 100%
+    - highest CVSS 9.8
+    - 14/502 rated critical (9.0+), 150 high
+    - 62/502 reachable over the network with no credentials and no user action
+    - 4 need physical access to the device
+
+  Patch availability  ·  40.0/100  ·  coverage 100%
+    - 0/502 advisory findings have a vendor fix
+    - 502 offer only a mitigation or workaround
+
+  Vendor practice  ·  100.0/100  ·  coverage 100%
+    - 3 advisories in this assessment
+    - 502/502 advisory findings carry CVSS, 502/502 carry a CWE
+    - runs its own CSAF advisory feed
+
+  Certification  ·  50.0/100  ·  coverage 0%
+    - no IEC 62443 or Common Criteria certificate found for this vendor
+    - absence of certification is not evidence of insecurity
+
+  Evidence quality  ·  100.0/100  ·  coverage 100%
+    - 502/502 version ranges checked against the firmware you gave
+    - 502/502 scored by the vendor, 502/502 covered by EPSS
+
+  ASSESSMENT NOTES ───────────────────────────────────────────────────────────
+  NOTE: 477 distinct CVEs across 502 advisory findings. Pillar coverage and
+  proportions use advisory findings; exploitation counts and gates use
+  distinct CVEs.
+  NOTE: 136 finding(s) are memory safety. The usual firmware class. A patch
+  fixes each instance; a pattern of them says something about how the firmware
+  was built.
+  NOTE: 3 finding(s) are weak cryptography. Traffic or stored secrets are not
+  protected as well as they appear to be, which tends to outlive the device&#x27;s
+  patch cycle.
+  NOTE: 1 finding(s) are command or code injection. A successful attack runs
+  the attacker&#x27;s code on the device, so the consequence is not limited to the
+  function that was flawed.
+  NOTE: Also present, not detailed: path traversal.
+</pre>
 
 <h3>Comparing candidates for one decision</h3>
 
@@ -388,8 +439,8 @@ what you typed.</p>
       --candidate "Schneider Electric|Modicon M340" \
       --candidate "Hikvision|IP Camera" --html decision.html</pre>
 <pre>CANDIDATE                          VERDICT       SCORE  CVES  ROBUST  NOTES
-ABB AC 800M                        PREFER         81.5    10    91%
-Schneider Electric Modicon M340    PREFER         77.2    21    77%
+ABB AC 800M                        PREFER         82.2    10    93%
+Schneider Electric Modicon M340    PREFER         76.4    49    80%
 Hikvision IP Camera                AVOID           --      -     -    Named on a covered list</pre>
 
 <p>The candidate string is pipe-separated: <span class="id">Vendor|Product|Version|OrderNumber</span>,
@@ -402,8 +453,8 @@ and everything after the vendor is optional.</p>
   <tbody>
     <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;70, <span class="v-caution">CONDITIONAL</span> &ge;40, <span class="v-avoid">AVOID</span> below, <span class="v-inert">NOT ASSESSED</span> when it could not resolve the product</td></tr>
     <tr><td>SCORE</td><td>The weighted composite, 0&ndash;100, higher is better</td></tr>
-    <tr><td>CVES</td><td>Findings in scope. Never scored directly &mdash; see the rules below</td></tr>
-    <tr><td>ROBUST</td><td>The share of random weightings giving the same verdict</td></tr>
+    <tr><td>CVES</td><td>Distinct CVEs in scope. Raw total volume is not a scoring penalty</td></tr>
+    <tr><td>ROBUST</td><td>The share of sampled weightings supporting the most common verdict; not ranking stability</td></tr>
     <tr><td>NOTES</td><td>The gate that decided it, if one did</td></tr>
   </tbody>
 </table>
@@ -473,6 +524,7 @@ a gate rather than a report somebody has to read.</p>
     <tr><td>What does this product's history look like?</td><td><code>retrust timeline --vendor V --product P</code></td></tr>
     <tr><td>Does anything we are buying carry this CVE?</td><td><code>retrust cve CVE-2023-44487</code></td></tr>
     <tr><td>A machine-readable record of what was decided</td><td><code>retrust vex --vendor V --product P --version X</code></td></tr>
+    <tr><td>Index a vendor's own advisory feed too</td><td><code>retrust provider &lt;metadata-url&gt;</code></td></tr>
     <tr><td>Start the weights from our kind of plant</td><td><code>retrust config --init --appetite safety-critical</code></td></tr>
     <tr><td>Score the components of an integrator's SBOM</td><td><code>retrust batch system-bom.json</code></td></tr>
     <tr><td>Does the score predict anything?</td><td><code>retrust backtest</code></td></tr>
@@ -490,18 +542,16 @@ a gate rather than a report somebody has to read.</p>
 <table>
   <thead><tr><th>Measurement</th><th>Result</th></tr></thead>
   <tbody>
-    <tr><td>Version ranges decided deterministically</td><td class="n">95.2% of 28,651</td></tr>
-    <tr><td>&hellip; of ranges that <i>can</i> be decided from a version string</td><td class="n">96.8%</td></tr>
-    <tr><td>Product resolution precision (n = 4,000)</td><td class="n">99.9%</td></tr>
-    <tr><td>Product resolution recall (n = 4,000)</td><td class="n">99.7%</td></tr>
+    <tr><td>Version ranges decided deterministically</td><td class="n">94.91% of 28,651</td></tr>
+    <tr><td>&hellip; of ranges that <i>can</i> be decided from a version string</td><td class="n">96.80%</td></tr>
+    <tr><td>Source-advisory recovery precision (n = 4,000)</td><td class="n">99.85%</td></tr>
+    <tr><td>Source-advisory recovery recall (n = 4,000)</td><td class="n">99.70%</td></tr>
     <tr><td>Hand-written buyer-query set</td><td class="n">20/21</td></tr>
     
   </tbody>
 </table>
 
-<p>These measure resolving a <i>named</i> product to its advisories. They are not
-device-fingerprinting accuracy; identifying equipment from passive network
-traffic is a much harder problem and a different question.</p>
+<p>Round-trip queries also supply order numbers when available. Success means the source advisory appears among matches; extra incorrect matches are not penalized. Range coverage is parser coverage, not independently validated affectedness. These are internal measurements. Read the <a href="benchmark-report.md">benchmark methodology</a>, <a href="tool-comparison.md">tool comparison</a> and <a href="ReTrust-Guide.pdf">illustrated PDF overview</a>.</p>
 
 <h3>Where the data comes from</h3>
 
@@ -525,6 +575,6 @@ against the cited source before acting on it.</p>
 
 <footer>
 ReTrust 0.1.0 &middot; Apache-2.0 &middot; No third-party runtime dependencies &middot;
-Figures measured against 3,937 CISA OT advisories captured 2026-09-27 &middot;
+Figures measured against 3,937 CISA OT advisories captured 2026-09-28 &middot;
 Run <code>retrust eval</code> to recompute them.
 </footer>

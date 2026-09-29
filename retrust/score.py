@@ -60,8 +60,8 @@ def _exploitation(findings):
     if not findings:
         return Pillar("Exploitation", 100.0, 1.0, ["no known CVEs for this product"])
 
-    kev = [f for f in findings if f.in_kev]
-    ransomware = [f for f in findings if f.ransomware]
+    kev = {f.cve for f in findings if f.in_kev}
+    ransomware = {f.cve for f in findings if f.ransomware}
     scored = [f for f in findings if f.epss is not None]
     coverage = len(scored) / len(findings)
 
@@ -76,7 +76,7 @@ def _exploitation(findings):
 
     if scored:
         peak = max(f.epss for f in scored)
-        likely = [f for f in scored if f.epss >= 0.1]
+        likely = {f.cve for f in scored if f.epss >= 0.1}
         penalty += 40 * peak
         evidence.append(f"peak EPSS {peak:.3f}")
         if likely:
@@ -184,7 +184,7 @@ def _vendor_practice(findings, advisories, vendor_key=None):
 
     evidence = [
         f"{len(advisories)} advisor{'y' if len(advisories) == 1 else 'ies'} in this assessment",
-        f"{with_cvss}/{len(findings)} CVEs carry CVSS, {with_cwe}/{len(findings)} carry a CWE",
+        f"{with_cvss}/{len(findings)} advisory findings carry CVSS, {with_cwe}/{len(findings)} carry a CWE",
     ]
     evidence.append(
         "runs its own CSAF advisory feed" if publishes else
@@ -213,8 +213,8 @@ def _evidence_quality(findings):
     evidence = [
         f"{decided}/{n} version ranges checked against the firmware you gave"
         if decided else
-        f"no firmware version supplied, so none of the {n} version ranges were "
-        "checked -- every CVE for this product is in scope",
+        f"none of the {n} version ranges could be confirmed against firmware; "
+        "supply or verify the version, and review these findings",
         f"{with_cvss}/{n} scored by the vendor, {with_epss}/{n} covered by EPSS",
     ]
     if 0 < decided < n:
@@ -247,7 +247,7 @@ def _patchability(findings):
 
     # A vendor fix counts fully; a workaround counts part-way; nothing counts zero.
     score = 100 * (fixed + 0.4 * workaround) / known
-    evidence = [f"{fixed}/{n} CVEs have a vendor fix"]
+    evidence = [f"{fixed}/{n} advisory findings have a vendor fix"]
     if workaround:
         evidence.append(f"{workaround} offer only a mitigation or workaround")
     if none_available:
@@ -338,16 +338,16 @@ def check_gates(findings, vendor, screening_gates=()):
     """Facts that end the assessment regardless of everything else."""
     gates = list(screening_gates)
 
-    unpatched_kev = [f for f in findings if f.in_kev]
+    unpatched_kev = {f.cve for f in findings if f.in_kev}
     if unpatched_kev:
         gates.append({
             "gate": "Known exploited vulnerability",
             "detail": f"{len(unpatched_kev)} CVE(s) appear in CISA's KEV catalogue: "
-                      + ", ".join(sorted({f.cve for f in unpatched_kev})[:5]),
+                      + ", ".join(sorted(unpatched_kev)[:5]),
             "source": "CISA Known Exploited Vulnerabilities catalogue",
         })
 
-    ransomware = [f for f in findings if f.ransomware]
+    ransomware = {f.cve for f in findings if f.ransomware}
     if ransomware:
         gates.append({
             "gate": "Ransomware-linked vulnerability",
@@ -366,7 +366,7 @@ def check_gates(findings, vendor, screening_gates=()):
     if unfixable:
         gates.append({
             "gate": "Critical vulnerability with no available fix",
-            "detail": f"{len(unfixable)} CVE(s) rated 9.0+ with high exploitation "
+            "detail": f"{len({f.cve for f in unfixable})} CVE(s) rated 9.0+ with high exploitation "
                       f"likelihood and no vendor remedy: "
                       + ", ".join(sorted({f.cve for f in unfixable})[:5]),
             "source": "CSAF remediation status, CVSS and FIRST EPSS",
@@ -428,10 +428,17 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
                                          if composite >= t)
 
     notes = []
+    if len(findings) != len({f.cve for f in findings}):
+        notes.append(
+            f"{len({f.cve for f in findings})} distinct CVEs across {len(findings)} "
+            "advisory findings. Pillar coverage and proportions use advisory "
+            "findings; exploitation counts and gates use distinct CVEs."
+        )
     if undecided:
         notes.append(
-            f"{len(undecided)} finding(s) had a version range this tool could not "
-            "parse and were kept in scope rather than assumed safe; review them."
+            f"{len(undecided)} finding(s) were kept in scope because their version "
+            "ranges were not confirmed against firmware. Supply a firmware "
+            "version, then review any ranges that remain undecided."
         )
     if not findings:
         notes.append(

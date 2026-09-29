@@ -1,0 +1,3 @@
+
+# Generated PDFs are binary artifacts, not text diffs.
+*.pdf binary

@@ -300,6 +300,13 @@ def findings(connection, resolution, version=None):
         for row in rows:
             key = (row["cve"], match.advisory_id)
             if key in seen:
+                # A family query can include repairable and unrepairable
+                # variants. Keep the least repairable applicable status.
+                repair_rank = {"none_available": 0, "unknown": 1,
+                               "workaround": 2, "mitigation": 3, "vendor_fix": 4}
+                remedy = row["remediation"] or "unknown"
+                if repair_rank.get(remedy, 1) < repair_rank.get(seen[key].remediation, 1):
+                    seen[key].remediation = remedy
                 # Two products of the same advisory can carry the same CVE with
                 # different ranges, and whichever SQLite returned first decided
                 # the flag. A range we could evaluate outranks one we could not:

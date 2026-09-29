@@ -1,0 +1,197 @@
+{
+  "generated_by": "retrust",
+  "schema": 1,
+  "eval": {
+    "identifiers": {
+      "total": 28951,
+      "cpe": 60,
+      "declared_order_number": 8211,
+      "recovered_order_number": 1364,
+      "order_number": 9575,
+      "vendor": 28947,
+      "name": 28951
+    },
+    "version_coverage": 0.9491,
+    "decidable_accuracy": 0.968,
+    "round_trip": {
+      "sample": 4000,
+      "precision": 0.9985,
+      "recall": 0.997
+    },
+    "buyer_queries": {
+      "passed": 20,
+      "total": 21
+    }
+  },
+  "provenance": [
+    {
+      "source": "CISA KEV",
+      "detail": "1,726 entries",
+      "captured": "2026-09-28"
+    },
+    {
+      "source": "CISA OT advisories (CSAF 2.0)",
+      "detail": "3,937 advisories, 28,951 products",
+      "captured": "2026-09-28"
+    },
+    {
+      "source": "FIRST EPSS",
+      "detail": "12,031 scores",
+      "captured": "2026-09-28"
+    },
+    {
+      "source": "FIRST EPSS history",
+      "detail": "67 daily snapshots, 512,271 scores",
+      "captured": "2026-09-28"
+    }
+  ],
+  "results": [
+    {
+      "query": "Siemens SIMATIC S7-1500",
+      "expect": "ICSA-22-167-14",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "family name reaches its CPU variants"
+    },
+    {
+      "query": "siemens simatic s7-1500 cpu 1518",
+      "expect": "ICSA-22-167-14",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "case must not matter"
+    },
+    {
+      "query": "Siemens 6ES7 518-4AX00-1AB0",
+      "expect": "ICSA-22-167-14",
+      "got": "correct by order_number",
+      "passed": true,
+      "note": "order number with the nameplate's spacing"
+    },
+    {
+      "query": "6es7518-4ax00-1ab0",
+      "expect": "ICSA-22-167-14",
+      "got": "correct by order_number",
+      "passed": true,
+      "note": "order number alone and lowercase"
+    },
+    {
+      "query": "Siemems SIMATIC S7-1500",
+      "expect": "abstain",
+      "got": "abstained",
+      "passed": true,
+      "note": "misspelled vendor must abstain with a suggestion rather than guess"
+    },
+    {
+      "query": "Rockwell RSLogix 5",
+      "expect": "ICSA-24-263-01",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "RSLogix 5 is not RSLogix 500 or 5000"
+    },
+    {
+      "query": "Rockwell Automation Inc. RSLogix 5000",
+      "expect": "ICSA-12-088-01A",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "company suffix must not matter"
+    },
+    {
+      "query": "Rockwell 1756-EN2T",
+      "expect": "ICSA-16-061-02",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "a buyer types the catalogue number into the product field"
+    },
+    {
+      "query": "Moxa Inc. EDS-405A",
+      "expect": "ICSA-19-057-01",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "vendor suffix again"
+    },
+    {
+      "query": "Moxa EDS405A",
+      "expect": "ICSA-19-057-01",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "hyphen dropped in transcription"
+    },
+    {
+      "query": "Schneider Modicon M340",
+      "expect": "ICSA-15-351-01",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "\"Schneider\" for \"Schneider Electric\""
+    },
+    {
+      "query": "Schneider Electric Modicon M580",
+      "expect": "ICSA-19-136-01",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "the relationships fix keeps this resolvable"
+    },
+    {
+      "query": "ABB AC 800M",
+      "expect": "ICSA-20-154-01",
+      "got": "correct by token_subset",
+      "passed": true,
+      "note": "rung 3: every query word appears mid-name"
+    },
+    {
+      "query": "Mitsubishi MELSEC iQ-R",
+      "expect": "ICSA-20-091-02",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "series name continuing at a boundary"
+    },
+    {
+      "query": "Phoenix Contact ILC 1xx",
+      "expect": "ICSA-16-313-01",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "trailing word on the corpus side"
+    },
+    {
+      "query": "SIEMENS Scalance X414-3E",
+      "expect": "ICSA-12-102-04",
+      "got": "correct by exact_name",
+      "passed": true,
+      "note": "exact model"
+    },
+    {
+      "query": "EC150",
+      "expect": "abstain",
+      "got": "abstained",
+      "passed": true,
+      "note": "one number two manufacturers: naming either would be a guess"
+    },
+    {
+      "query": "Siemens SIMATIC S7-1200 6ES7518-4AX00-1AB0",
+      "expect": "abstain",
+      "got": "abstained",
+      "passed": true,
+      "note": "name and order number disagree"
+    },
+    {
+      "query": "Siemens -",
+      "expect": "abstain",
+      "got": "abstained",
+      "passed": true,
+      "note": "a spreadsheet placeholder is not a product"
+    },
+    {
+      "query": "Hirschmann RS switches",
+      "expect": "ICSA-18-065-01",
+      "got": "correct by token_subset",
+      "passed": true,
+      "note": "corpus vendor is the merged Belden entity; a unique prefix reaches it"
+    },
+    {
+      "query": "Belden RS switches",
+      "expect": "ICSA-18-065-01",
+      "got": "abstained",
+      "passed": false,
+      "note": "KNOWN MISS: Belden sits mid-key so only a substring guess would reach it and the tool refuses to guess"
+    }
+  ]
+}

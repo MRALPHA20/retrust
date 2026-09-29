@@ -133,44 +133,37 @@ def _render_one(assessment, resolution, findings, context=None):
     describing the same result differently.
     """
     score_text = "no score" if assessment.score is None else f"{assessment.score}/100"
-    lines = [f"{assessment.verdict}  {score_text}   {assessment.product}"]
+    lines = [console.heading("Product assessment"), "",
+             console.prose(assessment.product, style="title"),
+             console.prose(f"{assessment.verdict}  ·  {score_text}",
+                           style=console.VERDICT_STYLES.get(assessment.verdict))]
     if resolution.resolved:
-        lines.append(f"  matched by {resolution.method} "
-                     f"(confidence {resolution.confidence:.2f}), "
-                     f"{len(resolution.matches)} advisory product(s), "
-                     # Distinct CVEs: the same one named by two advisories is
-                     # one thing to fix, and this label says CVE.
-                     f"{len({f.cve for f in findings})} CVE(s)")
+        lines.append(console.prose(
+            f"Matched by {resolution.method} (confidence {resolution.confidence:.2f})"
+            f" · {len(resolution.matches)} advisory product(s)"
+            f" · {len({f.cve for f in findings})} CVE(s)", style="label"))
     elif assessment.verdict == "NOT ASSESSED":
-        lines += [f"  reason: {resolution.reason}",
-                  "\n  ReTrust abstains rather than guessing."]
+        lines += [console.prose(f"Reason: {resolution.reason}"), "",
+                  console.prose("ReTrust abstains rather than guessing. Try the "
+                                "manufacturer's order number or check the vendor spelling.")]
     for gate in assessment.gates:
-        lines.append(f"\n  HARD GATE: {gate['gate']}\n    {gate['detail']}"
-                     f"\n    source: {gate['source']}")
+        lines += ["", console.prose(f"HARD GATE: {gate['gate']}", style="avoid"),
+                  console.prose(gate['detail'], indent="    "),
+                  console.prose(f"Source: {gate['source']}", indent="    ", style="label")]
     if assessment.pillars:
-        lines.append("")
+        lines += ["", console.heading("Evidence by pillar")]
     for pillar in assessment.pillars:
-        lines.append(f"  {pillar.name:<18} {pillar.score:5.1f}   "
-                     f"coverage {pillar.coverage:4.0%}")
-        lines += [f"      - {line}" for line in pillar.evidence]
-    lines += [f"\n  NOTE: {note}" for note in assessment.notes]
+        lines += ["", console.pillar_line(pillar)]
+        lines += [console.prose(f"- {line}", indent="    ") for line in pillar.evidence]
+    if assessment.notes:
+        lines += ["", console.heading("Assessment notes")]
+        lines += [console.prose(f"NOTE: {note}") for note in assessment.notes]
     return "\n".join(lines)
 
 
 def _print_table(records):
-    """The ranked candidate table, shared by `batch` and the menu."""
-    width = min(46, max((len(r["product"]) for r in records), default=10))
-    print(f"{'CANDIDATE':<{width}}  {'VERDICT':<12} SCORE  NOTES")
-    for record in records:
-        note = (record["gates"][0] if record["gates"] else record["reason"])
-        gate = note if isinstance(note, str) else note.get("gate", "")
-        shown = "  --  " if record["score"] is None else f"{record['score']:>5}"
-        print(f"{record['product'][:width]:<{width}}  {record['verdict']:<12} "
-              f"{shown}  {str(gate)[:40]}")
-    counts = {}
-    for record in records:
-        counts[record["verdict"]] = counts.get(record["verdict"], 0) + 1
-    print("\n  " + ", ".join(f"{v}: {c}" for v, c in sorted(counts.items())))
+    """The candidate summary shared by batch and the interactive menu."""
+    print(console.candidates(records))
 
 
 def _write_html(path, markup):
@@ -180,20 +173,35 @@ def _write_html(path, markup):
     print(f"\nReport written to {destination}")
 
 
+def cmd_provider(args):
+    """Fetch a vendor's own CSAF feed, per the trusted-provider standard."""
+    print(f"Reading {args.metadata_url} ...")
+    result = bootstrap.fetch_provider(
+        args.metadata_url, data_dir=args.data, force=args.force,
+        progress=lambda done, skip, total:
+            print(f"  {done + skip}/{total} advisories", end="\r", flush=True))
+    print(f"  {result['fetched']:,} fetched, {result['already_present']:,} "
+          f"already present, {result['failed']:,} failed")
+    print(f"\nAdvisories in {result['directory']}.")
+    print("Index them beside the CISA corpus with:\n"
+          f"  retrust ingest --csaf data/CSAF --csaf {result['directory']} "
+          "--kev data/kev.json --epss data/epss.csv")
+    return 1 if result["failed"] and not result["fetched"] else 0
+
+
 def cmd_ingest(args):
-    print(f"Reading CSAF advisories from {args.csaf} ...")
-    connection, counts = index.build(args.db, args.csaf)
+    roots = args.csaf or ["data/CSAF"]
+    print(f"Reading CSAF advisories from {', '.join(roots)} ...")
+    try:
+        connection, counts = index.build(args.db, roots,
+                                         kev_path=args.kev, epss_path=args.epss)
+    except (OSError, ValueError, KeyError) as error:
+        sys.exit(f"Ingest failed; existing index preserved: {error}")
     print(f"  {counts['advisories']:,} advisories, {counts['products']:,} products, "
           f"{counts['cve_links']:,} CVE links")
 
     if args.kev or args.epss:
-        try:
-            loaded = index.load_exploitation(connection, args.kev, args.epss)
-        except FileNotFoundError as missing:
-            sys.exit(f"Cannot read {missing.filename}. Without it the KEV and "
-                     "EPSS signals are absent and the exploitation gates cannot "
-                     "fire, so the ingest is stopped rather than left silently "
-                     "incomplete.")
+        loaded = counts["exploitation"]
         print(f"  KEV {loaded['kev']:,} entries, EPSS {loaded['epss']:,} scores")
 
     print(f"\nIndex written to {args.db}")
@@ -250,15 +258,6 @@ def cmd_score(args):
     exit_status = batch.exit_code(
         [batch.to_record(assessment, resolution, query=_query(args))], args.fail_on)
 
-    # A screening gate decides the verdict even when the product never resolved,
-    # so check the assessment rather than the resolution.
-    if assessment.verdict == "NOT ASSESSED":
-        print(f"NOT ASSESSED  {assessment.product}  (no score -- see below)")
-        print(f"  reason: {resolution.reason}")
-        print("\nReTrust abstains rather than guessing. Try the manufacturer's "
-              "order number, or check the vendor spelling with `retrust stats`.")
-        return 2
-
     print(_render_one(assessment, resolution, findings))
 
     if args.html:
@@ -266,7 +265,7 @@ def cmd_score(args):
             [(assessment, resolution, findings)], title=assessment.product,
             weights=context["weights"], config_source=context["config_source"],
             provenance=index.provenance(connection)))
-    return exit_status
+    return 2 if assessment.verdict == "NOT ASSESSED" else exit_status
 
 
 def cmd_compare(args):
@@ -296,27 +295,24 @@ def cmd_compare(args):
                     *inputs, samples=args.samples, bands=context["bands"])
 
     quiet = args.json == "-"
-    width = max(len(b[0].product) for b in blocks)
     if not quiet:
-        print(f"{'CANDIDATE':<{width}}  VERDICT       SCORE  CVES  ROBUST  NOTES")
-    for assessment, resolution, _ in blocks:
-        # A gate is why the verdict is what it is, so it outranks the
-        # resolution reason in the summary line.
-        note = (assessment.gates[0]["gate"] if assessment.gates
-                else "" if resolution.resolved else resolution.reason)
-        shown = "  --  " if assessment.score is None else f"{assessment.score:>5}"
-        count = "  - " if assessment.score is None else f"{assessment.findings_count:>4}"
-        st = stabilities.get(assessment.product)
-        robust = "  -   " if st is None else (
-            " gated" if st.gated else f"{st.agreement:>5.0%} ")
-        if not quiet:
-            print(f"{assessment.product:<{width}}  {assessment.verdict:<12}  "
-                  f"{shown}  {count}  {robust}  {note[:40]}")
+        displayed = []
+        for assessment, resolution, _ in blocks:
+            st = stabilities.get(assessment.product)
+            displayed.append({
+                "product": assessment.product, "verdict": assessment.verdict,
+                "score": assessment.score, "gates": assessment.gates,
+                "reason": "" if resolution.resolved else resolution.reason,
+                "cves": assessment.findings_count if assessment.score is not None else None,
+                "robust": "not sampled" if st is None else
+                          "gated" if st.gated else f"{st.agreement:.0%}",
+            })
+        print(console.candidates(displayed))
 
     unstable = [] if quiet else [p for p, st in stabilities.items()
                                  if not st.gated and not st.robust]
     if unstable:
-        print("\nROBUST is the share of random weightings giving the same verdict.")
+        print("\nROBUST is the share of random weightings giving the most common verdict.")
         print("Below 90% the choice depends on how you weigh the pillars:")
         for product in unstable:
             print(f"  {product}: {stabilities[product].summary()}")
@@ -754,9 +750,11 @@ def _shell_actions(connection, context, args):
         query = shell.ask("Search for", required=True, reader=reader)
         if query is shell.CANCELLED:
             return None
-        shell.echo_command(["search", query])
-        hits = search.products(connection, query, limit=10)
-        print(search.format_products(hits, query))
+        numbers = search.order_numbers(connection, query, limit=10)
+        hits = numbers or search.products(connection, query, limit=10)
+        shell.echo_command(["search"] + (["--order-number"] if numbers else []) + [query])
+        print(search.format_order_numbers(hits, query) if numbers else
+              search.format_products(hits, query))
         if not hits and (vendors := search.vendors(connection, query, limit=5)):
             print()
             print(search.format_vendors(vendors, query, lead="Vendors matching that:"))
@@ -766,10 +764,22 @@ def _shell_actions(connection, context, args):
         if not (asked := _ask_product(reader)):
             return None
         vendor, product, version = asked
-        shell.echo_command(["score", "--vendor", vendor, "--product", product]
-                           + (["--version", version] if version else []))
+        return score_result(vendor, product, version)
+
+    def do_order(result, reader):
+        number = shell.ask("Manufacturer order number", required=True, reader=reader)
+        if number is shell.CANCELLED:
+            return None
+        version = shell.ask("Firmware version (optional)", reader=reader)
+        return score_result(None, None, None if version is shell.CANCELLED else version,
+                            number)
+
+    def score_result(vendor, product, version, order_number=None):
+        parts = ["score", "--order-number", order_number] if order_number else [
+            "score", "--vendor", vendor, "--product", product]
+        shell.echo_command(parts + (["--version", version] if version else []))
         assessment, resolution, findings = _assess(
-            connection, vendor, product, version, None, context=context)
+            connection, vendor, product, version, order_number, context=context)
         print(_render_one(assessment, resolution, findings))
         if not resolution.resolved:
             print()
@@ -778,7 +788,9 @@ def _shell_actions(connection, context, args):
             return None
         return shell.Result(
             kind="score", blocks=[(assessment, resolution, findings)],
-            records=[batch.to_record(assessment, resolution)],
+            records=[batch.to_record(assessment, resolution, query={
+                "vendor": vendor, "product": product, "version": version,
+                "order_number": order_number})],
             title=f"ReTrust assessment: {assessment.product}",
             meta={"weights": context["weights"],
                   "provenance": index.provenance(connection)})
@@ -983,6 +995,7 @@ def _shell_actions(connection, context, args):
     return {
         "1": ("Search the corpus", "find a vendor, product or order number", do_search),
         "2": ("Score one product", "verdict, pillars and the evidence", do_score),
+        "o": ("Assess by order number", "use the part number from the nameplate", do_order),
         "3": ("Compare candidates", "rank several for one decision", do_compare),
         "4": ("Alternatives", "others in the family, scored the same way", do_alternatives),
         "5": ("Vendor profile", "what the index holds on a manufacturer", do_vendor),
@@ -1061,8 +1074,8 @@ def cmd_serve(args):
     context = _context(config_path=args.config)
     handler = serve.build_handler(
         connection,
-        lambda vendor, product, version=None: _assess(
-            connection, vendor, product, version, None, context=context),
+        lambda vendor, product, version=None, order_number=None: _assess(
+            connection, vendor, product, version, order_number, context=context),
         context, dossier, index.stats(connection), index.provenance(connection),
         args.host, args.port)
 
@@ -1682,10 +1695,23 @@ def build_parser():
     p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("ingest", help="build the index from CSAF advisories")
-    p.add_argument("--csaf", required=True, help="directory of CSAF JSON files")
+    p.add_argument("--csaf", action="append", metavar="DIR",
+                   help="directory of CSAF JSON files; repeat to index vendor"
+                        " feeds beside the CISA corpus (default data/CSAF)")
     p.add_argument("--kev", help="CISA KEV JSON file")
     p.add_argument("--epss", help="EPSS scores CSV file")
     p.set_defaults(func=cmd_ingest)
+
+    p = sub.add_parser("provider",
+                       help="fetch a vendor's own CSAF feed (trusted provider)")
+    p.add_argument("metadata_url",
+                   help="the vendor's provider-metadata.json URL, e.g."
+                        " https://cert-portal.siemens.com/productcert/csaf/"
+                        "provider-metadata.json")
+    p.add_argument("--data", default="data", help="data directory (default data)")
+    p.add_argument("--force", action="store_true",
+                   help="re-fetch advisories that are already present")
+    p.set_defaults(func=cmd_provider)
 
     p = sub.add_parser("doctor", help="check the installation and its data ages")
     p.add_argument("--data", default="data", help="data directory (default data)")

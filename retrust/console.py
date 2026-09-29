@@ -1,26 +1,11 @@
-"""Make the terminal output easier to live with, and make it look like ReTrust.
-
-Four comforts, none of which can change a score. A panel grid -- one width, box
-rules, a legend beside every reading -- because ISA-101 separates with hairlines
-rather than colour, and because a terminal cannot be asked for larger type: what
-it can be asked for is space and a shape the eye already knows. Colour on the
-verdict alone -- green, amber, red, the same ISA-101 convention the HTML report
-follows -- because AVOID and PREFER look identical while you skim twenty
-candidates, and colour on everything is colour on nothing. An overview for bare
-`retrust`, since an argparse usage error is a poor way to greet somebody who has
-just installed the tool. And a completion script generated from the real parser,
-so it cannot go on advertising a flag that was renamed last month.
-
-The one part of this that is not cosmetic is pad(). ANSI escape codes count
-toward len(), so f"{paint_verdict(verdict):<12}" pads to twelve *bytes* and
-shunts every later column leftwards -- but only when colour is on, which is to
-say only in front of an audience. pad() measures what a terminal really draws.
-"""
+"""Dependency-free terminal presentation, with plain output for pipelines."""
 
 import os
 import re
+import shutil
 import sqlite3
 import sys
+import textwrap
 from pathlib import Path
 
 from . import index
@@ -31,13 +16,14 @@ from . import index
 # than the green and the amber because a terminal cannot know whether it is drawn
 # on the day panel or the night one, and an alarm legible on only one of them is
 # not an alarm.
-STYLES = {"prefer": "38;5;29", "conditional": "38;5;136", "avoid": "38;5;160",
+STYLES = {"prefer": "38;5;42", "conditional": "38;5;179", "avoid": "38;5;203",
           "gate": "38;5;160",    # a hard gate is the same red as the verdict it forces
           "faint": "38;5;245",   # inert: nothing was assessed, so it says nothing
           # Chrome, never a state. Both are the same mid grey on purpose: quieter
           # than the text is the requirement, and on a background we cannot see,
           # the only direction that is reliably quieter is the middle.
-          "rule": "38;5;244", "label": "38;5;245"}
+          "rule": "38;5;240", "label": "38;5;247",
+          "accent": "38;5;81", "title": "1", "command": "38;5;81"}
 
 # Mirrors report.VERDICT_COLOR, and a test asserts it still does, so terminal and
 # report cannot drift into disagreeing about what a verdict looks like.
@@ -93,6 +79,75 @@ def pad(text, width, align="left"):
         raise ValueError(f"align must be 'left' or 'right', not {align!r}")
     filler = " " * max(0, width - visible_width(text))
     return filler + str(text) if align == "right" else str(text) + filler
+
+
+def terminal_width():
+    """Leave breathing room on wide screens and reflow in split terminals."""
+    return max(24, min(100, shutil.get_terminal_size((80, 24)).columns - 2))
+
+
+def prose(text, indent="  ", style=None):
+    """Wrap before painting, so ANSI escapes never affect the layout."""
+    wrapped = textwrap.fill(str(text), width=terminal_width(),
+                            initial_indent=indent, subsequent_indent=indent,
+                            break_long_words=True, break_on_hyphens=False)
+    return paint(wrapped, style) if style else wrapped
+
+
+def heading(title):
+    label = f"  {title.upper()} "
+    return paint(label, "accent") + paint(
+        "─" * max(0, terminal_width() - len(label)), "rule")
+
+
+def pillar_line(pillar):
+    if enabled() and terminal_width() >= 72:
+        filled = round(max(0, min(100, pillar.score)) / 10)
+        meter = paint("━" * filled, "accent") + paint("─" * (10 - filled), "rule")
+        return ("  " + pad(paint(pillar.name, "title"), 22) + meter
+                + f"  {pillar.score:5.1f}/100  "
+                + paint(f"coverage {pillar.coverage:.0%}", "label"))
+    return prose(f"{pillar.name}  ·  {pillar.score:.1f}/100  ·  "
+                 f"coverage {pillar.coverage:.0%}", style="title")
+
+
+def welcome(tag="OT procurement intelligence", rows=()):
+    lines = [paint("  ReTrust", "title") + paint("  /  " + tag, "accent"),
+             paint("  Evidence before commitment.", "label"),
+             paint("  " + "─" * (terminal_width() - 2), "rule")]
+    for name, reading in rows:
+        lines.append(prose(f"{name.upper() + '  ' if name else ''}{reading}"))
+    return "\n".join(lines)
+
+
+def candidates(records):
+    """Readable comparison cards; keep full identifiers and gate reasons."""
+    lines = [heading("Candidate comparison")]
+    for record in records:
+        verdict = record["verdict"]
+        score = "no score" if record["score"] is None else f"{record['score']}/100"
+        lines.extend(["", prose(record["product"], style="title"),
+                      prose(f"{verdict}  ·  {score}",
+                            style=VERDICT_STYLES.get(verdict))])
+        details = []
+        if record.get("cves") is not None:
+            details.append(f"CVEs {record['cves']}")
+        if record.get("robust") is not None:
+            details.append(f"ROBUST {record['robust']}")
+        if details:
+            lines.append(prose("  ·  ".join(details), style="label"))
+        gates = record.get("gates") or []
+        note = gates[0] if gates else record.get("reason", "")
+        if isinstance(note, dict):
+            note = note.get("gate", "")
+        if note:
+            lines.append(prose(str(note)))
+    counts = {}
+    for record in records:
+        counts[record["verdict"]] = counts.get(record["verdict"], 0) + 1
+    lines.extend(["", prose("  ·  ".join(f"{v}: {c}" for v, c in sorted(counts.items())),
+                             style="label")])
+    return "\n".join(lines)
 
 
 # The panel grid. One width for every rule and every box drawn on it, because
@@ -177,10 +232,10 @@ def overview(db_path):
     Short on purpose: a wall of text is a worse greeting than the usage error.
     """
     rows, has_data = _summarise(db_path)
-    return "\n".join([nameplate(rows=rows), "",
-                      section("start here" if has_data else "build the index"),
+    return "\n".join([welcome(rows=rows), "",
+                      heading("start here" if has_data else "build the index"),
                       START if has_data else BUILD, "",
-                      section("reference"), REFERENCE])
+                      heading("reference"), REFERENCE])
 
 
 def _summarise(db_path):

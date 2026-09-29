@@ -23,6 +23,7 @@ dependencies = []
 # Pillow only trims the blank tail off a full-page screenshot; captures work
 # without it. pytest is for developing the tool, not using it.
 dev = ["pytest>=7", "Pillow>=9"]
+docs = ["reportlab>=4"]
 
 [project.scripts]
 retrust = "retrust.cli:main"

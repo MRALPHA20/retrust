@@ -15,7 +15,9 @@ resumes where it stopped.
 
 import gzip
 import io
+import json
 import shutil
+import time
 import subprocess
 import urllib.parse
 import urllib.request
@@ -177,8 +179,6 @@ def build_index(data_dir="data", db_path="data/retrust.db"):
     if not advisories.is_dir():
         raise StepFailed(f"no advisories at {advisories}; run without --offline "
                          "to fetch them")
-    connection, counts = index.build(db_path, str(advisories))
-
     # Without KEV and EPSS the exploitation gates cannot fire, and a product
     # with a known exploited flaw would score as merely mediocre. Refuse to
     # present that as a finished index.
@@ -187,10 +187,16 @@ def build_index(data_dir="data", db_path="data/retrust.db"):
     missing = [name for name, path in feeds.items() if not path.exists()]
     if missing:
         raise StepFailed(
-            f"the index was built but {' and '.join(m.upper() for m in missing)} "
+            f"{' and '.join(m.upper() for m in missing)} "
             "is missing, so the exploitation gates cannot fire. Re-run with "
-            "network access rather than scoring against an incomplete index.")
-    loaded = index.load_exploitation(connection, str(feeds["kev"]), str(feeds["epss"]))
+            "network access. The existing index has been preserved.")
+    try:
+        connection, counts = index.build(db_path, str(advisories),
+                                        kev_path=feeds["kev"], epss_path=feeds["epss"])
+    except (OSError, ValueError, KeyError) as error:
+        raise StepFailed(f"Index build failed; existing index preserved: {error}") from error
+    loaded = counts["exploitation"]
+    connection.close()
     return (f"{counts['advisories']:,} advisories, {counts['products']:,} products, "
             f"KEV {loaded['kev']:,}, EPSS {loaded['epss']:,}")
 
@@ -254,3 +260,110 @@ def run(data_dir="data", db_path="data/retrust.db", force=False, offline=False,
             return results
         progress(f"        {results[name]['detail']}")
     return results
+
+
+# --- vendor trusted-provider feeds -----------------------------------------
+#
+# CISA's corpus is a republisher: vendors that run their own product CERT
+# publish CSAF at their own domain, listed in a provider-metadata.json the
+# standard defines, and their feeds carry advisories CISA has not (yet)
+# mirrored. Fetching one puts the vendor's own words beside CISA's, and the
+# multi-root ingest indexes both.
+
+PROVIDERS_DIR = "CSAF-providers"
+
+# One advisory JSON is tens of KB; a megabyte-scale one exists but a larger
+# claim is a broken feed, not an advisory.
+MAX_ADVISORY_BYTES = 30 * 1024 * 1024
+
+
+def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
+    """Fetch every TLP:WHITE advisory a CSAF provider publishes.
+
+    `metadata_url` is the provider-metadata.json address the vendor
+    advertises (Siemens: cert-portal.siemens.com/productcert/csaf/...).
+    Advisories land under data/CSAF-providers/<host>/, one file each, with
+    the .sha512 and .asc the provider serves beside them -- so `retrust
+    verify --csaf` extends to the vendor's feed unchanged. Files already
+    present are skipped unless `force`, which makes a re-run an incremental
+    refresh rather than a re-download.
+
+    Only TLP:WHITE feeds are read: anything else is not public, and this
+    tool must never make it so.
+    """
+    if urllib.parse.urlsplit(metadata_url).scheme != "https":
+        raise StepFailed(f"{metadata_url} is not https; a provider feed"
+                         " fetched over a rewritable channel proves nothing")
+    request = urllib.request.Request(metadata_url,
+                                     headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        metadata = json.loads(_read_capped(response, metadata_url))
+
+    host = urllib.parse.urlsplit(metadata_url).netloc
+    target = Path(data_dir) / PROVIDERS_DIR / host
+    feeds = [feed for distribution in metadata.get("distributions") or []
+             for feed in (distribution.get("rolie") or {}).get("feeds") or []
+             if feed.get("tlp_label") == "WHITE" and feed.get("url")]
+    if not feeds:
+        raise StepFailed(f"{metadata_url} advertises no TLP:WHITE ROLIE feed;"
+                         " nothing public to fetch")
+
+    fetched = already = failed = 0
+    last_error = ""
+    for feed in feeds:
+        with urllib.request.urlopen(
+                urllib.request.Request(feed["url"],
+                                       headers={"User-Agent": _USER_AGENT}),
+                timeout=TIMEOUT) as response:
+            listing = json.loads(_read_capped(response, feed["url"]))
+        entries = (listing.get("feed") or listing).get("entry") or []
+        for entry in entries:
+            links = {link.get("rel"): link.get("href")
+                     for link in entry.get("link") or []}
+            advisory_url = links.get("self")
+            if not advisory_url:
+                continue
+            name = advisory_url.rsplit("/", 1)[-1]
+            destination = target / name
+            if destination.exists() and not force:
+                already += 1
+                continue
+            try:
+                _download_patiently(advisory_url, destination)
+                # The digest and signature the provider serves beside it,
+                # fetched best-effort: their absence weakens verification,
+                # never the advisory itself.
+                for rel in ("hash", "signature"):
+                    if links.get(rel):
+                        suffix = links[rel].rsplit("/", 1)[-1]
+                        try:
+                            _download_patiently(links[rel], target / suffix)
+                        except (StepFailed, OSError):
+                            pass
+                fetched += 1
+            except (StepFailed, OSError) as error:
+                failed += 1
+                last_error = str(error)
+            if progress and (fetched + already) % 50 == 0:
+                progress(fetched, already, len(entries))
+
+    return {"host": host, "directory": str(target), "fetched": fetched,
+            "already_present": already, "failed": failed,
+            "last_error": last_error}
+
+
+def _download_patiently(url, destination, attempts=4):
+    """_download with backoff. A provider serving hundreds of small files
+    rate-limits a naive burst -- the first Siemens fetch lost 756 of 841 to
+    exactly that -- so failures wait and retry, and every file is followed by
+    a breath. A re-run resumes: files already on disk are skipped upstream.
+    """
+    for attempt in range(attempts):
+        try:
+            size = _download(url, destination)
+            time.sleep(0.05)              # politeness between hundreds of files
+            return size
+        except (StepFailed, OSError):
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2 ** attempt)      # 1s, 2s, 4s: outlast a rate limiter

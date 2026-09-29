@@ -70,6 +70,9 @@ def read_candidates(path):
         except ValueError as error:
             raise SystemExit(f"{source} is not valid JSON: {error}")
 
+        if not isinstance(document, (dict, list)):
+            raise SystemExit(f"{source}: expected a JSON candidate list or object")
+
         # A CycloneDX SBOM is the list a buyer is most likely to already have:
         # the hardware components of a system they are being sold, exported by
         # the integrator's own tooling. Its components map straight onto
@@ -80,6 +83,8 @@ def read_candidates(path):
             return _cyclonedx_candidates(source, document)
 
         raw = document if isinstance(document, list) else document.get("candidates", [])
+        if not isinstance(raw, list):
+            raise SystemExit(f"{source}: candidates must be a JSON list")
         for entry in raw:
             if not isinstance(entry, dict):
                 continue

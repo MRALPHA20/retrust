@@ -11,6 +11,7 @@ can edit it without learning anything new.
 """
 
 import json
+import math
 from pathlib import Path
 
 from .score import BANDS, DEFAULT_WEIGHTS
@@ -44,7 +45,9 @@ def load(path=None):
     except ValueError as error:
         raise SystemExit(f"{candidate} is not valid JSON: {error}")
 
-    raw = document.get("weights") or {}
+    if not isinstance(document, dict):
+        raise SystemExit(f"{candidate}: configuration must be an object")
+    raw = document.get("weights", {})
     if not isinstance(raw, dict):
         raise SystemExit(f"{candidate}: 'weights' must be an object of pillar -> number")
 
@@ -62,19 +65,20 @@ def load(path=None):
         raise SystemExit(
             f"{candidate}: unknown pillar(s) {sorted(unknown)}. "
             f"Valid pillars: {sorted(DEFAULT_WEIGHTS)}")
+    if any(not math.isfinite(v) for v in weights.values()):
+        raise SystemExit(f"{candidate}: weights must be finite numbers")
     negative = sorted(k for k, v in weights.items() if v < 0)
     if negative:
         raise SystemExit(
             f"{candidate}: negative weight on {negative}. A weight is how much a "
             "pillar counts, so it cannot be below zero; use 0 to ignore a pillar.")
-    if weights and sum(weights.values()) <= 0:
-        raise SystemExit(f"{candidate}: weights must not all be zero")
-
     # A config naming only some pillars used to drop the rest silently, so
     # {"exploitation": 1.0} quietly became a one-pillar score. Fill the gaps
     # from the defaults instead, which is what a partial override means.
     if weights:
         weights = {**DEFAULT_WEIGHTS, **weights}
+        if sum(weights.values()) <= 0:
+            raise SystemExit(f"{candidate}: weights must not all be zero")
 
     return (weights or dict(DEFAULT_WEIGHTS),
             _bands_from(document.get("bands")),
@@ -92,6 +96,8 @@ def _bands_from(bands):
         conditional = float(bands.get("conditional", BANDS[1][0]))
     except (TypeError, ValueError):
         raise SystemExit("band thresholds must be numbers")
+    if not all(math.isfinite(v) for v in (prefer, conditional)):
+        raise SystemExit("band thresholds must be finite numbers")
     # A threshold at or below zero makes the band beneath it unreachable, since
     # no score is negative: conditional=-5 would leave AVOID impossible to hit.
     if conditional <= 0:
