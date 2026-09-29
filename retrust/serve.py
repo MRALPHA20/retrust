@@ -18,6 +18,7 @@ a plant network by accident. See SAFETY below for what is enforced.
 
 import html
 import http.server
+import os
 import urllib.parse
 from datetime import date
 
@@ -134,9 +135,15 @@ def _search_page(connection, stats, query):
         return _page("ReTrust", body)
 
     hits = _search_hits(connection, query)
+    def assessment_link(hit):
+        fields = dict(vendor=hit.vendor, product=hit.name)
+        if any(index_module.normalize_order_number(number) == index_module.normalize_order_number(query)
+               for number in hit.order_numbers):
+            fields['order_number'] = query
+        return _esc('/score?' + urllib.parse.urlencode(fields))
+
     rows = "".join(
-        f'<a class="hit" href="/score?vendor={urllib.parse.quote(h.vendor)}'
-        f'&amp;product={urllib.parse.quote(h.name)}"><strong>{_esc(h.vendor)}</strong> / '
+        f'<a class="hit" href="{assessment_link(h)}"><strong>{_esc(h.vendor)}</strong> / '
         f'{_esc(h.name)}<span class="w">{h.advisories:,} advisory record(s)'
         + (f' · {_esc(h.order_numbers[0])}' if h.order_numbers else '')
         + ' · Open assessment →</span></a>' for h in hits)
@@ -218,9 +225,12 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     if resolution.resolved:
         named = resolution.matches[0]
         query = urllib.parse.urlencode(dict(vendor=named.vendor, product=named.name, version=version))
-        candidate = '|'.join([named.vendor, named.name, version or ''])
+        candidate_query = urllib.parse.urlencode(dict(
+            vendor_0=vendor or ('' if order_number else named.vendor),
+            product_0=product or ('' if order_number else named.name),
+            version_0=version or '', order_number_0=order_number or ''))
         body += ('<section class="panel" style="margin-top:24px"><h2>Take the next step</h2><div class="actions">'
-                 f'<a class="button secondary" href="/compare?c={urllib.parse.quote(candidate)}">Compare this product →</a>'
+                 f'<a class="button secondary" href="/compare?{_esc(candidate_query)}">Compare this product →</a>'
                  f'<a class="button secondary" href="/annex?{_esc(query)}">Prepare supplier questions →</a>'
                  f'<a class="button secondary" href="/alternatives?{_esc(query)}">Find alternatives →</a></div>'
                  f'<p class="helper"><a href="/vendor?name={urllib.parse.quote(named.vendor)}">Vendor profile</a>'
@@ -256,49 +266,90 @@ def _score_form(vendor, product, version, order_number=''):
 
 def _candidate_rows(params):
     """Accept structured form fields and retain existing shareable ?c= links."""
-    if any(key.startswith('vendor_') for key in params):
+    if any(key.startswith(tuple(f'{field}_' for field in batch.QUERY_FIELDS)) for key in params):
         rows = []
         for i in range(MAX_CANDIDATES):
             parts = [(params.get(f'{field}_{i}') or [''])[0][:MAX_QUERY].strip()
-                     for field in ('vendor', 'product', 'version')]
+                     for field in batch.QUERY_FIELDS]
             if any(parts):
                 rows.append(parts)
         return rows
-    return [[p.strip() for p in value[:MAX_QUERY].split('|', 2)]
+    return [[p[:MAX_QUERY].strip() for p in value[:MAX_QUERY * 4 + 3].split('|', 3)]
             for value in params.get('c', [])[:MAX_CANDIDATES] if value.strip()]
+
+
+def _comparison_rows(candidates):
+    return [(list(c) + ['', '', '', ''])[:4] for c in candidates][:MAX_CANDIDATES]
+
+
+def _valid_comparison(rows):
+    return bool(rows) and all(v or p or o for v, p, _, o in rows)
+
+
+def _comparison_parameters(rows):
+    return urllib.parse.urlencode({f'{field}_{i}': value
+                                   for i, row in enumerate(rows)
+                                   for field, value in zip(batch.QUERY_FIELDS, row)})
+
+
+def _comparison_results(assess, context, rows):
+    """Keep the exact input and robustness attached to each ranked assessment."""
+    entries = []
+    for vendor, product, version, order_number in rows:
+        block = _run_assessment(assess, vendor, product, version, order_number)
+        query = dict(zip(batch.QUERY_FIELDS, (vendor, product, version, order_number)))
+        assessment = block[0]
+        stability = (sensitivity.stability(*assessment.inputs, samples=300,
+                     bands=context.get('bands')) if assessment.inputs else None)
+        entries.append((block, query, stability))
+    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'AVOID': 2, 'NOT ASSESSED': 3}
+    entries.sort(key=lambda entry: (rank.get(entry[0][0].verdict, 4),
+                                   -(entry[0][0].score or 0)))
+    return entries
+
+
+def _comparison_warning(rows):
+    return ('<p class="notice">Some candidates have firmware specified and others do not. '
+            'Add a version for each to compare on equal terms.</p>'
+            if any(f for _, _, f, _ in rows) and not all(f for _, _, f, _ in rows) else '')
 
 
 def _compare_page(assess, context, candidates, submitted=False):
     """A shortlist with separate input fields and ranked, explainable results."""
-    filled = [(list(c) + ['', '', ''])[:3] for c in candidates][:MAX_CANDIDATES]
+    filled = _comparison_rows(candidates)
     boxes = ''
     for i in range(min(MAX_CANDIDATES, max(3, len(filled) + 1))):
-        vendor, product, version = filled[i] if i < len(filled) else ('', '', '')
-        boxes += (f'<fieldset><legend>Candidate {i + 1}</legend><div class="form-grid">'
+        vendor, product, version, order_number = filled[i] if i < len(filled) else ('', '', '', '')
+        boxes += (f'<fieldset><legend>Candidate {i + 1}</legend><div class="candidate-grid">'
+                  + _field(f'co{i}', f'order_number_{i}', 'Manufacturer order number', order_number,
+                           'e.g. 6ES7518-4AX00-1AB0')
                   + _field(f'cv{i}', f'vendor_{i}', 'Vendor', vendor, 'e.g. Moxa')
                   + _field(f'cp{i}', f'product_{i}', 'Product / model', product, 'e.g. EDS-405A')
                   + _field(f'cf{i}', f'version_{i}', 'Firmware (optional)', version, 'e.g. 3.0')
                   + '</div></fieldset>')
     form = ('<form method="get" action="/compare">' + boxes
-            + '<p class="helper">Leave unused candidates blank. Another row appears after comparing, '
+            + '<p class="helper">Use an order number, or a vendor and model. If you enter both, '
+            'they must agree. Leave unused candidates blank. Another row appears after comparing, '
             'up to 12 candidates.</p><button type="submit">Compare candidates →</button></form>')
     heading = ('<h1>Compare your candidates</h1><p class="lead">Put the shortlist on equal terms. '
                'Scores compare the evidence; an engineer still needs to confirm functional suitability.</p>')
-    if not filled or any(not (v or p) for v, p, _ in filled):
-        notice = ('<p class="notice" role="alert">Enter a vendor or product in a '
-                  'candidate row before comparing. Firmware alone does not identify '
+    if not _valid_comparison(filled):
+        notice = ('<p class="notice" role="alert">Enter an order number, vendor or product in each '
+                  'used candidate row before comparing. Firmware alone does not identify '
                   'a product.</p>' if submitted else '')
         return _page('Procurement comparison', heading + notice + form)
-    blocks = [assess(v, p, f or None) for v, p, f in filled]
-    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'AVOID': 2, 'NOT ASSESSED': 3}
-    blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
-    stabilities = {a.product: sensitivity.stability(*a.inputs, samples=300,
-                    bands=context.get('bands')) for a, _, _ in blocks if a.inputs}
-    warning = ('<p class="notice">Some candidates have firmware specified and others do not. '
-               'Add a version for each to compare on equal terms.</p>'
-               if any(f for _, _, f in filled) and not all(f for _, _, f in filled) else '')
+    entries = _comparison_results(assess, context, filled)
+    blocks = [block for block, _, _ in entries]
+    stabilities = {id(block[0]): stability for block, _, stability in entries if stability}
+    parameters = _comparison_parameters(filled)
+    downloads = '<div class="actions">' + ''.join(
+        f'<a class="button secondary" href="/compare.{extension}?{_esc(parameters)}">'
+        f'Download {label} ↓</a>' for extension, label in
+        (('html', 'comparison report'), ('json', 'comparison JSON'), ('csv', 'comparison CSV'))) + '</div>'
+    warning = _comparison_warning(filled)
     return _page('Procurement comparison', heading + warning
                  + '<details><summary>Edit candidates or add another</summary>' + form + '</details>'
+                 + downloads
                  + report.body(blocks, stabilities=stabilities, weights=context['weights']),
                  f'{len(blocks)} candidate(s)')
 
@@ -565,6 +616,11 @@ def _vendor_page(connection, dossier, context, name):
 
 
 def _about_page(stats, provenance, host, port):
+    deployment = ('This is a hosted workspace. Queries are processed on this server and '
+                  'requests pass through the hosting provider. For confidential procurement '
+                  'inputs, run ReTrust locally with <code>retrust serve</code>.'
+                  if os.environ.get('RETRUST_HOSTED') == '1' else
+                  f'Serving on {_esc(host)}:{port}. Stop it with Ctrl-C.')
     rows = "".join(f"<tr><td>{_esc(k.replace('_', ' '))}</td>"
                    f"<td class=\"n\">{v:,}</td></tr>"
                    for k, v in stats.items())
@@ -594,7 +650,7 @@ contribute to the score. Higher is better. Evidence quality is reported separate
 </tr></thead><tbody>{sources}</tbody></table></div>
 <h2>What this server does and does not do</h2>
 <pre style="white-space:pre-wrap">{_esc(SAFETY)}</pre>
-<p class="empty">Serving on {_esc(host)}:{port}. Stop it with Ctrl-C.</p>""")
+<p class="empty">{deployment}</p>""")
 
 
 class PlainText(str):
@@ -608,6 +664,41 @@ class Download(str):
         value = super().__new__(cls, text)
         value.filename, value.content_type = filename, content_type
         return value
+
+
+class InvalidComparison(ValueError):
+    """A comparison download needs at least one identifiable candidate."""
+
+
+def _export_comparison(assess, context, provenance, path, candidates):
+    rows = _comparison_rows(candidates)
+    if not _valid_comparison(rows):
+        raise InvalidComparison('Enter an order number, vendor or product for each used candidate. '
+                                'Return to Compare candidates to complete the shortlist.')
+    entries = _comparison_results(assess, context, rows)
+    blocks = [block for block, _, _ in entries]
+    stabilities = {id(block[0]): stability for block, _, stability in entries if stability}
+    queries = [query for _, query, _ in entries]
+    if path.endswith('.html'):
+        return Download(report.render(blocks, title='ReTrust procurement comparison',
+                        stabilities=stabilities, provenance=provenance, weights=context['weights'],
+                        config_source=context.get('config_source', ''), queries=queries),
+                        'retrust-comparison.html', 'text/html')
+    if path.endswith('.csv'):
+        records = [batch.to_record(block[0], block[1], stability, query)
+                   for block, query, stability in entries]
+        return Download(batch.dumps_csv(records, include_queries=True),
+                        'retrust-comparison.csv', 'text/csv')
+    records = [batch.to_detail(*block, stability=stability, query=query)
+               for block, query, stability in entries]
+    payload = batch.envelope(records, {
+        'provenance': provenance, 'weights': context['weights'],
+        'bands': context.get('bands'), 'config_source': context.get('config_source', ''),
+        'generated': date.today().isoformat(), 'stability_samples': 300,
+        'warnings': (['Some candidates have firmware specified and others do not. '
+                      'Add a version for each to compare on equal terms.']
+                     if _comparison_warning(rows) else [])})
+    return Download(batch.dumps(payload), 'retrust-comparison.json', 'application/json')
 
 
 def _export(assess, context, provenance, path, vendor, product, version, order_number):
@@ -649,11 +740,18 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
 
     def page_for(path, params):
         first = lambda key: (params.get(key) or [""])[0][:MAX_QUERY].strip()
+        if path == "/healthz":
+            connection.execute("SELECT 1 FROM advisory LIMIT 1").fetchone()
+            return PlainText("ok\n")
+        if path == "/robots.txt":
+            return PlainText("User-agent: *\nDisallow: /\n")
         if path == "/demo":
             return _demo_page()
         if path in ("/export.html", "/export.json"):
             return _export(assess, context, provenance, path,
                            first("vendor"), first("product"), first("version"), first("order_number"))
+        if path in ("/compare.html", "/compare.json", "/compare.csv"):
+            return _export_comparison(assess, context, provenance, path, _candidate_rows(params))
         if path == "/":
             return _search_page(connection, stats, first("q"))
         if path == "/score":
@@ -665,7 +763,7 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             return _compare_page(assess, context,
                                  _candidate_rows(params),
                                  submitted=any(key == "c" or key.startswith(
-                                     ("vendor_", "product_", "version_")) for key in params))
+                                     ("vendor_", "product_", "version_", "order_number_")) for key in params))
         if path == "/alternatives":
             return _alternatives_page(connection, assess, first("vendor"),
                                       first("product"), first("version"))
@@ -714,6 +812,11 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             try:
                 page = page_for(parsed.path, params)
+            except InvalidComparison as error:
+                self._send(400, _page("Procurement comparison", '<h1>Complete the shortlist</h1>'
+                                      f'<p role="alert">{_esc(error)}</p>'
+                                      '<a href="/compare">Edit candidates →</a>'))
+                return
             except Exception as error:
                 # A malformed query is the user's typo, not a crash. The message
                 # is escaped like everything else and the server stays up.

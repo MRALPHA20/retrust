@@ -39,7 +39,7 @@ review. A missing firmware version leaves all known affected versions in scope.
 
 ### 4. Compare candidates (one minute)
 
-Open the guided demo's comparison. Vendor, model, and firmware each have their
+Open the guided demo's comparison. Order number, vendor, model, and firmware each have their
 own field; edit the shortlist without learning command syntax. Known-exploited
 vulnerabilities can trigger an AVOID gate regardless of the weighted score.
 
@@ -48,6 +48,11 @@ assessment outcomes. It is **not a list of functionally interchangeable
 products**. Use equivalent candidates for an actual procurement decision.
 
 ### 5. Take the result away (one minute)
+
+On a comparison, use **Download comparison report**, **Download comparison JSON**,
+or **Download comparison CSV** to retain the full shortlist and its original
+queries. The report includes evidence and provenance; CSV is ready for spreadsheet
+review. Downloads recompute against the current local index.
 
 On an assessment, use **Download report** for a self-contained HTML document
 or **Download JSON** for the structured evidence. Open **Prepare supplier

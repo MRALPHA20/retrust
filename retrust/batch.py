@@ -17,6 +17,7 @@ somebody has to read and interpret.
 """
 
 import csv
+import io
 import json
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -273,15 +274,16 @@ def _excel_safe(value):
     return value
 
 
-def write_csv(records, path):
-    """Flat CSV: nested pillars become one column each."""
+def dumps_csv(records, include_queries=False):
+    """Render spreadsheet-safe CSV in memory, optionally retaining input fields."""
     pillar_names = sorted({name for r in records for name in r.get("pillars", {})})
     columns = ["product", "verdict", "score", "cves", "undecided", "confidence",
                "robust", "resolved_by", "match_confidence", "gates", "reason"]
     columns += [f"pillar_{n.lower().replace(' ', '_')}" for n in pillar_names]
+    if include_queries:
+        columns += [f"query_{field}" for field in QUERY_FIELDS]
 
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8") as handle:
+    with io.StringIO(newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
         for record in records:
@@ -290,7 +292,18 @@ def write_csv(records, path):
             for name in pillar_names:
                 row[f"pillar_{name.lower().replace(' ', '_')}"] = \
                     record.get("pillars", {}).get(name)
+            if include_queries:
+                row.update({f"query_{field}": record.get("query", {}).get(field)
+                            for field in QUERY_FIELDS})
             writer.writerow({k: _excel_safe(v) for k, v in row.items()})
+        return handle.getvalue()
+
+
+def write_csv(records, path):
+    """Flat CSV: nested pillars become one column each."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        handle.write(dumps_csv(records))
     return path
 
 

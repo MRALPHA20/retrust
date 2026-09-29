@@ -293,7 +293,7 @@ def _summary_table(blocks, stabilities):
     rows = []
     for assessment, resolution, _ in blocks:
         colour = VERDICT_COLOR.get(assessment.verdict, INERT)
-        st = stabilities.get(assessment.product)
+        st = stabilities.get(id(assessment), stabilities.get(assessment.product))
         robust = "&mdash;" if st is None else (
             "gated" if st.gated else f"{st.agreement:.0%}")
         note = (assessment.gates[0]["gate"] if assessment.gates
@@ -327,12 +327,28 @@ def body(blocks, stabilities=None, weights=None):
     stabilities = stabilities or {}
     summary = _summary_table(blocks, stabilities) if len(blocks) > 1 else ""
     return summary + "".join(
-        _assessment_block(a, r, f, stabilities.get(a.product), weights)
+        _assessment_block(a, r, f, stabilities.get(id(a), stabilities.get(a.product)), weights)
         for a, r, f in blocks)
 
 
+def _query_table(queries):
+    """Retain the procurement inputs alongside the resolved evidence."""
+    if not queries:
+        return ""
+    fields = ('vendor', 'product', 'version', 'order_number')
+    rows = ''.join('<tr>' + ''.join(f'<td>{_esc(query.get(field) or "—")}</td>'
+                                   for field in fields) + '</tr>' for query in queries)
+    mixed = any(q.get('version') for q in queries) and not all(q.get('version') for q in queries)
+    return ('<h2>Assessment inputs</h2><p class="tnote">Original inputs, in result order. '
+            'Keep these identifiers when reassessing.</p>'
+            + ('<p class="note">Some candidates have firmware specified and others do not. '
+               'Add a version for each to compare on equal terms.</p>' if mixed else '')
+            + '<div class="tw"><table><thead><tr><th>Vendor</th><th>Product / model</th>'
+            '<th>Firmware</th><th>Order number</th></tr></thead><tbody>' + rows + '</tbody></table></div>')
+
+
 def render(blocks, title="ReTrust assessment", snapshot="", stabilities=None,
-           provenance=(), weights=None, config_source=""):
+           provenance=(), weights=None, config_source="", queries=()):
     """Render one or more (assessment, resolution, findings) triples to HTML."""
     inner = body(blocks, stabilities, weights)
     return (
@@ -342,6 +358,7 @@ def render(blocks, title="ReTrust assessment", snapshot="", stabilities=None,
         f"<p class=\"meta\">ReTrust &middot; generated {date.today().isoformat()}"
         + (f" &middot; data snapshot {_esc(snapshot)}" if snapshot else "")
         + f"</p><h1>{_esc(title)}</h1>{inner}"
+        + _query_table(queries)
         + _footer_sources(provenance, weights, config_source)
         + "<footer>Scores are decision support, not a certification. Every figure above "
         "comes from public CISA, FIRST and vendor sources; weights are configurable and "

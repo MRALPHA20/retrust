@@ -89,6 +89,45 @@ def _get(handler, path):
 
 # --- routing ---------------------------------------------------------------
 
+def test_health_check_reads_index(handler):
+    status, headers, body = _get(handler, "/healthz")
+    assert status == 200
+    assert headers["Content-Type"] == "text/plain; charset=utf-8"
+    assert headers["Cache-Control"] == "no-store"
+    assert body == "ok\n"
+
+
+def test_health_check_fails_for_unusable_index(handler, db):
+    db.execute("DROP TABLE advisory")
+    with pytest.raises(urllib.error.HTTPError) as error:
+        _get(handler, "/healthz")
+    assert error.value.code == 500
+
+
+def test_robots_discourages_crawling_assessment_queries(handler):
+    status, headers, body = _get(handler, "/robots.txt")
+    assert status == 200
+    assert headers["Content-Type"].startswith("text/plain")
+    assert body == "User-agent: *\nDisallow: /\n"
+
+
+def test_hosted_workspace_explains_processing_location(handler, monkeypatch):
+    monkeypatch.setenv("RETRUST_HOSTED", "1")
+    _, _, body = _get(handler, "/about")
+    assert "Hosted assessment" in body
+    assert "Queries are processed on this server" in body
+    assert "requests pass through the hosting provider" in body
+    assert "Offline assessment" not in body
+    assert "Private decisions" not in body
+
+
+def test_local_workspace_keeps_offline_label(handler, monkeypatch):
+    monkeypatch.delenv("RETRUST_HOSTED", raising=False)
+    _, _, body = _get(handler, "/")
+    assert "Offline assessment" in body
+    assert "Local workspace" in body
+    assert "Hosted assessment" not in body
+
 @pytest.mark.parametrize("path", [
     "/", "/?q=test", "/score?vendor=Testco&product=TestPLC",
     "/compare?c=Testco%7CTestPLC", "/vendor?name=Testco", "/about",
@@ -118,7 +157,7 @@ def test_the_landing_counts_come_from_the_index(handler, db):
      "Enter a manufacturer order number"),
     ("/score?vendor=%20%20&product=%09", "Enter a manufacturer order number"),
     ("/compare?vendor_0=&product_0=&version_0=3.1.6",
-     "Enter a vendor or product in a candidate row"),
+     "Enter an order number, vendor or product in each"),
 ])
 def test_empty_submissions_explain_how_to_continue(handler, path, message):
     status, _, body = _get(handler, path)
@@ -390,3 +429,116 @@ def test_web_search_finds_an_order_number_held_only_in_helpers(db):
 def test_web_search_understands_vendor_and_model(db):
     hits = serve._search_hits(db, 'Testco TestPLC 9000')
     assert hits and hits[0].vendor == 'Testco Electric'
+
+
+@pytest.fixture
+def comparison_handler(db, monkeypatch):
+    from retrust import dossier, score, sensitivity
+    from retrust.match import Resolution
+    calls = []
+
+    def assess(vendor, product, version=None, order_number=None):
+        calls.append((vendor, product, version, order_number))
+        # Deliberately identical labels: stability and queries must follow rows,
+        # not a dictionary keyed only by the displayed product name.
+        value = 80 if order_number == 'BEST' else 50
+        result = score.Assessment(product or order_number or vendor,
+                                  'PREFER' if value == 80 else 'CONDITIONAL', value,
+                                  inputs=(value,))
+        return result, Resolution(query=product or order_number or vendor), []
+
+    monkeypatch.setattr(sensitivity, 'stability', lambda value, **kwargs:
+                        sensitivity.Stability(300, {'PREFER': 270, 'AVOID': 30}
+                                              if value == 80 else {'CONDITIONAL': 180, 'AVOID': 120}))
+    handler = serve.build_handler(db, assess, {'weights': {'severity': 1}, 'bands': (40, 70),
+                                  'config_source': 'test'}, dossier, index.stats(db),
+                                  [{'source': 'fixture', 'captured': '2026-09-29', 'detail': 'test data'}], '127.0.0.1', 0)
+    return handler, calls
+
+
+def test_order_only_comparison_and_legacy_links(comparison_handler):
+    handler, calls = comparison_handler
+    _, _, page = _get(handler, '/compare?order_number_0=BEST&version_0=2.5')
+    assert calls == [('', '', '2.5', 'BEST')]
+    assert 'name="order_number_0" value="BEST"' in page
+    assert '/compare.csv?' in page
+    _get(handler, '/compare?c=Testco%7CTestPLC%7C2.5%7CBEST')
+    assert calls[-1] == ('Testco', 'TestPLC', '2.5', 'BEST')
+
+
+def test_comparison_download_preserves_ranked_queries_and_stability(comparison_handler):
+    handler, calls = comparison_handler
+    query = '?product_0=Same&order_number_0=SECOND&product_1=Same&order_number_1=BEST&version_1=2.5'
+    _, headers, body = _get(handler, '/compare.json' + query)
+    payload = json.loads(body)
+    best, second = payload['results']
+    assert best['query']['order_number'] == 'BEST' and best['query']['version'] == '2.5'
+    assert best['score'] == 80 and best['robust'] == .9
+    assert second['query']['order_number'] == 'SECOND' and second['robust'] == .6
+    assert payload['weights'] == {'severity': 1} and payload['provenance']
+    assert payload['warnings'] and payload['stability_samples'] == 300
+    assert 'retrust-comparison.json' in headers['Content-Disposition']
+    _, _, page = _get(handler, '/compare' + query)
+    assert '90%' in page and '60%' in page
+    assert page.count('PREFER under 90%') == 1
+    _, _, report_html = _get(handler, '/compare.html' + query)
+    assert 'Assessment inputs' in report_html and 'BEST' in report_html
+    assert 'Some candidates have firmware specified' in report_html
+    assert '90%' in report_html and '60%' in report_html
+
+
+def test_comparison_csv_neutralizes_formula_inputs(comparison_handler):
+    import csv
+    import io
+    handler, _ = comparison_handler
+    _, headers, body = _get(handler, '/compare.csv?product_0=%3Dformula&order_number_0=%40part')
+    row = next(csv.DictReader(io.StringIO(body)))
+    assert row['product'] == "'=formula"
+    assert row['query_product'] == "'=formula"
+    assert row['query_order_number'] == "'@part"
+    assert headers['Content-Type'].startswith('text/csv')
+    assert 'retrust-comparison.csv' in headers['Content-Disposition']
+
+
+@pytest.mark.parametrize('extension', ['html', 'json', 'csv'])
+def test_invalid_comparison_downloads_return_400(handler, extension):
+    with pytest.raises(urllib.error.HTTPError) as error:
+        _get(handler, f'/compare.{extension}?version_0=2.5')
+    assert error.value.code == 400
+    assert b'Complete the shortlist' in error.value.read()
+
+
+def test_comparison_exports_keep_the_candidate_cap(comparison_handler):
+    handler, calls = comparison_handler
+    query = '&'.join(f'order_number_{i}=P{i}' for i in range(serve.MAX_CANDIDATES + 5))
+    _, _, body = _get(handler, '/compare.json?' + query)
+    assert len(calls) == len(json.loads(body)['results']) == serve.MAX_CANDIDATES
+
+
+def test_search_and_comparison_handoff_retain_order_number(db):
+    import html
+    import re
+    from retrust import dossier, match, score
+    calls = []
+
+    def assess(vendor, product, version=None, order_number=None):
+        calls.append((vendor, product, version, order_number))
+        resolution = match.resolve(db, vendor=vendor, product=product, order_number=order_number)
+        return score.not_assessed('TestPLC', 'test'), resolution, []
+
+    handler = serve.build_handler(db, assess, {'weights': {}}, dossier, index.stats(db),
+                                  [], '127.0.0.1', 0)
+    _, _, search_page = _get(handler, '/?q=TC-9000-A1')
+    assert 'order_number=TC-9000-A1' in search_page
+    _, _, page = _get(handler, '/score?order_number=TC-9000-A1&version=1.2')
+    link = html.unescape(re.search(r'href="(/compare\?[^\"]+)"', page).group(1))
+    _get(handler, link)
+    assert calls == [('', '', '1.2', 'TC-9000-A1')] * 2
+
+
+def test_comparison_report_escapes_original_inputs(comparison_handler):
+    handler, _ = comparison_handler
+    _, _, body = _get(handler, '/compare.html?product_0=%3Cscript%3Eevil%3C%2Fscript%3E')
+    assert '<script>' not in body
+    assert '&lt;script&gt;evil&lt;/script&gt;' in body
+    assert 'Assessment inputs' in body

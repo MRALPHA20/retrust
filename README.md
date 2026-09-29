@@ -80,6 +80,11 @@ candidates with separate fields, and download HTML or JSON evidence. The
 **guided demo** at `/demo` walks through the complete procurement workflow.
 See the [live demo runbook](docs/demo-runbook.md) for a five-minute presentation.
 
+For a hosted demonstration, use the included `render.yaml` Blueprint. See
+[Deploy on Render](docs/render-deployment.md) for setup, data refresh behavior
+and free-instance limits. Hosted assessments are processed on the server;
+the local installation remains available for confidential procurement inputs.
+
 To use the shorter `retrust` command below, install the CLI in a virtual environment:
 
 ```bash
@@ -120,6 +125,18 @@ product names and evidence wrap to the terminal width. `save` exports the last
 assessment as HTML, JSON or CSV; JSON retains its query for `diff` later.
 `--no-color`, `NO_COLOR`, and redirected output keep the text free of ANSI colors.
 Terminal background and fonts follow your terminal's own settings.
+
+## Take a shortlist from review to a decision record
+
+In the browser, **Compare candidates** accepts a manufacturer order number or
+vendor/model for each row, plus optional firmware. Exact order-number searches
+and **Compare this product** retain that identifier in the next assessment.
+
+Download the complete comparison as HTML, JSON or CSV. HTML includes the ranked
+results, original inputs, scoring weights and source provenance. JSON preserves
+each query for later `retrust diff`; CSV includes query columns for spreadsheet
+review. A mixed-firmware warning flags candidates assessed on different scopes.
+Downloads are generated from the current local index when requested.
 
 ## Why order numbers, not CPE
 

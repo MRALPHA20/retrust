@@ -176,6 +176,16 @@ cannot drift into showing one assessment two ways. A scored product links
 onward -- its vendor's profile, its family's alternatives, a comparison started
 with it -- so the next question is a click rather than a form refilled.
 
+**Compare and retain a shortlist.** Each browser candidate accepts an order
+number, or a vendor and model, plus optional firmware. Exact order-number
+searches retain that identifier through assessment and comparison. Download
+the complete comparison as HTML, JSON or CSV. All three formats retain the
+original inputs; HTML and JSON also include source provenance and weights.
+The JSON can be kept for a later `retrust diff`. Downloads assess against the
+current local index, so retain the downloaded file as the decision record.
+If only some candidates have firmware specified, a warning prompts you to
+make their scope comparable.
+
 **It is deliberately small and deliberately local.** One standard-library HTTP
 server, no dependencies, and the security posture is the point rather than an
 afterthought: a tool that screens sanctions lists has no business opening an
