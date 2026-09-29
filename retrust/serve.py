@@ -403,7 +403,7 @@ def _alternatives_page(connection, assess, vendor, product, version):
             f'<td class="n">{o.score:.1f}</td><td class="n">{o.cves}</td></tr>'
             for o in options)
         body += ('<div class="tw"><table><thead><tr><th>Candidate</th>'
-                 '<th>Verdict</th><th>Score</th><th>CVEs</th></tr></thead>'
+                 '<th>Verdict</th><th class="n">Score</th><th class="n">CVEs</th></tr></thead>'
                  f'<tbody>{rows}</tbody></table></div>')
         if subject.score is not None:
             better = sum(1 for o in options if o.score > subject.score)
@@ -643,10 +643,10 @@ regardless of the weighted score.</p></div></li>
 contribute to the score. Higher is better. Evidence quality is reported separately.</p></div></li>
 </ol></section>
 <h2>What the index contains</h2>
-<div class="tw"><table><thead><tr><th>Holds</th><th>Count</th></tr></thead>
+<div class="tw"><table><thead><tr><th>Holds</th><th class="n">Count</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
 <h2>Where the data came from</h2>
-<div class="tw"><table><thead><tr><th>Source</th><th>Detail</th><th>Captured</th>
+<div class="tw"><table><thead><tr><th>Source</th><th>Detail</th><th class="n">Captured</th>
 </tr></thead><tbody>{sources}</tbody></table></div>
 <h2>What this server does and does not do</h2>
 <pre style="white-space:pre-wrap">{_esc(SAFETY)}</pre>

@@ -77,7 +77,7 @@ table{border-collapse:collapse;width:100%;font-size:.93rem;background:var(--pane
 th,td{text-align:left;padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top}
 th{line-height:1.4;white-space:nowrap;color:var(--soft);background:var(--sunk)}
 tbody tr:last-child td{border-bottom:none}
-td.n{text-align:right;font-family:var(--mono);white-space:nowrap}
+th.n,td.n{text-align:right;font-family:var(--mono);white-space:nowrap}
 td.na{color:var(--faint)}
 td.rng{max-width:15rem;overflow-wrap:anywhere;color:var(--soft)}
 tr.cand td:first-child{border-left:4px solid var(--vc)}
@@ -240,8 +240,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
 def _pillar_table(assessment, weights):
     parts = ['<div class="tw" tabindex="0" role="region" aria-label="Pillar evidence, scroll horizontally for more columns">'
              '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
-             '<table><thead><tr><th>Pillar</th><th>Score</th>'
-             '<th style="width:18%">&nbsp;</th><th>Weight</th><th>Coverage</th>'
+             '<table><thead><tr><th>Pillar</th><th class="n">Score</th>'
+             '<th style="width:18%">&nbsp;</th><th class="n">Weight</th><th class="n">Coverage</th>'
              '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
         evidence = "".join(f"<li>{_esc(e)}</li>" for e in pillar.evidence)
@@ -273,7 +273,7 @@ def _cve_table(findings):
     parts = ['<div class="tw" tabindex="0" role="region" aria-label="CVE evidence, scroll horizontally for more columns">'
              '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
              '<table><thead><tr><th>Most significant CVEs</th>'
-             '<th>CVSS</th><th>EPSS</th><th>KEV</th><th>Advisory</th>'
+             '<th class="n">CVSS</th><th class="n">EPSS</th><th class="n">KEV</th><th>Advisory</th>'
              '<th>Affected range</th></tr></thead><tbody>']
     for f in findings:
         parts.append(
@@ -309,7 +309,7 @@ def _summary_table(blocks, stabilities):
     return ('<div class="tw" tabindex="0" role="region" aria-label="Candidate comparison, scroll horizontally for more columns">'
             '<p class="table-scroll-hint">Scroll sideways to see all candidates’ evidence →</p>'
             '<table><thead><tr><th>Candidate</th><th>Verdict</th>'
-            '<th>Score</th><th>CVEs</th><th>Robust</th><th>Deciding factor</th>'
+            '<th class="n">Score</th><th class="n">CVEs</th><th class="n">Robust</th><th>Deciding factor</th>'
             '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>'
             '<p class="tnote">Robust is the share of random weightings that give the '
             'most common verdict. Below 90%, that verdict is sensitive to the '
