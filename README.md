@@ -57,8 +57,9 @@ flowchart LR
     IDX -.->|"retrust eval, backtest"| PROOF["Reproducible evaluation results"]
 ```
 
-Everything runs offline on your machine once `setup` has fetched the sources.
-Nothing you type ever leaves it.
+With a local installation, assessments run offline on your machine once
+`setup` has fetched the sources. A hosted deployment processes assessment
+queries on its server.
 
 ## Install and first score
 
@@ -84,6 +85,8 @@ For a hosted demonstration, use the included `render.yaml` Blueprint. See
 [Deploy on Render](docs/render-deployment.md) for setup, data refresh behavior
 and free-instance limits. Hosted assessments are processed on the server;
 the local installation remains available for confidential procurement inputs.
+
+Try the [hosted ReTrust demo](https://retrust-q2tr.onrender.com/).
 
 To use the shorter `retrust` command below, install the CLI in a virtual environment:
 

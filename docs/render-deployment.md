@@ -65,5 +65,21 @@ References: [Render web services](https://render.com/docs/web-services),
 - Fifteen live HTTP checks passed, covering the main workflows, health endpoint and all comparison export formats.
 - Hosted UI labels were checked in the browser.
 
-These checks verify the deployment preparation locally. Render account sign-in
-and a successful Render deployment are still required before a public URL is live.
+## Live deployment verified on 2026-09-29
+
+- Public app: **https://retrust-q2tr.onrender.com/**
+- Service: `srv-dattpanavr4c73eu5kp0`, free Python instance in Singapore.
+- Blueprint: `exs-dattp3g93c1s73c021ug`.
+- Source branch: `codex/render-deployment`; deployed application commit: `3162308`.
+- Initial deployment completed successfully in 4 minutes 18 seconds.
+- All 67 EPSS history snapshots loaded, with 12,003 exploitation estimates.
+- Twenty-two public HTTPS checks passed: main workflows, HTML/JSON/CSV downloads, health GET/HEAD, missing routes and invalid comparison inputs.
+- Browser checks confirmed order-number search and opening the corresponding assessment. The hosted labels and homepage were visually inspected.
+
+The deployment uses the private GitHub repository; publishing the app did not
+change the repository visibility. Detailed live-check results and the homepage
+screenshot are saved locally in `reports/render-live-checks.json` and
+`reports/render-live-home.png`.
+
+[Manage the service](https://dashboard.render.com/web/srv-dattpanavr4c73eu5kp0)
+or [view its deployment](https://dashboard.render.com/web/srv-dattpanavr4c73eu5kp0/deploys/dep-dattpbfavr4c73eu5nu0).
