@@ -56,3 +56,14 @@ credentials, generated reports or chat transcript is included in Git commits.
 References: [Render web services](https://render.com/docs/web-services),
 [Blueprint configuration](https://render.com/docs/blueprint-spec),
 [free instance limits](https://render.com/docs/free).
+
+## Preparation verified on 2026-09-29
+
+- Full regression suite: 801 tests passed.
+- Clean build in an isolated Python 3.13 environment completed from downloaded sources.
+- Loaded 3,937 advisories, 67 EPSS history snapshots and 12,003 exploitation estimates.
+- Fifteen live HTTP checks passed, covering the main workflows, health endpoint and all comparison export formats.
+- Hosted UI labels were checked in the browser.
+
+These checks verify the deployment preparation locally. Render account sign-in
+and a successful Render deployment are still required before a public URL is live.

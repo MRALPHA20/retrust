@@ -45,8 +45,8 @@ No path is used as a filename, so no file outside the index can be reached.
 Nothing is written and no subprocess is run.
 Every value reaching a page goes through html.escape.
 Bound to 127.0.0.1 unless --host says otherwise, and that is printed when it is.
-The Host header must name this machine, so a DNS-rebinding page in a browser
-  cannot read the index through it.
+On a loopback bind, the Host header must name this machine to prevent
+  DNS-rebinding pages from reading the local index.
 No response is cached (Cache-Control: no-store) and none may be framed.
 A connection that stalls is dropped after 10 seconds, so one stuck client
   cannot hold the single-threaded server.
