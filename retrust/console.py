@@ -101,6 +101,9 @@ def heading(title):
 
 
 def pillar_line(pillar):
+    if not pillar.scored:
+        return prose(f"{pillar.name}  ·  not scored  ·  "
+                     f"coverage {pillar.coverage:.0%}", style="label")
     if enabled() and terminal_width() >= 72:
         filled = round(max(0, min(100, pillar.score)) / 10)
         meter = paint("━" * filled, "accent") + paint("─" * (10 - filled), "rule")

@@ -69,8 +69,9 @@ APPETITES = (
         weights=MappingProxyType({
             # Consequence follows what an attacker reaches and how bad the
             # worst flaw is, so the direct-evidence pillars absorb the increase.
-            "exploitation": 0.35, "severity": 0.30, "patchability": 0.15,
-            "vendor_practice": 0.10, "certification": 0.10,
+            "exploitation": 0.315, "severity": 0.270, "patchability": 0.135,
+            "vendor_practice": 0.090, "certification": 0.090,
+            "network_exposure": 0.100,
         }),
         # Stricter on both edges: more score before either favourable verdict.
         bands=MappingProxyType({"prefer": 75, "conditional": 45}),
@@ -88,8 +89,9 @@ APPETITES = (
         weights=MappingProxyType({
             # Reachable gear meets the attacker population KEV and EPSS
             # actually measure, so the probability pillar dominates outright.
-            "exploitation": 0.45, "severity": 0.25, "patchability": 0.15,
-            "vendor_practice": 0.10, "certification": 0.05,
+            "exploitation": 0.405, "severity": 0.225, "patchability": 0.135,
+            "vendor_practice": 0.090, "certification": 0.045,
+            "network_exposure": 0.100,
         }),
         bands=MappingProxyType(_default_bands()),
         why=("For gear reachable from the IT network or the internet."
@@ -106,8 +108,9 @@ APPETITES = (
         weights=MappingProxyType({
             # Presence-gated exploitation counts less; the pillars pricing what
             # it costs to live with a flaw for years count more.
-            "exploitation": 0.15, "severity": 0.15, "patchability": 0.30,
-            "vendor_practice": 0.25, "certification": 0.15,
+            "exploitation": 0.135, "severity": 0.135, "patchability": 0.270,
+            "vendor_practice": 0.225, "certification": 0.135,
+            "network_exposure": 0.100,
         }),
         bands=MappingProxyType(_default_bands()),
         why=("For an air-gapped cell where exploitation needs presence at the"

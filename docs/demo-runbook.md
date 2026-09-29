@@ -33,9 +33,11 @@ A conflicting product name is refused rather than silently ignored.
 ### 3. Explain the evidence (one minute)
 
 Open the ABB AC 800M example. Walk through exploitation, severity, patch
-availability, vendor practice, and certification. Evidence quality is separate
-from the weighted score. Higher scores are better; low coverage still needs
-review. A missing firmware version leaves all known affected versions in scope.
+availability, vendor practice, and certification. Select a network exposure to
+include its optional 10% pillar: isolated, IT–OT, or Internet–OT. Evidence
+quality is separate from the weighted score. Higher scores are better; low
+coverage still needs review. A missing firmware version leaves all known
+affected versions in scope.
 
 ### 4. Compare candidates (one minute)
 

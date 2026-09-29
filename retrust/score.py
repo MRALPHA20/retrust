@@ -31,6 +31,7 @@ class Pillar:
     score: float            # 0-100, higher is better
     coverage: float         # 0-1, how much of the input carried usable evidence
     evidence: list = field(default_factory=list)
+    scored: bool = True
 
 
 @dataclass
@@ -43,6 +44,7 @@ class Assessment:
     findings_count: int = 0
     undecided_count: int = 0
     confidence: float = 0.0     # 0-1, from the evidence-quality pillar
+    network_exposure: str | None = None
     notes: list = field(default_factory=list)
     # (findings, advisories, certificates, gates) -- lets sensitivity re-score
     # this product under other weightings without redoing the lookups.
@@ -290,6 +292,32 @@ def _certification(certificates):
     return Pillar("Certification", min(100.0, score), 1.0, evidence)
 
 
+# A user's view of the product's deployment. This is deliberately recorded as
+# an assumption: ReTrust does not scan or verify a buyer's plant network.
+NETWORK_EXPOSURES = {
+    "isolated": ("Isolated", 100.0,
+                 "No routed path from enterprise IT or the internet into OT."),
+    "it_ot": ("IT–OT", 60.0,
+              "OT is connected to enterprise IT through a network boundary."),
+    "internet_ot": ("Internet–OT", 20.0,
+                    "A routed path from the internet can reach the OT environment."),
+}
+
+
+def _network_exposure(value):
+    """Score the operator-reported route into the OT environment."""
+    if value is None:
+        return Pillar("Network exposure", 50.0, 0.0,
+                      ["network context not supplied; this optional pillar was not scored"],
+                      scored=False)
+    if value not in NETWORK_EXPOSURES:
+        raise ValueError(f"network exposure must be one of {', '.join(NETWORK_EXPOSURES)}")
+    label, result, description = NETWORK_EXPOSURES[value]
+    return Pillar("Network exposure", result, 1.0,
+                  [f"Operator-reported: {label}. {description}",
+                   "ReTrust has not independently verified the plant network."])
+
+
 @dataclass(frozen=True)
 class PillarSpec:
     """One scored pillar: its config key, its label, its weight and how to measure it.
@@ -308,21 +336,26 @@ class PillarSpec:
 
 
 PILLARS = [
-    PillarSpec("exploitation", "Exploitation", 0.30,
+    PillarSpec("exploitation", "Exploitation", 0.270,
                lambda findings, advisories, certificates, vendor_key:
                    _exploitation(findings)),
-    PillarSpec("severity", "Severity", 0.20,
+    PillarSpec("severity", "Severity", 0.180,
                lambda findings, advisories, certificates, vendor_key:
                    _severity(findings)),
-    PillarSpec("patchability", "Patch availability", 0.20,
+    PillarSpec("patchability", "Patch availability", 0.180,
                lambda findings, advisories, certificates, vendor_key:
                    _patchability(findings)),
-    PillarSpec("vendor_practice", "Vendor practice", 0.15,
+    PillarSpec("vendor_practice", "Vendor practice", 0.135,
                lambda findings, advisories, certificates, vendor_key:
                    _vendor_practice(findings, advisories, vendor_key)),
-    PillarSpec("certification", "Certification", 0.15,
+    PillarSpec("certification", "Certification", 0.135,
                lambda findings, advisories, certificates, vendor_key:
                    _certification(certificates)),
+    # Optional input: without it the five existing pillars are renormalized,
+    # preserving scores for callers who have not supplied plant context.
+    PillarSpec("network_exposure", "Network exposure", 0.10,
+               lambda findings, advisories, certificates, vendor_key:
+                   _network_exposure(None)),
 ]
 
 # Weights are deliberately editable; these are defaults, not truth.
@@ -409,17 +442,28 @@ def not_assessed(product_label, reason):
 
 
 def assess(product_label, findings, advisories=(), weights=None, today_year=2026,
-           certificates=(), screening_gates=(), bands=None, vendor_key=None):
+           certificates=(), screening_gates=(), bands=None, vendor_key=None,
+           network_exposure=None):
     """Score a resolved product. Returns an Assessment."""
     weights = weights or DEFAULT_WEIGHTS
     undecided = [f for f in findings if not f.decided]
 
-    scored = [(spec, spec.measure(findings, advisories, certificates, vendor_key))
-              for spec in PILLARS]
+    scored = []
+    all_pillars = []
+    for spec in PILLARS:
+        if spec.key == "network_exposure":
+            pillar = _network_exposure(network_exposure)
+            all_pillars.append(pillar)
+            if network_exposure is not None:
+                scored.append((spec, pillar))
+            continue
+        pillar = spec.measure(findings, advisories, certificates, vendor_key)
+        scored.append((spec, pillar))
+        all_pillars.append(pillar)
     confidence = _evidence_quality(findings)
-    pillars = [pillar for _, pillar in scored] + [confidence]
+    pillars = all_pillars + [confidence]
 
-    total = sum(weights.get(spec.key, 0) for spec in PILLARS) or 1.0
+    total = sum(weights.get(spec.key, 0) for spec, _ in scored) or 1.0
     composite = sum(pillar.score * weights.get(spec.key, 0)
                     for spec, pillar in scored) / total
 
@@ -445,6 +489,10 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             "No advisories name this product. That is not proof it is secure -- it "
             "may simply mean nobody has published about it."
         )
+    if network_exposure is None:
+        share = weights.get("network_exposure", 0.0) / (sum(weights.values()) or 1.0)
+        notes.append(f"Network exposure was not provided; its configured {share:.1%} "
+                     "weight was excluded and the other pillars were renormalized.")
 
     # What kind of flaws these are, which is a different question from how many
     # or how bad. Notes rather than a scoring term: a credential baked into
@@ -459,5 +507,6 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         pillars=pillars, gates=gates,
         findings_count=len({f.cve for f in findings}),
         undecided_count=len(undecided), confidence=round(confidence.coverage, 2),
+        network_exposure=network_exposure,
         notes=notes,
     )

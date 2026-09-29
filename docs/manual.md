@@ -759,15 +759,21 @@ the vendor name alone, so it fires even for a vendor absent from the advisory
 corpus. Otherwise the gate would only protect you from suppliers you were
 already going to hear about.
 
-**2. Five risk pillars**, each 0–100 where higher is better:
+**2. Evidence pillars**, each 0–100 where higher is better:
 
 | Pillar | Weight | What it reads |
 |---|---:|---|
-| Exploitation | 0.30 | CISA KEV, ransomware linkage, peak EPSS |
-| Severity | 0.20 | worst CVSS, count of 9.0+ |
-| Patch availability | 0.20 | CSAF remediation status: a fix, a workaround, or nothing |
-| Vendor practice | 0.15 | whether advisories carry CVSS and CWE |
-| Certification | 0.15 | IEC 62443 (ISASecure) and Common Criteria certificates |
+| Exploitation | 0.270 | CISA KEV, ransomware linkage, peak EPSS |
+| Severity | 0.180 | worst CVSS, count of 9.0+ |
+| Patch availability | 0.180 | CSAF remediation status: a fix, a workaround, or nothing |
+| Vendor practice | 0.135 | whether advisories carry CVSS and CWE |
+| Certification | 0.135 | IEC 62443 (ISASecure) and Common Criteria certificates |
+
+An optional **Network exposure** pillar carries 0.100: operator-reported
+Isolated (100), IT–OT (60), or Internet–OT (20). ReTrust does not verify the
+plant's network. If the user leaves this blank, the network pillar is omitted
+and the five evidence pillars are normalized to 100%; existing scores are
+therefore unchanged.
 
 **3. A weighted composite**, reported as a band: `PREFER` (≥70),
 `CONDITIONAL` (≥40), `AVOID`. Weights and thresholds live in an editable config

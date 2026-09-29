@@ -147,10 +147,14 @@ def test_evidence_quality_is_not_in_the_score(db):
     findings = match.findings(db, resolution, version="2.5")
     assessment = score.assess("TestPLC 9000", findings, {"ICSA-26-001-01"})
 
-    weights = list(score.DEFAULT_WEIGHTS.values())
-    risk = [p for p in assessment.pillars if p.name != "Evidence quality"]
-    assert len(risk) == len(weights)
-    expected = sum(p.score * w for p, w in zip(risk, weights)) / sum(weights)
+    weights = score.DEFAULT_WEIGHTS
+    risk = [p for p in assessment.pillars
+            if p.name != "Evidence quality" and p.scored]
+    assert len(risk) == len(weights) - 1  # Network context was not supplied.
+    total = sum(weights.values()) - weights["network_exposure"]
+    expected = sum(p.score * weights[spec.key]
+                   for p, spec in zip(risk, score.PILLARS)
+                   if spec.key != "network_exposure") / total
     assert assessment.score == pytest.approx(expected, abs=0.1)
 
     # Evidence quality is present in the output but carries no weight key.

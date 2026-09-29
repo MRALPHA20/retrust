@@ -159,7 +159,7 @@ reproducible and a demonstration never depends on the network.</p>
 <h2>2 &nbsp; How it works</h2>
 
 <figure>
-<svg viewBox="0 4 700 152" role="img" aria-label="Five stages: fetch sources, build index, resolve the request, score against five pillars and hard gates, print a verdict with its evidence" style="width:100%;height:auto;display:block">
+<svg viewBox="0 4 700 152" role="img" aria-label="Five stages: fetch sources, build index, resolve the request, score against evidence pillars and optional network exposure with hard gates, print a verdict with its evidence" style="width:100%;height:auto;display:block">
   <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
     <path d="M0 0 L8 4 L0 8 z" fill="currentColor"/></marker></defs>
   <g fill="none" stroke="currentColor" stroke-width="1.2">
@@ -184,7 +184,7 @@ reproducible and a demonstration never depends on the network.</p>
     <text x="12" y="70">CISA CSAF</text><text x="12" y="85">KEV, EPSS</text><text x="12" y="100">ISASecure, CSL</text>
     <text x="168" y="70">SQLite,</text><text x="168" y="85">keyed on order</text><text x="168" y="100">numbers</text>
     <text x="324" y="70">order no. &rarr;</text><text x="324" y="85">exact name &rarr;</text><text x="324" y="100">tokens &rarr; abstain</text>
-    <text x="480" y="46">five pillars,</text><text x="480" y="61">weighted</text>
+    <text x="480" y="46">evidence +</text><text x="480" y="61">network, weighted</text>
     <text x="480" y="108">KEV, sanctions,</text><text x="480" y="123">covered list</text>
     <text x="636" y="70">verdict</text><text x="636" y="85">+ evidence</text>
   </g>
@@ -212,23 +212,25 @@ which rung answered.</p>
 <p>A wrong answer about whether a PLC is vulnerable costs more than "needs review",
 so abstention is a feature rather than a failure.</p>
 
-<h3>The five pillars</h3>
+<h3>Scoring pillars</h3>
 
 <table>
   <thead><tr><th>Pillar</th><th>Weight</th><th>What it reads</th></tr></thead>
   <tbody>
-    <tr><td>Exploitation</td><td class="n">0.30</td><td>CISA KEV, ransomware linkage, peak EPSS</td></tr>
-    <tr><td>Severity</td><td class="n">0.20</td><td>worst CVSS, and how many flaws are critical</td></tr>
-    <tr><td>Patch availability</td><td class="n">0.20</td><td>a fix, a workaround, or nothing</td></tr>
-    <tr><td>Vendor practice</td><td class="n">0.15</td><td>whether advisories carry CVSS and CWE, own CSAF feed</td></tr>
-    <tr><td>Certification</td><td class="n">0.15</td><td>IEC 62443 (ISASecure) and Common Criteria</td></tr>
+    <tr><td>Exploitation</td><td class="n">0.270</td><td>CISA KEV, ransomware linkage, peak EPSS</td></tr>
+    <tr><td>Severity</td><td class="n">0.180</td><td>worst CVSS, and how many flaws are critical</td></tr>
+    <tr><td>Patch availability</td><td class="n">0.180</td><td>a fix, a workaround, or nothing</td></tr>
+    <tr><td>Vendor practice</td><td class="n">0.135</td><td>whether advisories carry CVSS and CWE, own CSAF feed</td></tr>
+    <tr><td>Certification</td><td class="n">0.135</td><td>IEC 62443 (ISASecure) and Common Criteria</td></tr>
+    <tr><td>Network exposure (optional)</td><td class="n">0.100</td><td>operator-reported: isolated 100, IT–OT 60, Internet–OT 20</td></tr>
   </tbody>
 </table>
 
 <p>The weighted result is reported as a band: <span class="v-prefer">PREFER</span>
 at 70 or above, <span class="v-caution">CONDITIONAL</span> at 40 or above,
-<span class="v-avoid">AVOID</span> below. Weights and thresholds are yours to
-change &mdash; run <code>retrust config --init</code>.</p>
+<span class="v-avoid">AVOID</span> below. If network exposure is not supplied,
+that pillar is omitted and the five evidence weights are normalized to 100%.
+Weights and thresholds are yours to change &mdash; run <code>retrust config --init</code>.</p>
 
 <div class="state">
   <b>Reported, but deliberately not scored</b>

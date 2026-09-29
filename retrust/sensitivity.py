@@ -20,9 +20,10 @@ Sampling is seeded, so results are reproducible run to run.
 import random
 from dataclasses import dataclass, field
 
-from .score import BANDS, DEFAULT_WEIGHTS, assess
+from .score import BANDS, DEFAULT_WEIGHTS, PILLARS, assess
 
 PILLAR_KEYS = list(DEFAULT_WEIGHTS)
+PILLAR_KEYS_BY_NAME = {spec.name: spec.key for spec in PILLARS}
 
 
 @dataclass
@@ -86,8 +87,8 @@ def _random_weights(rng):
     Normalising uniform draws does NOT sample the simplex uniformly -- it
     clusters near the centroid and never visits the corners, so extreme
     weightings go untested and every verdict looks steadier than it is. With
-    five pillars it put the chance of one pillar carrying over half the weight
-    at 4%, where the true figure is 31%.
+    six pillars it puts the chance of any pillar carrying over half the weight
+    at 19%; when network exposure is omitted, the other five remain normalized.
 
     Normalised exponentials give Dirichlet(1,...,1), which is uniform.
     """
@@ -101,7 +102,8 @@ def _band(score, bands):
 
 
 def stability(findings, advisories=(), certificates=(), screening_gates=(),
-              vendor_key=None, samples=500, seed=7, bands=None):
+              vendor_key=None, samples=500, seed=7, bands=None,
+              network_exposure=None):
     """Score one product under many weightings and report the spread."""
     bands = bands or BANDS
     rng = random.Random(seed)
@@ -109,7 +111,8 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
     # A gated product is AVOID whatever the weights say; sampling would only
     # manufacture a misleading 100% agreement figure.
     probe = assess("probe", findings, advisories, certificates=certificates,
-                   screening_gates=screening_gates, vendor_key=vendor_key)
+                   screening_gates=screening_gates, vendor_key=vendor_key,
+                   network_exposure=network_exposure)
     if probe.gates:
         return Stability(samples=0, verdicts={"AVOID": 1}, gated=True,
                          score_min=probe.score or 0.0, score_max=probe.score or 0.0,
@@ -120,7 +123,7 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
         weights = _random_weights(rng)
         result = assess("probe", findings, advisories, weights=weights,
                         certificates=certificates, screening_gates=screening_gates,
-                        vendor_key=vendor_key)
+                        vendor_key=vendor_key, network_exposure=network_exposure)
         scores.append(result.score)
         verdict = _band(result.score, bands)
         verdicts[verdict] = verdicts.get(verdict, 0) + 1
@@ -169,11 +172,13 @@ def contributions(assessment, weights=None):
     added, and how many it gave up against a perfect 100.
     """
     weights = weights or DEFAULT_WEIGHTS
-    total = sum(weights.values()) or 1.0
-    scored = [p for p in assessment.pillars if p.name != "Evidence quality"]
+    scored = [p for p in assessment.pillars
+              if p.name != "Evidence quality" and p.scored]
+    active_keys = [PILLAR_KEYS_BY_NAME[p.name] for p in scored]
+    total = sum(weights.get(key, 0) for key in active_keys) or 1.0
 
     out = []
-    for pillar, key in zip(scored, PILLAR_KEYS):
+    for pillar, key in zip(scored, active_keys):
         share = weights.get(key, 0) / total
         out.append({
             "pillar": pillar.name,

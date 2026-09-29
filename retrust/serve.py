@@ -22,7 +22,7 @@ import os
 import urllib.parse
 from datetime import date
 
-from . import alternatives, batch, lev, questions, report, search, sensitivity, ssvc, timeline
+from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline
 from .webui import page as _page
 from . import index as index_module
 from .index import normalize_name
@@ -124,7 +124,7 @@ def _search_page(connection, stats, query):
             '<section class="panel"><div class="panel-heading"><h2>Explore an example</h2>'
             '<span>Live assessments</span></div>'
             '<a class="example" href="/score?vendor=ABB&amp;product=AC%20800M">'
-            '<span><strong>ABB · AC 800M</strong><small>Inspect the five scoring pillars</small></span><span class="arrow">↗</span></a>'
+            '<span><strong>ABB · AC 800M</strong><small>Inspect the evidence and network exposure</small></span><span class="arrow">↗</span></a>'
             '<a class="example" href="/score?vendor=Siemens&amp;product=SIMATIC%20S7-1500&amp;version=3.1.6">'
             '<span><strong>Siemens · SIMATIC S7-1500</strong><small>See how firmware changes the assessment</small></span><span class="arrow">↗</span></a>'
             '<a class="example" href="/demo"><span><strong>Take the guided demo</strong>'
@@ -171,7 +171,7 @@ def _demo_page():
         ('Identify the exact hardware', 'Search by the order number from a requisition. '
          'Check the matched model before assessing its firmware.', '/?q=6ES7518-4AX00-1AB0', 'Find a Siemens controller'),
         ('Explain a verdict', 'Open an assessment and follow the score back to its five pillars. '
-         'Check evidence coverage as well as the headline number.', '/score?vendor=ABB&product=AC%20800M', 'Assess ABB AC 800M'),
+         'Check evidence coverage and the network context as well as the headline number.', '/score?vendor=ABB&product=AC%20800M', 'Assess ABB AC 800M'),
         ('Compare a shortlist', 'Review three examples together. These are different equipment classes '
          'to demonstrate the workflow, not interchangeable engineering alternatives.',
          '/compare?c=ABB%7CAC%20800M&c=Moxa%7CEDS-405A&c=Siemens%7CSIMATIC%20S7-1500%7C3.1.6', 'Open example comparison'),
@@ -191,16 +191,21 @@ def _demo_page():
                  'and the supplier’s answer still belong in the purchasing decision.</p>', active='/demo')
 
 
-def _run_assessment(assess, vendor, product, version=None, order_number=None):
+def _run_assessment(assess, vendor, product, version=None, order_number=None,
+                    network_exposure=None):
+    options = {"network_exposure": network_exposure} if network_exposure else {}
     if order_number:
-        return assess(vendor, product, version or None, order_number=order_number)
-    return assess(vendor, product, version or None)
+        return assess(vendor, product, version or None, order_number=order_number,
+                      **options)
+    return assess(vendor, product, version or None, **options)
 
 
 def _score_page(connection, assess, context, vendor, product, version, order_number="",
-                submitted=False):
+                submitted=False, network_exposure=None):
     """A verdict first, with editable inputs and the evidence below it."""
-    form = _score_form(vendor, product, version, order_number)
+    if network_exposure not in score.NETWORK_EXPOSURES:
+        network_exposure = None
+    form = _score_form(vendor, product, version, order_number, network_exposure)
     if not (vendor or product or order_number):
         notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
                   'or a vendor and product, before assessing.</p>' if submitted else '')
@@ -208,12 +213,14 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
                      'Start with a manufacturer order number, or enter the vendor and model. '
                      'Add the firmware version to narrow the affected vulnerabilities.</p>'
                      + notice + form)
-    assessment, resolution, findings = _run_assessment(assess, vendor, product, version, order_number)
+    assessment, resolution, findings = _run_assessment(
+        assess, vendor, product, version, order_number, network_exposure)
     parameters = urllib.parse.urlencode(dict(vendor=vendor, product=product,
-                                             version=version, order_number=order_number))
+                                             version=version, order_number=order_number,
+                                             network_exposure=network_exposure or ""))
     body = ('<h1>Product assessment</h1><p class="lead">A procurement verdict, '
             'with the evidence behind every number.</p>'
-            '<details><summary>Edit product details and firmware</summary>' + form + '</details>'
+            '<details><summary>Edit product, firmware, or network exposure</summary>' + form + '</details>'
             '<div class="actions">'
             f'<a class="button secondary" href="/export.html?{_esc(parameters)}">Download report ↓</a>'
             f'<a class="button secondary" href="/export.json?{_esc(parameters)}">Download JSON ↓</a>'
@@ -252,14 +259,20 @@ def _field(id_, name, label, value='', placeholder=''):
             f'maxlength="{MAX_QUERY}"></div>')
 
 
-def _score_form(vendor, product, version, order_number=''):
+def _score_form(vendor, product, version, order_number='', network_exposure=None):
     return ('<form class="form-panel" method="get" action="/score">'
             '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number', order_number,
                                                  'e.g. 6ES7518-4AX00-1AB0') + '</div>'
             '<p class="form-divider">Or identify it by vendor and product. If you enter both, they must agree.</p>'
             '<div class="form-grid">' + _field('v', 'vendor', 'Vendor', vendor, 'e.g. Siemens')
             + _field('p', 'product', 'Product / model', product, 'e.g. SIMATIC S7-1500')
-            + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6') + '</div>'
+            + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
+            + '<div><label for="network_exposure">Network exposure (optional)</label>'
+            + '<select id="network_exposure" name="network_exposure">'
+            + '<option value="">Choose if known</option>'
+            + ''.join(f'<option value="{key}"{" selected" if key == network_exposure else ""}>{label}</option>'
+                      for key, (label, _, _) in score.NETWORK_EXPOSURES.items())
+            + '</select><p class="helper">Default weight 10%: Isolated 100, IT–OT 60, Internet–OT 20. Operator-reported, not verified.</p></div></div>'
             '<p class="helper">Unsure of the model name? <a href="/">Search the advisory index first.</a></p>'
             '<button type="submit">Assess product →</button></form>')
 
@@ -638,9 +651,9 @@ products receive NOT ASSESSED. Unknown version ranges stay in scope.</p></div></
 <li><span class="step-number">2</span><div><b>Apply disqualifying evidence</b>
 <p>Known exploitation and supplier screening can trigger an AVOID gate,
 regardless of the weighted score.</p></div></li>
-<li><span class="step-number">3</span><div><b>Weigh five pillars</b>
-<p>Exploitation, severity, patch availability, vendor practice, and certification
-contribute to the score. Higher is better. Evidence quality is reported separately.</p></div></li>
+<li><span class="step-number">3</span><div><b>Weigh the evidence and network context</b>
+<p>Five evidence pillars contribute to the score. An optional, operator-reported
+network exposure adds 10%; evidence quality is reported separately.</p></div></li>
 </ol></section>
 <h2>What the index contains</h2>
 <div class="tw"><table><thead><tr><th>Holds</th><th class="n">Count</th></tr></thead>
@@ -701,10 +714,15 @@ def _export_comparison(assess, context, provenance, path, candidates):
     return Download(batch.dumps(payload), 'retrust-comparison.json', 'application/json')
 
 
-def _export(assess, context, provenance, path, vendor, product, version, order_number):
-    block = _run_assessment(assess, vendor, product, version, order_number)
+def _export(assess, context, provenance, path, vendor, product, version, order_number,
+            network_exposure=None):
+    if network_exposure not in score.NETWORK_EXPOSURES:
+        network_exposure = None
+    block = _run_assessment(assess, vendor, product, version, order_number,
+                            network_exposure)
     if path.endswith('.json'):
-        query = dict(vendor=vendor, product=product, version=version, order_number=order_number)
+        query = dict(vendor=vendor, product=product, version=version,
+                     order_number=order_number, network_exposure=network_exposure)
         payload = batch.envelope([batch.to_detail(*block, query=query)], {
             'provenance': provenance, 'weights': context['weights'],
             'config_source': context.get('config_source', ''),
@@ -749,7 +767,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             return _demo_page()
         if path in ("/export.html", "/export.json"):
             return _export(assess, context, provenance, path,
-                           first("vendor"), first("product"), first("version"), first("order_number"))
+                           first("vendor"), first("product"), first("version"), first("order_number"),
+                           first("network_exposure"))
         if path in ("/compare.html", "/compare.json", "/compare.csv"):
             return _export_comparison(assess, context, provenance, path, _candidate_rows(params))
         if path == "/":
@@ -758,7 +777,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             return _score_page(connection, assess, context, first("vendor"),
                                first("product"), first("version"), first("order_number"),
                                submitted=any(key in params for key in
-                                             ("vendor", "product", "version", "order_number")))
+                                             ("vendor", "product", "version", "order_number")),
+                               network_exposure=first("network_exposure"))
         if path == "/compare":
             return _compare_page(assess, context,
                                  _candidate_rows(params),

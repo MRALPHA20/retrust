@@ -63,7 +63,8 @@ def _context(data_dir="data", config_path=None):
             "weights": weights, "bands": bands, "config_source": source}
 
 
-def _assess(connection, vendor, product, version, order_number, label=None, context=None):
+def _assess(connection, vendor, product, version, order_number, label=None, context=None,
+            network_exposure=None):
     """Resolve, collect findings, and score. Shared by `score` and `compare`."""
     context = context or _context()
     resolution = match.resolve(
@@ -102,7 +103,8 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                               weights=context.get("weights"),
                               bands=context.get("bands"),
                               certificates=certificates, screening_gates=screening_gates,
-                              vendor_key=normalize_vendor(effective_vendor or ""))
+                              vendor_key=normalize_vendor(effective_vendor or ""),
+                              network_exposure=network_exposure)
     assessment.notes.extend(screening_notes)
     assessment.inputs = (findings, advisories, certificates, screening_gates,
                          normalize_vendor(effective_vendor or ''))
@@ -237,12 +239,13 @@ def cmd_score(args):
     context = _context(config_path=getattr(args, "config", None))
     assessment, resolution, findings = _assess(
         connection, args.vendor, args.product, args.version, args.order_number,
-        context=context)
+        context=context, network_exposure=getattr(args, "network_exposure", None))
 
     stability = None
     if args.json and not args.no_sensitivity and getattr(assessment, "inputs", None):
         stability = sensitivity.stability(*assessment.inputs, samples=args.samples,
-                                          bands=context["bands"])
+                                          bands=context["bands"],
+                                          network_exposure=assessment.network_exposure)
 
     if args.json:
         detail = batch.to_detail(assessment, resolution, findings, stability,
@@ -372,7 +375,7 @@ def cmd_sensitivity(args):
     context = _context(config_path=args.config)
     assessment, resolution, _ = _assess(
         connection, args.vendor, args.product, args.version, args.order_number,
-        context=context)
+        context=context, network_exposure=getattr(args, "network_exposure", None))
 
     print(f"{assessment.verdict}  {assessment.product}\n")
     if not (inputs := getattr(assessment, "inputs", None)):
@@ -380,7 +383,8 @@ def cmd_sensitivity(args):
         return 2
 
     result = sensitivity.stability(*inputs, samples=args.samples,
-                                   bands=context["bands"])
+                                   bands=context["bands"],
+                                   network_exposure=getattr(args, "network_exposure", None))
     print(f"  {result.summary()}")
     if not result.gated:
         print(f"  score across {result.samples} random weightings: "
@@ -764,22 +768,44 @@ def _shell_actions(connection, context, args):
         if not (asked := _ask_product(reader)):
             return None
         vendor, product, version = asked
-        return score_result(vendor, product, version)
+        network = shell.ask("Network exposure (optional: isolated, it_ot, internet_ot)",
+                            reader=reader)
+        if network is shell.CANCELLED:
+            network = None
+        elif network:
+            network = network.strip().lower()
+            if network not in score.NETWORK_EXPOSURES:
+                print("Choose isolated, it_ot, or internet_ot; leaving it out of the score.")
+                network = None
+        return score_result(vendor, product, version, network_exposure=network)
 
     def do_order(result, reader):
         number = shell.ask("Manufacturer order number", required=True, reader=reader)
         if number is shell.CANCELLED:
             return None
         version = shell.ask("Firmware version (optional)", reader=reader)
-        return score_result(None, None, None if version is shell.CANCELLED else version,
-                            number)
+        if version is shell.CANCELLED:
+            return None
+        network = shell.ask("Network exposure (optional: isolated, it_ot, internet_ot)",
+                            reader=reader)
+        if network is shell.CANCELLED:
+            network = None
+        elif network:
+            network = network.strip().lower()
+            if network not in score.NETWORK_EXPOSURES:
+                print("Choose isolated, it_ot, or internet_ot; leaving it out of the score.")
+                network = None
+        return score_result(None, None, version, number, network)
 
-    def score_result(vendor, product, version, order_number=None):
+    def score_result(vendor, product, version, order_number=None, network_exposure=None):
         parts = ["score", "--order-number", order_number] if order_number else [
             "score", "--vendor", vendor, "--product", product]
-        shell.echo_command(parts + (["--version", version] if version else []))
+        shell.echo_command(parts + (["--version", version] if version else [])
+                           + (["--network-exposure", network_exposure]
+                              if network_exposure else []))
         assessment, resolution, findings = _assess(
-            connection, vendor, product, version, order_number, context=context)
+            connection, vendor, product, version, order_number, context=context,
+            network_exposure=network_exposure)
         print(_render_one(assessment, resolution, findings))
         if not resolution.resolved:
             print()
@@ -1074,8 +1100,10 @@ def cmd_serve(args):
     context = _context(config_path=args.config)
     handler = serve.build_handler(
         connection,
-        lambda vendor, product, version=None, order_number=None: _assess(
-            connection, vendor, product, version, order_number, context=context),
+        lambda vendor, product, version=None, order_number=None,
+               network_exposure=None: _assess(
+            connection, vendor, product, version, order_number, context=context,
+            network_exposure=network_exposure),
         context, dossier, index.stats(connection), index.provenance(connection),
         args.host, args.port)
 
@@ -1404,7 +1432,8 @@ def cmd_diff(args):
         query = record.get("query") or {}
         assessment, resolution, _ = _assess(
             connection, query.get("vendor"), query.get("product"),
-            query.get("version"), query.get("order_number"), context=context)
+            query.get("version"), query.get("order_number"), context=context,
+            network_exposure=record.get("network_exposure"))
         current.append(batch.to_record(assessment, resolution, query=query))
 
     changes = diff.compare(previous, current)
@@ -1722,6 +1751,8 @@ def build_parser():
 
     p = sub.add_parser("score", help="assess one product")
     _product_args(p)
+    p.add_argument("--network-exposure", choices=list(score.NETWORK_EXPOSURES),
+                   help="operator-reported OT network context: isolated, it_ot, or internet_ot")
     p.add_argument("--html", help="also write an HTML report here")
     p.add_argument("--json", metavar="FILE",
                    help='write the full assessment as JSON; "-" for stdout')
@@ -1784,6 +1815,8 @@ def build_parser():
     p = sub.add_parser("sensitivity",
                        help="how much the verdict depends on the weights")
     _product_args(p)
+    p.add_argument("--network-exposure", choices=list(score.NETWORK_EXPOSURES),
+                   help="operator-reported OT network context")
     _scoring_args(p, samples=500)
     p.set_defaults(func=cmd_sensitivity)
 

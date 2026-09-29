@@ -33,7 +33,7 @@ COLUMN_ALIASES = {
 }
 
 # Bumped whenever the JSON shape changes in a way a consumer would notice.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Exit codes, so a pipeline can branch without parsing output.
 EXIT_OK = 0
@@ -170,13 +170,15 @@ def to_record(assessment, resolution, stability=None, query=None):
         "cves": assessment.findings_count if assessment.score is not None else None,
         "undecided": assessment.undecided_count,
         "confidence": assessment.confidence,
+        "network_exposure": assessment.network_exposure,
         "resolved_by": resolution.method if resolution.resolved else None,
         "match_confidence": resolution.confidence if resolution.resolved else None,
         "matched_products": len(resolution.matches),
         "reason": "" if resolution.resolved else resolution.reason,
         "gates": [g["gate"] for g in assessment.gates],
         "gate_detail": "; ".join(g["detail"] for g in assessment.gates),
-        "pillars": {p.name: round(p.score, 1) for p in assessment.pillars},
+        "pillars": {p.name: round(p.score, 1) for p in assessment.pillars
+                    if p.scored or p.name == "Evidence quality"},
     }
     if stability is not None:
         record["robust"] = None if stability.gated else round(stability.agreement, 3)
@@ -197,9 +199,9 @@ def to_detail(assessment, resolution, findings=(), stability=None,
     record = to_record(assessment, resolution, stability, query)
 
     record["pillars"] = [
-        {"name": p.name, "score": round(p.score, 1),
+        {"name": p.name, "score": round(p.score, 1) if p.scored else None,
          "coverage": round(p.coverage, 3), "evidence": list(p.evidence),
-         "scored": p.name != "Evidence quality"}
+         "scored": p.scored and p.name != "Evidence quality"}
         for p in assessment.pillars
     ]
     record["gates"] = [dict(g) for g in assessment.gates]

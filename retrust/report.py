@@ -123,12 +123,15 @@ IDENTIFIER = re.compile(r"\b((?:CVE|ICSA|ICSMA|SSA|VDE)-[0-9][0-9A-Z-]*[0-9A-Z])
 PILLAR_KEYS = {spec.name: spec.key for spec in score.PILLARS}
 
 
-def _weight_share(pillar_name, weights):
+def _weight_share(pillar_name, weights, active_pillars=None):
     """The share this pillar carries, or None when it is not scored at all."""
     key = PILLAR_KEYS.get(pillar_name)
     if key is None or not weights:
         return None
-    total = sum(weights.values()) or 1.0
+    total = (sum(weights.values()) if active_pillars is None else
+             sum(weights.get(PILLAR_KEYS[p.name], 0)
+                 for p in active_pillars if p.name in PILLAR_KEYS and p.scored))
+    total = total or 1.0
     return weights.get(key, 0.0) / total
 
 def _footer_sources(provenance, weights, config_source):
@@ -144,10 +147,11 @@ def _footer_sources(provenance, weights, config_source):
         parts.append("</dl>")
     if weights:
         total = sum(weights.values()) or 1
-        shown = ", ".join(f"{k} {v / total:.0%}" for k, v in weights.items())
+        shown = ", ".join(f"{k} {v / total:.1%}" for k, v in weights.items())
         parts.append(f'<p>Weights ({_esc(config_source)}): {_esc(shown)}. '
                      'Change them in the config file and re-run; the sensitivity '
-                     'figures above show how much that would matter.</p>')
+                     'figures above show how much that would matter. Network exposure '
+                     'is optional; without it, the selected pillars are normalized to 100%.</p>')
     parts.append("</section>")
     return "".join(parts)
 
@@ -238,6 +242,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
 
 
 def _pillar_table(assessment, weights):
+    active_pillars = [p for p in assessment.pillars
+                      if p.name != "Evidence quality" and p.scored]
     parts = ['<div class="tw" tabindex="0" role="region" aria-label="Pillar evidence, scroll horizontally for more columns">'
              '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
              '<table><thead><tr><th>Pillar</th><th class="n">Score</th>'
@@ -245,16 +251,19 @@ def _pillar_table(assessment, weights):
              '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
         evidence = "".join(f"<li>{_esc(e)}</li>" for e in pillar.evidence)
-        share = _weight_share(pillar.name, weights)
-        weight = None if share is None else f"{share:.2f}"
+        share = (_weight_share(pillar.name, weights, active_pillars)
+                 if pillar.scored else None)
+        weight = None if share is None else f"{share:.3f}"
         # Evidence quality is reported but not scored, and must look different
         # from the pillars that move the number.
         unscored = weight is None
+        displayed_score = f"{pillar.score:.0f}" if pillar.scored else "not scored"
+        bar_width = max(0, min(100, pillar.score)) if pillar.scored else 0
         parts.append(
             f'<tr{" class=unscored" if unscored else ""}>'
             f'<td><b>{_esc(pillar.name)}</b></td>'
-            f'<td class="n">{pillar.score:.0f}</td>'
-            f'<td><span class="bar"><i style="width:{max(0, min(100, pillar.score)):.0f}%"></i></span></td>'
+            f'<td class="n">{_esc(displayed_score)}</td>'
+            f'<td><span class="bar"><i style="width:{bar_width:.0f}%"></i></span></td>'
             + (f'<td class="n">{weight}</td>' if weight
                else '<td class="n na">not scored</td>')
             + f'<td class="n">{pillar.coverage * 100:.0f}%</td>'

@@ -93,7 +93,7 @@ def test_score_json_to_stdout_is_parseable(workspace, capsys):
     assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
                 "--json", "-", "--no-sensitivity"]) == 0
     document = json.loads(capsys.readouterr().out)   # raises if prose leaked in
-    assert document["schema"] == 1
+    assert document["schema"] == 2
     assert document["results"][0]["product"].startswith("Testco")
 
 
