@@ -182,7 +182,9 @@ def _render_one(assessment, resolution, findings, context=None):
     if resolution.resolved:
         lines.append(console.prose(
             f"Matched by {resolution.method} (confidence {resolution.confidence:.2f})"
-            f" · {len(resolution.matches)} advisory product(s)"
+            f" · {resolution.product_count} product(s) across "
+            f"{resolution.advisory_count} advisor"
+            f"{'y' if resolution.advisory_count == 1 else 'ies'}"
             f" · {len({f.cve for f in findings})} CVE(s)", style="label"))
     elif assessment.verdict == "NOT ASSESSED":
         lines += [console.prose(f"Reason: {resolution.reason}"), "",

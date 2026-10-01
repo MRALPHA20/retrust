@@ -146,11 +146,42 @@ def products(connection, query, vendor=None, limit=20):
         parameters + scoped + [_cap(limit)]).fetchall()
     vendor_names, names = _labels(connection, rows)
     numbers = _numbers_for(connection, rows)
-    return [Hit(METHODS[row["rung"]], advisories=row["advisories"],
+    # The widening rungs (3 tokens, 4 substring) match on name_key, which has
+    # had its separators stripped -- so a short token can match ACROSS a word
+    # boundary: "s7" inside "Windows 7" (name_key "windows7"), "mx" nowhere a
+    # human would read it. A token is a real match only when it sits inside a
+    # single word of the name, never spanning two; "logix" in "ControlLogix"
+    # stays, "s7" in "windows7" goes. Only the display fallback is filtered --
+    # resolve() runs its own anchored ladder and never sees this.
+    word_tokens = _widening_tokens(query, normalize_name)
+    return [hit for row in rows
+            if (hit := Hit(METHODS[row["rung"]], advisories=row["advisories"],
                 vendor=vendor_names.get((row["vendor_key"],), ""),
                 name=names.get((row["vendor_key"], row["name_key"]), row["name"]),
-                order_numbers=numbers.get((row["vendor_key"], row["name_key"]), ()))
-            for row in rows]
+                order_numbers=numbers.get((row["vendor_key"], row["name_key"]), ())))
+            and _boundary_ok(row["rung"], word_tokens, hit.name)]
+
+
+def _widening_tokens(query, normalise):
+    """The alphanumeric word-tokens a widening rung searches on."""
+    words = re.split(r"[^A-Za-z0-9]+", query or "")
+    return [w for raw in words
+            if len(w := normalise(raw)) > 1 and any(c.isalpha() for c in w)]
+
+
+def _boundary_ok(rung, tokens, name):
+    """Does the match respect word boundaries?
+
+    Rungs 1-2 (exact, prefix) are anchored on the whole key and always pass.
+    For the widening rungs a token counts only when it is a substring of one
+    word-run of the name, never a coincidence spanning two: rung 3 (all words
+    appear) keeps the all-token semantics, rung 4 (any) needs one real word.
+    """
+    if rung <= 2 or not tokens:
+        return True
+    runs = re.findall(r"[a-z0-9]+", (name or "").lower())
+    hits = [t for t in tokens if any(t in run for run in runs)]
+    return len(hits) == len(tokens) if rung == 3 else bool(hits)
 
 
 def _numbers_for(connection, rows):

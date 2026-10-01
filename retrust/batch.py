@@ -177,6 +177,14 @@ def to_record(assessment, resolution, stability=None, query=None):
         "reason": "" if resolution.resolved else resolution.reason,
         "gates": [g["gate"] for g in assessment.gates],
         "gate_detail": "; ".join(g["detail"] for g in assessment.gates),
+        # Cautions are first-class evidence (a bundled KEV), not a gate -- a
+        # consumer that reads gates but not cautions would miss confirmed
+        # exploitation, so they ride in every record shape alongside them.
+        "cautions": [c["caution"] for c in getattr(assessment, "cautions", ())],
+        "caution_detail": "; ".join(
+            c["detail"] for c in getattr(assessment, "cautions", ())),
+        "first_party_cves": getattr(assessment, "first_party_count", 0),
+        "third_party_cves": getattr(assessment, "third_party_count", 0),
         "pillars": {p.name: round(p.score, 1) for p in assessment.pillars
                     if p.scored or p.name == "Evidence quality"},
     }

@@ -85,7 +85,16 @@ class Product:
 # kernel, glibc and OpenSSH behind a PLC's web server -- is a different kind
 # of evidence from a flaw in the vendor's own firmware: which of those
 # hundreds of CVEs is reachable on the device is exactly what such a bundle
-# does not establish. Flagged by title, or by sheer bulk.
+# does not establish. Flagged by an explicit title, or by sheer bulk.
+#
+# The bulk rule is a deliberate tradeoff. Most 50+-CVE advisories ARE component
+# bundles (Siemens files its MFP Linux stacks this way with no "third-party" in
+# the title, and the external review specifically wanted the Rapid Reset CVE in
+# that 352-CVE bundle to CAUTION, not gate). A genuinely first-party advisory
+# with 50+ CVEs is rare; when one occurs its findings are treated as a bundle,
+# which SOFTENS them (caution, not gate) rather than hiding them -- the safe
+# direction to err. Raising the threshold would start letting real bundles gate
+# again, which is the error the review flagged. So bulk stays, documented.
 ROLLUP_TITLE = re.compile(r"third.?party|open.?source", re.I)
 ROLLUP_CVES = 50
 
@@ -96,7 +105,23 @@ ROLLUP_CVES = 50
 FIX_IN_TEXT = re.compile(
     r"(install|apply|request)\w*\s+(the\s+)?(firmware\s+)?patch"
     r"|update[sd]?\s+to\s+(firmware|version|v\d)"
-    r"|upgrade\s+to|fixed\s+in\s+(firmware|version)", re.I)
+    r"|upgrade\s+to\s+(firmware|version|v\d)"
+    r"|fixed\s+in\s+(firmware|version)", re.I)
+
+# Text that cancels a fix signal: no patch, a future patch, an un-patchable
+# flaw. A positive match beside any of these is not a shipped fix.
+NO_FIX_IN_TEXT = re.compile(
+    r"\bno\s+(patch|fix|update|remediation)\b"
+    r"|\bnot\s+(yet\s+)?(fixed|patched|available)\b"
+    r"|\bcannot\s+be\s+(patched|fixed|remediated)\b"
+    r"|\bwill\s+(be\s+)?(release|provide|publish|issue)"
+    r"|\bplan(s|ned|ning)?\s+to\b", re.I)
+
+
+def _names_a_shipped_fix(text):
+    """The remediation text names a fix that already shipped, not a promise."""
+    text = text or ""
+    return bool(FIX_IN_TEXT.search(text)) and not NO_FIX_IN_TEXT.search(text)
 
 
 @dataclass
@@ -293,18 +318,16 @@ def _vulnerability(vulnerability, product_groups=None):
     # The category is kept as published; this flag says the text names a
     # shipped fix, so "0/10 have a vendor fix" is never printed about a
     # product the vendor actually fixed.
-    fix_text = remediation != "vendor_fix" and any(
-        isinstance(r, dict) and r.get("category") in ("mitigation", "workaround")
-        and FIX_IN_TEXT.search(r.get("details") or "")
-        for r in _list(vulnerability.get("remediations")))
-
     # Remediation scope belongs to the product, not just the CVE. A patch for
-    # one controller must not make another controller appear repairable.
+    # one controller must not make another controller appear repairable --
+    # neither its category nor its fix-in-text flag.
     groups = {g.get("group_id"): set(_list(g.get("product_ids")))
               for g in _list(product_groups) if isinstance(g, dict)}
     per_product = {}
+    fix_text_by_product = {}
     for product_id in _list(status.get("known_affected")):
         applicable = set()
+        texted = False
         for remedy in _list(vulnerability.get("remediations")):
             if not isinstance(remedy, dict):
                 continue
@@ -314,10 +337,14 @@ def _vulnerability(vulnerability, product_groups=None):
                 targets.update(groups.get(group_id, ()))
             if not scoped or product_id in targets:
                 applicable.add(remedy.get("category"))
-        per_product[product_id] = next(
-            (category for category in ("vendor_fix", "mitigation", "workaround",
-                                       "none_available") if category in applicable),
-            "unknown")
+                if (remedy.get("category") in ("mitigation", "workaround")
+                        and _names_a_shipped_fix(remedy.get("details"))):
+                    texted = True
+        category = next(
+            (c for c in ("vendor_fix", "mitigation", "workaround",
+                         "none_available") if c in applicable), "unknown")
+        per_product[product_id] = category
+        fix_text_by_product[product_id] = texted and category != "vendor_fix"
 
     return {
         "cve": vulnerability["cve"],
@@ -327,7 +354,7 @@ def _vulnerability(vulnerability, product_groups=None):
         "vector": vector,
         "remediation": remediation,
         "remediation_by_product": per_product,
-        "fix_text": fix_text,
+        "fix_text_by_product": fix_text_by_product,
     }
 
 

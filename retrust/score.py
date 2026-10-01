@@ -76,7 +76,12 @@ def _exploitation(findings):
     kev = {f.cve for f in findings if f.in_kev}
     ransomware = {f.cve for f in findings if f.ransomware}
     scored = [f for f in findings if f.epss is not None]
-    coverage = len(scored) / len(findings)
+    # KEV and ransomware are known for every finding, so the pillar always
+    # measures something when findings exist; EPSS only sharpens it. Tying
+    # coverage to EPSS alone would drop this (highest-weighted) pillar whenever
+    # EPSS is NULL -- common on the OT corpus -- and renormalize the composite
+    # onto the lower pillars, scoring a product with LESS data strictly lower.
+    coverage = 1.0 if findings else 0.0
 
     penalty = 0.0
     evidence = []
@@ -95,7 +100,8 @@ def _exploitation(findings):
         if likely:
             evidence.append(f"{len(likely)} CVE(s) with EPSS >= 0.10")
     else:
-        evidence.append("no EPSS data for these CVEs")
+        evidence.append("no EPSS score for these CVEs; judged on KEV and "
+                        "ransomware signals only")
 
     return Pillar("Exploitation", max(0.0, 100 - penalty), coverage, evidence)
 
@@ -191,11 +197,17 @@ def _vendor_practice(findings, advisories, vendor_key=None):
     with_cvss = sum(1 for f in findings if f.cvss is not None)
     with_cwe = sum(1 for f in findings if f.cwe)
     quality = (with_cvss / len(findings) + with_cwe / len(findings)) / 2
+    # Coverage is how much of what this pillar reads was actually present. A
+    # feed the registry knows about is itself evidence, so a vendor that
+    # publishes always has coverage; otherwise it rides on the completeness of
+    # the content. Hard-coding 1.0 let the pillar score a product whose
+    # advisories carried neither CVSS nor CWE as though it had measured them.
+    publishes = (vendor_key or "") in CSAF_PUBLISHERS
+    coverage = 1.0 if publishes else (with_cvss + with_cwe) / (2 * len(findings))
 
     # The publisher list is drawn from the CSAF ecosystem's own registries
     # and is necessarily partial, so absence earns no penalty beyond missing
     # the bonus: quality of what WAS published carries the pillar.
-    publishes = (vendor_key or "") in CSAF_PUBLISHERS
     score = 70 * quality + (30 if publishes else 0)
 
     evidence = [
@@ -205,7 +217,7 @@ def _vendor_practice(findings, advisories, vendor_key=None):
     evidence.append(
         "runs its own CSAF advisory feed" if publishes else
         "no self-published CSAF feed in this tool's registry list; absence here is not evidence of absence")
-    return Pillar("Vendor practice", min(100.0, score), 1.0, evidence)
+    return Pillar("Vendor practice", min(100.0, score), coverage, evidence)
 
 
 def _evidence_quality(findings):
@@ -259,7 +271,7 @@ def _patchability(findings):
     workaround = sum(1 for f in findings if not f.fixed
                      and f.remediation in ("mitigation", "workaround"))
     none_available = sum(1 for f in findings
-                         if f.remediation == "none_available")
+                         if not f.fixed and f.remediation == "none_available")
     known = fixed + workaround + none_available
 
     if not known:
@@ -404,19 +416,40 @@ def _cautions(third_party):
     buyer with the question that actually decides it.
     """
     cautions = []
+    reach = (". Whether the affected component is reachable on this device"
+             " decides the risk -- ask the vendor (the RFQ annex does).")
+
+    def _name(cves):
+        return ", ".join(cves[:5]) + (" and more" if len(cves) > 5 else "")
+
     kev = sorted({f.cve for f in third_party if f.in_kev and not f.fixed})
     if kev:
         cautions.append({
             "caution": "KEV-listed CVE(s) in third-party component bundles",
             "detail": f"{len(kev)} CVE(s) with confirmed exploitation and no"
                       f" vendor fix arrive via component bundle advisories: "
-                      + ", ".join(kev[:5])
-                      + (" and more" if len(kev) > 5 else "")
-                      + ". Whether the affected component is reachable on this"
-                      " device decides the risk -- ask the vendor (the RFQ"
-                      " annex does).",
-            "source": "CISA KEV against component bundle advisories",
-        })
+                      + _name(kev) + reach,
+            "source": "CISA KEV against component bundle advisories"})
+
+    ransom = sorted({f.cve for f in third_party if f.ransomware and not f.fixed})
+    if ransom:
+        cautions.append({
+            "caution": "Ransomware-linked CVE(s) in third-party component bundles",
+            "detail": f"{len(ransom)} CVE(s) tied to ransomware campaigns arrive"
+                      f" via component bundles: " + _name(ransom) + reach,
+            "source": "CISA KEV ransomware flag against component bundles"})
+
+    # The same shape the unfixable-critical gate fires on, but third-party.
+    crit = sorted({f.cve for f in third_party
+                   if f.remediation == "none_available" and (f.cvss or 0) >= 9.0
+                   and ((f.epss or 0) >= 0.5 or f.in_kev)})
+    if crit:
+        cautions.append({
+            "caution": "Critical unfixable CVE(s) in third-party component bundles",
+            "detail": f"{len(crit)} CVE(s) rated 9.0+ with high exploitation"
+                      f" likelihood and no vendor remedy arrive via component"
+                      f" bundles: " + _name(crit) + reach,
+            "source": "CSAF remediation status, CVSS and FIRST EPSS, in bundles"})
     return cautions
 
 
@@ -538,10 +571,22 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         if pillar.coverage == 0:
             pillar.scored = False
 
-    gates = check_gates(base, product_label, screening_gates)
+    # Gates and the empty-evidence test run on first-party findings, and the
+    # "has evidence" test ignores network exposure:
+    #  - network exposure is a deployment ASSUMPTION the operator typed, not
+    #    vulnerability evidence, so a product with no advisory findings must
+    #    stay NOT ASSESSED even when it is supplied -- otherwise "isolated"
+    #    alone scores a blank product PREFER 100.
+    #  - a KEV inside a third-party bundle is a CAUTION, never a gate; running
+    #    the gate on `base` (which falls back to the bundle when there are no
+    #    first-party findings) would make the very same bundled KEV gate or
+    #    caution depending on whether a first-party finding happens to exist.
+    risk_usable = [(spec, pillar) for spec, pillar in usable
+                   if spec.key != "network_exposure"]
+    gates = check_gates(first, product_label, screening_gates)
     cautions = _cautions(third)
 
-    if not usable:
+    if not risk_usable:
         notes = ["No pillar had measurable evidence, so no score is computed."
                  " Absence of findings is not a clean bill of health: nobody"
                  " may have published about this product."]
@@ -552,12 +597,26 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             score=None, pillars=pillars, gates=gates, cautions=cautions,
             findings_count=len({f.cve for f in findings}),
             first_party_count=len({f.cve for f in first}),
-            third_party_count=len({f.cve for f in third}),
+            third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
             notes=notes)
 
     total = sum(weights.get(spec.key, 0) for spec, _ in usable) or 1.0
     composite = sum(pillar.score * weights.get(spec.key, 0)
                     for spec, pillar in usable) / total
+
+    # Certification is positive evidence only: its ABSENCE is excluded, never a
+    # penalty, so its PRESENCE must not lower the composite either -- otherwise
+    # a vendor holding a mid-tier certificate scores below one holding none,
+    # and the pillar that is meant to reward certification punishes it. It may
+    # lift the score, never drag it. (This asymmetry is unique to
+    # certification; a low patchability or severity SHOULD lower a score.)
+    if any(spec.key == "certification" for spec, _ in usable):
+        others = [(spec, p) for spec, p in usable if spec.key != "certification"]
+        if others:
+            base_total = sum(weights.get(spec.key, 0) for spec, _ in others) or 1.0
+            without_cert = sum(p.score * weights.get(spec.key, 0)
+                               for spec, p in others) / base_total
+            composite = max(composite, without_cert)
 
     prefer_threshold = (bands or BANDS)[0][0]
     cap_note = None
@@ -583,7 +642,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     notes = []
     if cap_note:
         notes.append(cap_note)
-    if third:
+    if first and third:
         notes.append(
             f"{len({f.cve for f in third})} of the CVEs in scope arrive via"
             f" third-party component bundle advisories; the pillars above"
@@ -633,7 +692,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         pillars=pillars, gates=gates, cautions=cautions,
         findings_count=len({f.cve for f in findings}),
         first_party_count=len({f.cve for f in first}),
-        third_party_count=len({f.cve for f in third}),
+        third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
         undecided_count=len({f.cve for f in undecided}),
         confidence=round(confidence.coverage, 2),
         network_exposure=network_exposure,

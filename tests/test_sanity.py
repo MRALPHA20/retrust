@@ -132,3 +132,69 @@ def test_no_findings_is_never_a_verdict():
     assessment = score.assess("Ghost", [], {"A"})
     assert assessment.verdict == "NOT ASSESSED"
     assert assessment.score is None
+
+
+def test_network_exposure_alone_never_produces_a_score():
+    """A deployment assumption is not vulnerability evidence: a product with no
+    findings must stay NOT ASSESSED even when network exposure is supplied."""
+    for exposure in ("isolated", "it_ot", "internet_ot"):
+        a = score.assess("Blank", [], network_exposure=exposure)
+        assert a.verdict == "NOT ASSESSED", exposure
+        assert a.score is None, exposure
+
+
+def test_missing_epss_does_not_drop_the_exploitation_pillar():
+    """KEV/ransomware are measured for every finding, so exploitation always has
+    coverage when findings exist -- a product with less EPSS data must not
+    score lower by having its highest-weighted pillar renormalized away."""
+    no_epss = [_finding("C1", epss=None, cvss=5.0),
+               _finding("C2", epss=None, cvss=6.0)]
+    with_epss = [_finding("C1", epss=0.02, cvss=5.0),
+                 _finding("C2", epss=0.03, cvss=6.0)]
+    a = score.assess("A", no_epss, {"ICSA-26-001-01"})
+    b = score.assess("B", with_epss, {"ICSA-26-001-01"})
+    expl = next(p for p in a.pillars if p.name == "Exploitation")
+    assert expl.scored and expl.coverage == 1.0
+    # The verdict must not flip on EPSS availability alone.
+    assert a.verdict == b.verdict
+    assert abs(a.score - b.score) < 5
+
+
+def test_a_bundled_kev_cautions_even_with_no_first_party_findings():
+    """An all-third-party product's KEV must caution, not gate -- the gate/
+    caution choice cannot depend on whether a first-party finding happens to
+    exist."""
+    all_third = [_finding("C1", third_party=True, in_kev=True,
+                          remediation="mitigation")]
+    a = score.assess("X", all_third, {"ICSA-26-001-01"})
+    assert not a.gates
+    assert a.cautions
+
+
+def test_third_party_ransomware_and_criticals_caution_not_vanish():
+    """Every class the gate fires on, as third-party, must at least caution."""
+    ransom = [_finding("C1", third_party=True, ransomware=True,
+                       remediation="mitigation")]
+    crit = [_finding("C2", third_party=True, cvss=9.8, epss=0.9,
+                     remediation="none_available")]
+    assert any("Ransomware" in c["caution"] for c in score.assess(
+        "R", ransom, {"A"}).cautions)
+    assert any("Critical" in c["caution"] for c in score.assess(
+        "C", crit, {"A"}).cautions)
+
+
+def test_party_counts_partition_the_distinct_cve_set():
+    """A CVE from both a first-party advisory and a bundle is counted once."""
+    shared = [_finding("CVE-X", third_party=False),
+              _finding("CVE-X", advisory_id="BUNDLE", third_party=True)]
+    a = score.assess("X", shared, {"ICSA-26-001-01", "BUNDLE"})
+    assert a.first_party_count + a.third_party_count == a.findings_count
+
+
+def test_patchability_buckets_partition_exactly_once():
+    """fixed / workaround / none_available must never double-count a finding."""
+    fs = [_finding("C1", remediation="vendor_fix"),
+          _finding("C2", remediation="mitigation"),
+          _finding("C3", remediation="none_available")]
+    p = score._patchability(fs)
+    assert 0.0 <= p.coverage <= 1.0

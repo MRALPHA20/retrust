@@ -220,7 +220,9 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             parts.append(
                 f'<p class="meta">matched by {_esc(resolution.method)} '
                 f'&middot; confidence {resolution.confidence:.2f} '
-                f'&middot; {len(resolution.matches)} advisory product(s)</p>')
+                f'&middot; {resolution.product_count} product(s) across '
+                f'{resolution.advisory_count} advisor'
+                f'{"y" if resolution.advisory_count == 1 else "ies"}</p>')
         elif not assessment.gates:
             parts.append(f'<div class="note"><b>Not assessed.</b> '
                          f'{_esc(resolution.reason)}</div>')

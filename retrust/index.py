@@ -233,7 +233,7 @@ def _ingest_root(connection, root, counts, progress):
             (advisory.advisory_id, product_id, cve, data["cvss"], data["cwe"],
              data.get("remediation_by_product", {}).get(
                  product_id, data.get("remediation", "unknown")), data.get("vector"),
-             int(data.get("fix_text", False)))
+             int(data.get("fix_text_by_product", {}).get(product_id, False)))
             for cve, data in advisory.vulnerabilities.items()
             for product_id in data["product_ids"]
         ]

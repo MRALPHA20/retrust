@@ -58,6 +58,21 @@ class Resolution:
     def resolved(self):
         return bool(self.matches) and not self.abstained
 
+    @property
+    def product_count(self):
+        """Distinct products behind the matches, not advisory-product rows.
+
+        One product is re-declared by every advisory that names it, so the
+        raw row count reads as far more products than were matched -- "74
+        advisory product(s)" for the 11 real Modicon M340 variants. A buyer
+        reads that as scope bleed; the honest figure is the distinct count.
+        """
+        return len({(m.vendor, m.name) for m in self.matches})
+
+    @property
+    def advisory_count(self):
+        return len({m.advisory_id for m in self.matches})
+
 
 _SEPARATOR = re.compile(r"[^a-z0-9]+")
 
