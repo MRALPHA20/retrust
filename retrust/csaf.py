@@ -99,23 +99,48 @@ ROLLUP_TITLE = re.compile(r"third.?party|open.?source", re.I)
 ROLLUP_CVES = 50
 
 # Remediation text that names a shipped fix despite a "mitigation" category.
-# CISA files real patches under "mitigation" when they ship through a support
-# channel -- Moxa's EDS advisories say "Install firmware patch. Patches may
-# be requested from Customer Service" with no vendor_fix entry anywhere.
+# Across the corpus CISA and the vendors file real, shipped patches under
+# "mitigation"/"workaround" far more often than under "vendor_fix": "Schneider
+# Electric released firmware v1.5.1.0", "Update to the latest version",
+# "Upgrade to one of the corrected versions", "Install firmware patch". Read
+# naively as "0 fixes available" every one of those understates a product the
+# vendor actually fixed -- the Moxa EDS bug was one phrasing of thousands.
+#
+# A fix signal is a RELEASE/GO-TO/GET verb pointing at a fix OBJECT (a version,
+# firmware, patch, release, or a bare v-number), optionally qualified ("the
+# latest", "one of the corrected"). Measured against the whole corpus this
+# flags 4,010 of 31,991 mitigation/workaround remediations and -- the guard
+# that matters -- ZERO of the 1,086 that CISA itself marks "none_available".
+_FIX_QUAL = (r"(?:the |one of the |their |latest |newest |new |current |"
+             r"corrected |fixed |patched |updated |following |supported |a |an )*")
+_FIX_NOUN = (r"(?:firmware|version|release|update|patch|hotfix|build|revision|"
+             r"service pack)")
+_FIX_OBJ = r"(?:" + _FIX_QUAL + _FIX_NOUN + r"|v\d[\w.]*)"
 FIX_IN_TEXT = re.compile(
-    r"(install|apply|request)\w*\s+(the\s+)?(firmware\s+)?patch"
-    r"|update[sd]?\s+to\s+(firmware|version|v\d)"
-    r"|upgrade\s+to\s+(firmware|version|v\d)"
-    r"|fixed\s+in\s+(firmware|version)", re.I)
+    r"(?:released?|releases|publish(?:ed|es)?|issued?|provides?|provided|"
+    r"made available|offers?|created|developed|has)\s+(?:a |an |the |new )?" + _FIX_OBJ +
+    r"|(?:update|upgrade|migrate|move)\s+(?:your [\w ]+ )?to\s+" + _FIX_OBJ +
+    r"|(?:download|install|apply|deploy|obtain|get)\s+(?:and install )?(?:the |a )?" + _FIX_OBJ +
+    r"|(?:fixed|resolved|corrected|addressed|remediated|patched)\s+(?:in|with|by|as of)\s+" + _FIX_OBJ +
+    r"|" + _FIX_OBJ + r"\s+(?:is|are|can be|has been)\s+(?:available|obtained|downloaded|found|released)"
+    r"|(?:patch|update|fix|hotfix)(?:es)?\s+(?:is|are)\s+available"
+    r"|available\s+(?:in|for|as of|starting (?:in|with))\s+" + _FIX_OBJ,
+    re.I)
 
 # Text that cancels a fix signal: no patch, a future patch, an un-patchable
-# flaw. A positive match beside any of these is not a shipped fix.
+# flaw, end of support. A positive match beside any of these is not a shipped
+# fix -- "there is no fixed version", "a patch will be released", "cannot be
+# patched" must never read as a fix on the strength of the word "version".
 NO_FIX_IN_TEXT = re.compile(
-    r"\bno\s+(patch|fix|update|remediation)\b"
-    r"|\bnot\s+(yet\s+)?(fixed|patched|available)\b"
-    r"|\bcannot\s+be\s+(patched|fixed|remediated)\b"
-    r"|\bwill\s+(be\s+)?(release|provide|publish|issue)"
-    r"|\bplan(s|ned|ning)?\s+to\b", re.I)
+    r"\bno\s+(?:patch|fix|update|remediation|mitigation)\b"
+    r"|\b(?:do(?:es)?\s+not|cannot|can't|unable to)\s+[\w ]{0,20}"
+    r"(?:fix|patch|updat|upgrad|remediat)"
+    r"|\bnot\s+(?:yet\s+)?(?:fixed|patched|available|planned)\b"
+    r"|\bno\s+(?:fixed|patched|corrected)\s+version\b"
+    r"|\b(?:will|to)\s+(?:be\s+)?(?:released?|provid\w+|publish\w+|issu\w+|"
+    r"deliver\w+|address\w+)\b"
+    r"|\bplan(?:s|ned|ning)?\s+to\b|\bfuture\s+(?:release|version|update)\b"
+    r"|\bend[- ]of[- ](?:life|support)\b|\bno longer supported\b", re.I)
 
 
 def _names_a_shipped_fix(text):
