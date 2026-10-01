@@ -45,6 +45,14 @@ class Assessment:
     undecided_count: int = 0
     confidence: float = 0.0     # 0-1, from the evidence-quality pillar
     network_exposure: str | None = None
+    # Distinct CVEs arriving from the vendor's own advisories against those
+    # arriving in third-party component bundles, where per-CVE reachability
+    # on the device was never established.
+    first_party_count: int = 0
+    third_party_count: int = 0
+    # Facts that demand a human look but do not gate: a KEV-listed CVE inside
+    # a component bundle is the canonical one. Rendered beside the gates.
+    cautions: list = field(default_factory=list)
     notes: list = field(default_factory=list)
     # (findings, advisories, certificates, gates) -- lets sensitivity re-score
     # this product under other weightings without redoing the lookups.
@@ -60,7 +68,10 @@ def _exploitation(findings):
     is a convergent signal rather than double counting.
     """
     if not findings:
-        return Pillar("Exploitation", 100.0, 1.0, ["no known CVEs for this product"])
+        # No findings is absent evidence, not good news: coverage 0 excludes
+        # this pillar from the composite instead of scoring silence as safety.
+        return Pillar("Exploitation", 100.0, 0.0,
+                      ["no advisory findings to measure"])
 
     kev = {f.cve for f in findings if f.in_kev}
     ransomware = {f.cve for f in findings if f.ransomware}
@@ -105,7 +116,7 @@ def _severity(findings):
     """
     scored = [f for f in findings if f.cvss is not None]
     if not findings:
-        return Pillar("Severity", 100.0, 1.0, ["no known CVEs for this product"])
+        return Pillar("Severity", 100.0, 0.0, ["no advisory findings to measure"])
     if not scored:
         return Pillar("Severity", 50.0, 0.0, ["no CVSS data; scored neutral"])
 
@@ -181,8 +192,11 @@ def _vendor_practice(findings, advisories, vendor_key=None):
     with_cwe = sum(1 for f in findings if f.cwe)
     quality = (with_cvss / len(findings) + with_cwe / len(findings)) / 2
 
+    # The publisher list is drawn from the CSAF ecosystem's own registries
+    # and is necessarily partial, so absence earns no penalty beyond missing
+    # the bonus: quality of what WAS published carries the pillar.
     publishes = (vendor_key or "") in CSAF_PUBLISHERS
-    score = (35 if publishes else 0) + 45 * quality + (20 if publishes else 0)
+    score = 70 * quality + (30 if publishes else 0)
 
     evidence = [
         f"{len(advisories)} advisor{'y' if len(advisories) == 1 else 'ies'} in this assessment",
@@ -190,7 +204,7 @@ def _vendor_practice(findings, advisories, vendor_key=None):
     ]
     evidence.append(
         "runs its own CSAF advisory feed" if publishes else
-        "no CSAF feed of its own found; disclosure relies on CISA republishing")
+        "no self-published CSAF feed in this tool's registry list; absence here is not evidence of absence")
     return Pillar("Vendor practice", min(100.0, score), 1.0, evidence)
 
 
@@ -232,24 +246,32 @@ def _patchability(findings):
     vulnerability, so we read it rather than infer it.
     """
     if not findings:
-        return Pillar("Patch availability", 100.0, 1.0, ["no known CVEs to remediate"])
+        return Pillar("Patch availability", 100.0, 0.0,
+                      ["no advisory findings to measure"])
 
-    counts = {}
-    for finding in findings:
-        counts[finding.remediation] = counts.get(finding.remediation, 0) + 1
     n = len(findings)
-    fixed = counts.get("vendor_fix", 0)
-    workaround = counts.get("mitigation", 0) + counts.get("workaround", 0)
-    none_available = counts.get("none_available", 0)
+    fixed = sum(1 for f in findings if f.fixed)
+    # CISA files some shipped patches under "mitigation"; Finding.fixed reads
+    # the text. Said out loud so "0/10 have a vendor fix" is never printed
+    # about a product the vendor fixed through a support channel.
+    texted = sum(1 for f in findings
+                 if f.fixed and f.remediation != "vendor_fix")
+    workaround = sum(1 for f in findings if not f.fixed
+                     and f.remediation in ("mitigation", "workaround"))
+    none_available = sum(1 for f in findings
+                         if f.remediation == "none_available")
     known = fixed + workaround + none_available
 
     if not known:
         return Pillar("Patch availability", 50.0, 0.0,
-                      ["advisories do not state remediation status; scored neutral"])
+                      ["advisories do not state remediation status"])
 
     # A vendor fix counts fully; a workaround counts part-way; nothing counts zero.
     score = 100 * (fixed + 0.4 * workaround) / known
     evidence = [f"{fixed}/{n} advisory findings have a vendor fix"]
+    if texted:
+        evidence.append(f"{texted} of those are filed as mitigations whose text"
+                        " names shipped firmware")
     if workaround:
         evidence.append(f"{workaround} offer only a mitigation or workaround")
     if none_available:
@@ -266,9 +288,13 @@ def _certification(certificates):
     neutral value as one we have no data for -- the difference shows in coverage.
     """
     if not certificates:
+        # Coverage 0 excludes the pillar from the composite. Scoring the gap
+        # as a neutral 50 let a vendor with one certificate out-rank an
+        # equally certified vendor the loaded lists happened not to cover.
         return Pillar("Certification", 50.0, 0.0,
-                      ["no IEC 62443 or Common Criteria certificate found for this vendor",
-                       "absence of certification is not evidence of insecurity"])
+                      ["no certificate found in the loaded sources (ISASecure,"
+                       " Common Criteria, curated) -- excluded from the score"
+                       " rather than scored neutral"])
 
     schemes = sorted({c["scheme"] for c in certificates})
     product_level = [c for c in certificates if c.get("matches_product")]
@@ -367,6 +393,33 @@ PILLARS = [
 DEFAULT_WEIGHTS = {spec.key: spec.weight for spec in PILLARS}
 
 
+def _cautions(third_party):
+    """What a component bundle demands of a human, without gating.
+
+    A KEV-listed CVE inside a bundle is confirmed exploitation of the
+    component somewhere -- whether it is reachable on this device is exactly
+    what the bundle does not establish. Gating on it would punish the vendors
+    who disclose their component stacks; ignoring it would hide confirmed
+    exploitation. So it is raised beside the gates, named, and handed to the
+    buyer with the question that actually decides it.
+    """
+    cautions = []
+    kev = sorted({f.cve for f in third_party if f.in_kev and not f.fixed})
+    if kev:
+        cautions.append({
+            "caution": "KEV-listed CVE(s) in third-party component bundles",
+            "detail": f"{len(kev)} CVE(s) with confirmed exploitation and no"
+                      f" vendor fix arrive via component bundle advisories: "
+                      + ", ".join(kev[:5])
+                      + (" and more" if len(kev) > 5 else "")
+                      + ". Whether the affected component is reachable on this"
+                      " device decides the risk -- ask the vendor (the RFQ"
+                      " annex does).",
+            "source": "CISA KEV against component bundle advisories",
+        })
+    return cautions
+
+
 def check_gates(findings, vendor, screening_gates=()):
     """Facts that end the assessment regardless of everything else."""
     gates = list(screening_gates)
@@ -446,49 +499,122 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
            network_exposure=None):
     """Score a resolved product. Returns an Assessment."""
     weights = weights or DEFAULT_WEIGHTS
-    undecided = [f for f in findings if not f.decided]
 
-    scored = []
+    # Findings from the vendor's own advisories against those arriving in
+    # third-party component bundles. The bundles establish that a component
+    # ships on the device, not that each of its hundreds of CVEs is reachable
+    # there -- so the pillars measure the first-party set when one exists,
+    # and the bundle set is reported and cautioned rather than allowed to
+    # swamp the score. A vendor that honestly discloses its Linux side must
+    # not score worse than one that stays quiet about having one.
+    first = [f for f in findings if not f.third_party]
+    third = [f for f in findings if f.third_party]
+    base = first if first else findings
+    undecided = [f for f in base if not f.decided]
+
+    measured = []
     all_pillars = []
     for spec in PILLARS:
         if spec.key == "network_exposure":
             pillar = _network_exposure(network_exposure)
             all_pillars.append(pillar)
             if network_exposure is not None:
-                scored.append((spec, pillar))
+                measured.append((spec, pillar))
             continue
-        pillar = spec.measure(findings, advisories, certificates, vendor_key)
-        scored.append((spec, pillar))
+        pillar = spec.measure(base, advisories, certificates, vendor_key)
+        measured.append((spec, pillar))
         all_pillars.append(pillar)
-    confidence = _evidence_quality(findings)
+    confidence = _evidence_quality(base)
     pillars = all_pillars + [confidence]
 
-    total = sum(weights.get(spec.key, 0) for spec, _ in scored) or 1.0
-    composite = sum(pillar.score * weights.get(spec.key, 0)
-                    for spec, pillar in scored) / total
+    # One rule for missing evidence, every pillar alike: coverage 0 means the
+    # pillar measured nothing, so it is excluded and the rest renormalized --
+    # never scored as a phantom neutral that moves rankings. `scored` is the
+    # participation flag every renderer and the sensitivity table read, so
+    # the exclusion is visible everywhere the same way.
+    usable = [(spec, pillar) for spec, pillar in measured if pillar.coverage > 0]
+    dropped = [spec.name for spec, pillar in measured if pillar.coverage == 0]
+    for _, pillar in measured:
+        if pillar.coverage == 0:
+            pillar.scored = False
 
-    gates = check_gates(findings, product_label, screening_gates)
+    gates = check_gates(base, product_label, screening_gates)
+    cautions = _cautions(third)
+
+    if not usable:
+        notes = ["No pillar had measurable evidence, so no score is computed."
+                 " Absence of findings is not a clean bill of health: nobody"
+                 " may have published about this product."]
+        if gates:
+            notes.insert(0, "Screening gates still apply without a score.")
+        return Assessment(
+            product=product_label, verdict="AVOID" if gates else "NOT ASSESSED",
+            score=None, pillars=pillars, gates=gates, cautions=cautions,
+            findings_count=len({f.cve for f in findings}),
+            first_party_count=len({f.cve for f in first}),
+            third_party_count=len({f.cve for f in third}),
+            notes=notes)
+
+    total = sum(weights.get(spec.key, 0) for spec, _ in usable) or 1.0
+    composite = sum(pillar.score * weights.get(spec.key, 0)
+                    for spec, pillar in usable) / total
+
+    prefer_threshold = (bands or BANDS)[0][0]
+    cap_note = None
+    unmitigable = sorted({
+        f.cve for group in weakness.classify(base)
+        if group.name in weakness.UNMITIGABLE
+        for f in base if f.cve in group.cves and not f.fixed})
+    if unmitigable and composite >= prefer_threshold:
+        # A credential baked into firmware with no fix shipped is not a
+        # weighting question: whatever the other pillars say, this product
+        # cannot be preferred while that stands.
+        composite = prefer_threshold - 0.1
+        cap_note = (
+            "Capped below PREFER: " + ", ".join(unmitigable[:4])
+            + (" and more" if len(unmitigable) > 4 else "")
+            + " are hardcoded-credential class flaws with no vendor fix."
+            " The operator cannot engineer around them for the life of the"
+            " asset, so no weighting can make this product preferred.")
+
     verdict = "AVOID" if gates else next(b for t, b in (bands or BANDS)
                                          if composite >= t)
 
     notes = []
-    if len(findings) != len({f.cve for f in findings}):
+    if cap_note:
+        notes.append(cap_note)
+    if third:
         notes.append(
-            f"{len({f.cve for f in findings})} distinct CVEs across {len(findings)} "
+            f"{len({f.cve for f in third})} of the CVEs in scope arrive via"
+            f" third-party component bundle advisories; the pillars above"
+            f" measure the {len({f.cve for f in first})} first-party CVE(s)."
+            " A bundle establishes the component ships on the device, not"
+            " that each of its CVEs is reachable there -- the cautions below"
+            " say what still needs a human.")
+    if not first and third:
+        notes.append(
+            "Every finding arrives via component bundles, so the pillars were"
+            " measured on the bundle set -- treat the score as describing the"
+            " component stack, not the vendor's own firmware.")
+    if len(base) != len({f.cve for f in base}):
+        notes.append(
+            f"{len({f.cve for f in base})} distinct CVEs across {len(base)} "
             "advisory findings. Pillar coverage and proportions use advisory "
             "findings; exploitation counts and gates use distinct CVEs."
         )
     if undecided:
         notes.append(
-            f"{len(undecided)} finding(s) were kept in scope because their version "
-            "ranges were not confirmed against firmware. Supply a firmware "
-            "version, then review any ranges that remain undecided."
+            f"The version check is pending for {len({f.cve for f in undecided})}"
+            " CVE(s): their ranges were not confirmed against firmware. Supply"
+            " a firmware version, then review any that remain undecided."
         )
-    if not findings:
+    if dropped:
         notes.append(
-            "No advisories name this product. That is not proof it is secure -- it "
-            "may simply mean nobody has published about it."
-        )
+            ", ".join(dropped) + (" had" if len(dropped) > 1 else " had")
+            + " no evidence to measure, so "
+            + ("their weights were" if len(dropped) > 1 else "its weight was")
+            + " excluded and the remaining pillars renormalized -- one rule"
+            " for every pillar, never a phantom neutral score.")
     if network_exposure is None:
         share = weights.get("network_exposure", 0.0) / (sum(weights.values()) or 1.0)
         notes.append(f"Network exposure was not provided; its configured {share:.1%} "
@@ -498,15 +624,18 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     # or how bad. Notes rather than a scoring term: a credential baked into
     # firmware is not three points off a composite, it is something the operator
     # cannot engineer around for the life of the asset.
-    notes.extend(weakness.notes(weakness.classify(findings)))
+    notes.extend(weakness.notes(weakness.classify(base)))
 
     return Assessment(
         product=product_label, verdict=verdict, score=round(composite, 1),
         # Distinct CVEs, not findings: one CVE named by two advisories is one
         # thing to fix, and every label that shows this says "CVE(s)".
-        pillars=pillars, gates=gates,
+        pillars=pillars, gates=gates, cautions=cautions,
         findings_count=len({f.cve for f in findings}),
-        undecided_count=len(undecided), confidence=round(confidence.coverage, 2),
+        first_party_count=len({f.cve for f in first}),
+        third_party_count=len({f.cve for f in third}),
+        undecided_count=len({f.cve for f in undecided}),
+        confidence=round(confidence.coverage, 2),
         network_exposure=network_exposure,
         notes=notes,
     )

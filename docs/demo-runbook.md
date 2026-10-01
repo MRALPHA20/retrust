@@ -1,5 +1,11 @@
 # ReTrust live demo
 
+> **At a booth, run it locally.** The hosted free-tier instance cold-starts in
+> about 30 seconds and serves one request at a time; conference Wi-Fi makes
+> both worse. `retrust snapshot --restore` plus `retrust serve` needs no
+> network at all, and the numbers are identical because the data is pinned.
+
+
 ## Start the local workspace
 
 From the repository directory:

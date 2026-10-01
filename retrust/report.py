@@ -68,6 +68,10 @@ code{white-space:nowrap}
  background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
 .gate b{color:var(--avoid)}
 .gate .src{display:block;margin-top:.3rem;font-size:.82rem;color:var(--faint)}
+.caution{border:1px solid var(--rule);border-left:3px solid var(--cond);
+ background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
+.caution b{color:var(--cond)}
+.caution .src{display:block;margin-top:.3rem;font-size:.82rem;color:var(--faint)}
 .tw{overflow-x:auto;margin:1rem 0}
 .tw:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .table-scroll-hint{display:none}
@@ -226,6 +230,15 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             f'<div class="gate"><b>Hard gate &mdash; {_esc(gate["gate"])}</b><br>'
             f'{_ids(_esc(gate["detail"]))}'
             f'<span class="src">Source: {_esc(gate["source"])}</span></div>')
+
+    # A caution demands a human look without forcing the verdict: rendered in
+    # the warning colour, right where a gate would sit, so it cannot be missed
+    # on a page whose headline verdict reads well.
+    for caution in getattr(assessment, "cautions", ()):
+        parts.append(
+            f'<div class="caution"><b>Caution &mdash; {_esc(caution["caution"])}</b><br>'
+            f'{_ids(_esc(caution["detail"]))}'
+            f'<span class="src">Source: {_esc(caution["source"])}</span></div>')
 
     if assessment.pillars:
         parts.append(_pillar_table(assessment, weights))

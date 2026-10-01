@@ -141,13 +141,48 @@ def refresh(data_dir="data", include_common_criteria=True):
     return counts
 
 
+# Certifications the fetched directories structurally miss. ISASecure lists
+# only its own chartered certifications, but IEC 62443 certificates are also
+# issued by TUV SUD, TUV Rheinland and exida -- which is how Siemens and
+# Rockwell, two of the largest OT vendors, hold 62443-4-1 process and 4-2
+# component certificates while appearing in no fetched list. Reading that gap
+# as "no certificate found" skewed rankings between equally certified
+# vendors, so the well-documented ones are carried here, each with a pointer
+# to where the claim can be checked. Curated means curated: verify with the
+# certifying body before relying on an entry, and the detail line says so.
+CURATED = [
+    {"scheme": "IEC 62443-4-1", "vendor": "Siemens", "product": "",
+     "detail": "TUV SUD certified development process | curated entry --"
+               " verify with the certifying body",
+     "source": "https://www.siemens.com/global/en/products/automation/"
+               "topic-areas/industrial-cybersecurity.html"},
+    {"scheme": "IEC 62443-4-2", "vendor": "Siemens",
+     "product": "SIMATIC S7-1500",
+     "detail": "TUV SUD certified component family | curated entry -- verify"
+               " with the certifying body",
+     "source": "https://www.siemens.com/global/en/products/automation/"
+               "topic-areas/industrial-cybersecurity.html"},
+    {"scheme": "IEC 62443-4-1", "vendor": "Rockwell Automation", "product": "",
+     "detail": "TUV Rheinland certified development process | curated entry --"
+               " verify with the certifying body",
+     "source": "https://www.rockwellautomation.com/en-us/capabilities/"
+               "industrial-security.html"},
+    {"scheme": "IEC 62443-4-2", "vendor": "Rockwell Automation",
+     "product": "ControlLogix 5580",
+     "detail": "TUV Rheinland certified component | curated entry -- verify"
+               " with the certifying body",
+     "source": "https://www.rockwellautomation.com/en-us/capabilities/"
+               "industrial-security.html"},
+]
+
+
 def load(data_dir="data"):
-    """Load the cached certificates, keyed by normalised vendor."""
+    """Load the cached certificates plus the curated layer, keyed by vendor."""
     path = Path(data_dir) / "certifications.json"
-    if not path.exists():
-        return {}
+    records = (json.loads(path.read_text(encoding="utf-8"))
+               if path.exists() else [])
     by_vendor = {}
-    for record in json.loads(path.read_text(encoding="utf-8")):
+    for record in records + CURATED:
         by_vendor.setdefault(normalize_vendor(record["vendor"]), []).append(record)
     return by_vendor
 

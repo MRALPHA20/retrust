@@ -178,7 +178,7 @@ def _undecided(assessment, findings):
     return [Question(
         text="Confirm in writing, for each advisory cited, whether the firmware"
              " version you are quoting is affected.",
-        why=f"{count} finding(s) could not be decided against a version here:"
+        why=f"{count} CVE(s) could not be decided against a version here:"
             " either no version was checked, or the advisory's version range"
             " is one this tool could not parse. Each was kept in scope rather"
             " than assumed safe, and only the vendor can settle it.",

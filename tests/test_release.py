@@ -112,7 +112,9 @@ def test_disabling_one_pillar_keeps_other_defaults(tmp_path):
     path.write_text(json.dumps({'weights': {'exploitation': 0}}))
     weights, _, _ = config.load(path)
     assert weights == {**score.DEFAULT_WEIGHTS, 'exploitation': 0}
-    assert score.assess('Example', [], weights=weights).score is not None
+    # Empty findings no longer score: absence of evidence is excluded,
+    # not read as safety. The config mechanics still round-trip.
+    assert score.assess('Example', [], weights=weights).verdict == 'NOT ASSESSED'
 
 
 @pytest.mark.parametrize('document', [[], {'weights': {'exploitation': 'nan'}},

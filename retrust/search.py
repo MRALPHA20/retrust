@@ -56,6 +56,11 @@ def _ladder(column, query, normalise, split=True):
     # One-character words narrow nothing, the judgement match.py makes as well.
     words = re.split(r"[^A-Za-z0-9]+", query) if split else []
     tokens = [word for raw in words if len(word := normalise(raw)) > 1] or [key]
+    # A bare number is too promiscuous to widen a mixed query: "Foobar 9000"
+    # must not suggest every 9000-series device on the strength of the digits
+    # alone. Words carry the widening; numbers still narrow (rung 3) and rank,
+    # and an all-number query keeps its numbers -- searching "9000" is legal.
+    widening = [t for t in tokens if any(c.isalpha() for c in t)] or tokens
     rungs = [f"WHEN {column} = ? THEN 1", f"WHEN {column} LIKE ? THEN 2"]
     parameters = [key, key + "%"]
     if len(tokens) > 1:          # "every word appears" needs two words to mean it
@@ -63,8 +68,8 @@ def _ladder(column, query, normalise, split=True):
                      + " THEN 3")
         parameters += [f"%{token}%" for token in tokens]
     return ("CASE " + " ".join(rungs) + " ELSE 4 END",
-            "(" + " OR ".join(f"{column} LIKE ?" for _ in tokens) + ")",
-            parameters + [f"%{token}%" for token in tokens])
+            "(" + " OR ".join(f"{column} LIKE ?" for _ in widening) + ")",
+            parameters + [f"%{token}%" for token in widening])
 
 
 def _commonest(connection, table, group, value, keys):

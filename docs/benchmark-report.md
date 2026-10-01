@@ -34,7 +34,7 @@ Twenty serial fresh CLI processes per case, after one warm-up; warm OS cache; st
 
 ## Historical diagnostic
 
-At the 2022-01-01 cutoff, 5,848 products were scored from pre-cutoff advisories. With 1,000 seeded permutations, score versus later CVE disclosure has Spearman rho **+0.456** (p=0.001). Within 21 vendor strata containing 3,822 products, rho is **+0.258** (p=0.001); excluding Siemens gives **+0.045**. The positive relationship weakens with vendor controls, consistent with disclosure/exposure effects, but this does not establish causation. Only two products across two vendors qualify for the later-KEV outcome.
+At the 2022-01-01 cutoff, 5,848 products were scored from pre-cutoff advisories. With 1,000 seeded permutations, score versus later CVE disclosure has Spearman rho **+0.431** (p=0.001). Within the vendor strata, rho is **+0.269** (p=0.001); excluding Siemens gives **+0.044**. (Figures re-measured after the 2026-09-29 scoring-model review: third-party bundle split, certification exclusion rule, and the unmitigable-weakness cap all moved the scores the backtest reweighs.) The positive relationship weakens with vendor controls, consistent with disclosure/exposure effects, but this does not establish causation. Only two products across two vendors qualify for the later-KEV outcome.
 
 This does not validate prediction of compromise. The current run covers one cutoff; the historical multi-cutoff figures have not been rerun for this release. Current evidence support and future risk prediction are different claims.
 

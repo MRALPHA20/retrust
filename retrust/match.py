@@ -265,6 +265,18 @@ class Finding:
     decided: bool
     remediation: str = "unknown"   # vendor_fix / mitigation / workaround / none_available
     vector: str | None = None      # the CVSS vector behind cvss, when given
+    # The advisory's remediation text names a shipped fix even though its
+    # category says "mitigation" -- CISA's filing for patches that ship via a
+    # support channel. The category above stays as published.
+    fix_text: bool = False
+    # The finding arrives via a third-party/component bundle advisory, where
+    # per-CVE reachability on the device is exactly what was not established.
+    third_party: bool = False
+
+    @property
+    def fixed(self):
+        """A vendor fix exists, whatever CISA's category calls it."""
+        return self.remediation == "vendor_fix" or self.fix_text
 
 
 def findings(connection, resolution, version=None):
@@ -291,9 +303,11 @@ def findings(connection, resolution, version=None):
             decided = False            # no version given: nothing was decided
 
         rows = connection.execute(
-            "SELECT a.cve, a.cvss, a.cwe, a.remediation, a.vector,"
-            "       e.epss, e.in_kev, e.ransomware"
-            " FROM affected a LEFT JOIN exploitation e ON e.cve = a.cve"
+            "SELECT a.cve, a.cvss, a.cwe, a.remediation, a.vector, a.fix_text,"
+            "       v.rollup, e.epss, e.in_kev, e.ransomware"
+            " FROM affected a"
+            " JOIN advisory v ON v.id = a.advisory_id"
+            " LEFT JOIN exploitation e ON e.cve = a.cve"
             " WHERE a.advisory_id = ? AND a.product_id = ?",
             (match.advisory_id, match.product_id)).fetchall()
 
@@ -323,6 +337,8 @@ def findings(connection, resolution, version=None):
                 version_range=match.version_range, decided=decided,
                 remediation=row["remediation"] or "unknown",
                 vector=row["vector"],
+                fix_text=bool(row["fix_text"]),
+                third_party=bool(row["rollup"]),
             )
             seen[key] = finding
             out.append(finding)

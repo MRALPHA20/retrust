@@ -113,7 +113,7 @@ def test_undecided_ranges_ask_the_vendor_to_confirm_citing_advisories():
     built = questions.build(_assessment(findings), findings)
     confirm = next(q for q in built if "quoting" in q.text)
     assert confirm.evidence == ["ICSA-26-002-01", "ICSA-26-003-02"]
-    assert "2 finding(s)" in confirm.why
+    assert "2 CVE(s)" in confirm.why
 
 
 def test_wormable_vectors_prompt_the_secure_by_default_question():

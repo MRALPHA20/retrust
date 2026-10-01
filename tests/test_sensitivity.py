@@ -173,7 +173,7 @@ def test_vendor_practice_discriminates_on_csaf_publishing():
     other = score._vendor_practice(findings, {"A"}, vendor_key="someoneelse")
     assert publisher.score > other.score
     assert any("own CSAF" in e for e in publisher.evidence)
-    assert any("relies on CISA" in e for e in other.evidence)
+    assert any("not evidence of absence" in e for e in other.evidence)
 
 
 def test_gated_product_skips_sampling():

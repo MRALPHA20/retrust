@@ -20,6 +20,8 @@ The demonstration uses the browser workspace and interactive terminal to compare
 
 ReTrust includes reproducible evaluation commands and publishes the limits of its measurements. On the current local corpus, a 4,000-query internal round-trip benchmark recovers the source advisory with 99.85% precision and 99.70% recall. It does not penalize extra matches, so this is not general matching-accuracy validation. A historical backtest does not establish prediction of compromise. The tool organizes current public evidence for a buyer's review; it complements operational scanners, inventory tools and firmware analysis.
 
+Relative to prior art: CISA's advisory pages answer one advisory at a time with no scoring or firmware awareness, and commercial asset-risk platforms (Claroty, Nozomi, Dragos) score equipment already deployed, from traffic they already observe. ReTrust works at the other end of the lifecycle -- procurement time -- and its distinct contribution is order-number resolution off a requisition, firmware-aware range filtering, and a transparent, user-editable weighting a reviewer can argue with. An official-source capability comparison is included in the documentation.
+
 ## Demonstration, approximately five minutes
 
 1. Explain the requisition: vendor, model, order number and firmware.

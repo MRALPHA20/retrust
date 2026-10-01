@@ -81,6 +81,24 @@ class Product:
     helper_order_number: bool = False
 
 
+# An advisory that bundles a component stack's CVEs wholesale -- the Linux
+# kernel, glibc and OpenSSH behind a PLC's web server -- is a different kind
+# of evidence from a flaw in the vendor's own firmware: which of those
+# hundreds of CVEs is reachable on the device is exactly what such a bundle
+# does not establish. Flagged by title, or by sheer bulk.
+ROLLUP_TITLE = re.compile(r"third.?party|open.?source", re.I)
+ROLLUP_CVES = 50
+
+# Remediation text that names a shipped fix despite a "mitigation" category.
+# CISA files real patches under "mitigation" when they ship through a support
+# channel -- Moxa's EDS advisories say "Install firmware patch. Patches may
+# be requested from Customer Service" with no vendor_fix entry anywhere.
+FIX_IN_TEXT = re.compile(
+    r"(install|apply|request)\w*\s+(the\s+)?(firmware\s+)?patch"
+    r"|update[sd]?\s+to\s+(firmware|version|v\d)"
+    r"|upgrade\s+to|fixed\s+in\s+(firmware|version)", re.I)
+
+
 @dataclass
 class Advisory:
     """One advisory, with its products and its CVE-to-product mapping."""
@@ -89,6 +107,7 @@ class Advisory:
     title: str
     released: str
     source: str
+    rollup: bool = False   # a third-party/component bundle, see ROLLUP_TITLE
     products: list = field(default_factory=list)
     # cve -> {"product_ids": [...], "cvss": float|None, "cwe": str|None}
     vulnerabilities: dict = field(default_factory=dict)
@@ -201,6 +220,9 @@ def _parse(path):
         except Exception:
             continue
 
+    advisory.rollup = bool(ROLLUP_TITLE.search(advisory.title)) \
+        or len(advisory.vulnerabilities) >= ROLLUP_CVES
+
     return advisory if advisory.products else None
 
 
@@ -268,6 +290,14 @@ def _vulnerability(vulnerability, product_groups=None):
     else:
         remediation = "unknown"
 
+    # The category is kept as published; this flag says the text names a
+    # shipped fix, so "0/10 have a vendor fix" is never printed about a
+    # product the vendor actually fixed.
+    fix_text = remediation != "vendor_fix" and any(
+        isinstance(r, dict) and r.get("category") in ("mitigation", "workaround")
+        and FIX_IN_TEXT.search(r.get("details") or "")
+        for r in _list(vulnerability.get("remediations")))
+
     # Remediation scope belongs to the product, not just the CVE. A patch for
     # one controller must not make another controller appear repairable.
     groups = {g.get("group_id"): set(_list(g.get("product_ids")))
@@ -297,6 +327,7 @@ def _vulnerability(vulnerability, product_groups=None):
         "vector": vector,
         "remediation": remediation,
         "remediation_by_product": per_product,
+        "fix_text": fix_text,
     }
 
 

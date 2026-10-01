@@ -15,7 +15,8 @@ from . import csaf
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS advisory (
-    id TEXT PRIMARY KEY, title TEXT, released TEXT, source TEXT);
+    id TEXT PRIMARY KEY, title TEXT, released TEXT, source TEXT,
+    rollup INTEGER DEFAULT 0);  -- a third-party/component bundle advisory
 
 CREATE TABLE IF NOT EXISTS product (
     rowid_ INTEGER PRIMARY KEY,
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS order_number (
 CREATE TABLE IF NOT EXISTS affected (
     advisory_id TEXT, product_id TEXT, cve TEXT, cvss REAL, cwe TEXT,
     remediation TEXT,
-    vector TEXT);      -- the CVSS vector behind cvss, not just the number
+    vector TEXT,       -- the CVSS vector behind cvss, not just the number
+    fix_text INTEGER DEFAULT 0);  -- remediation text names a shipped fix
 
 -- EPSS scores through time, for the LEV estimate. Only CVEs this corpus names
 -- are kept: the full feed is 250,000 CVEs a day and we would store 249,000 of
@@ -201,9 +203,9 @@ def _ingest_root(connection, root, counts, progress):
             connection.execute("DELETE FROM product WHERE advisory_id=?", key)
             connection.execute("DELETE FROM affected WHERE advisory_id=?", key)
         connection.execute(
-            "INSERT OR REPLACE INTO advisory VALUES (?,?,?,?)",
+            "INSERT OR REPLACE INTO advisory VALUES (?,?,?,?,?)",
             (advisory.advisory_id, advisory.title, advisory.released,
-             Path(advisory.source).name),
+             Path(advisory.source).name, int(advisory.rollup)),
         )
         counts["advisories"] += 1
 
@@ -230,11 +232,12 @@ def _ingest_root(connection, root, counts, progress):
         rows = [
             (advisory.advisory_id, product_id, cve, data["cvss"], data["cwe"],
              data.get("remediation_by_product", {}).get(
-                 product_id, data.get("remediation", "unknown")), data.get("vector"))
+                 product_id, data.get("remediation", "unknown")), data.get("vector"),
+             int(data.get("fix_text", False)))
             for cve, data in advisory.vulnerabilities.items()
             for product_id in data["product_ids"]
         ]
-        connection.executemany("INSERT INTO affected VALUES (?,?,?,?,?,?,?)", rows)
+        connection.executemany("INSERT INTO affected VALUES (?,?,?,?,?,?,?,?)", rows)
         counts["cve_links"] += len(rows)
 
         if progress and counts["advisories"] % 500 == 0:

@@ -118,6 +118,12 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
                          score_min=probe.score or 0.0, score_max=probe.score or 0.0,
                          score_median=probe.score or 0.0)
 
+    # No pillar had evidence, so there is no score to reweigh: sampling would
+    # dress "nothing was measured" up as a robustness figure.
+    if probe.score is None:
+        return Stability(samples=0, verdicts={probe.verdict: 1}, gated=False,
+                         score_min=0.0, score_max=0.0, score_median=0.0)
+
     scores, verdicts = [], {}
     for _ in range(samples):
         weights = _random_weights(rng)

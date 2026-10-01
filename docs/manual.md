@@ -1012,9 +1012,9 @@ permutations. It does not validate prediction of real-world compromise.
 
 | Diagnostic | Products | Spearman rho |
 |---|---:|---:|
-| Score versus later CVE disclosure | 5,848 | +0.456 |
-| Within vendor | 3,822 | +0.258 |
-| Within vendor, excluding Siemens | See raw results | +0.045 |
+| Score versus later CVE disclosure | 5,848 | +0.431 |
+| Within vendor | 3,822 | +0.269 |
+| Within vendor, excluding Siemens | See raw results | +0.044 |
 
 Pooled and within-vendor permutation p-values are 0.001. The weakening positive
 association is consistent with disclosure/exposure effects, but does not prove

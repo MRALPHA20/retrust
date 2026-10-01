@@ -50,7 +50,7 @@ def page(title, body, subtitle="", active=None):
         '<body class="app"><a class="skip" href="#main">Skip to content</a>'
         '<aside class="sidebar"><a class="brand" href="/" aria-label="ReTrust home">'
         '<span class="brand-symbol" aria-hidden="true">R<span>↗</span></span>'
-        '<span>ReTrust<small>OT PROCUREMENT INTELLIGENCE</small></span></a>'
+        '<span>ReTrust<small>OPEN-SOURCE OT RISK TOOLING</small></span></a>'
         f'<nav class="desktop-nav" aria-label="Main navigation">{navigation}</nav>'
         f'<details class="mobile-menu"><summary>Menu · {esc(current)}</summary>'
         f'<nav aria-label="Mobile navigation">{navigation}</nav>'
@@ -65,7 +65,9 @@ def page(title, body, subtitle="", active=None):
         f'<main id="main" class="wrap"><div class="page-meta"><span>RETRUST / {esc(current).upper()}</span>'
         f'<span>{esc(subtitle) + " · " if subtitle else ""}{date.today().isoformat()}</span></div>'
         + body + '<footer><span>ReTrust <span class="muted">/</span> Evidence before commitment.</span>'
-        '<span>Decision support, not a certification.</span></footer></main></div></body></html>')
+        '<span><a href="https://github.com/MRALPHA20/retrust">Source code on'
+        ' GitHub</a> <span class="muted">&middot;</span>'
+        ' Decision support, not a certification.</span></footer></main></div></body></html>')
 
 
 CSS = """

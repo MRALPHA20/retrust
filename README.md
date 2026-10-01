@@ -86,7 +86,10 @@ For a hosted demonstration, use the included `render.yaml` Blueprint. See
 and free-instance limits. Hosted assessments are processed on the server;
 the local installation remains available for confidential procurement inputs.
 
-Try the [hosted ReTrust demo](https://retrust-q2tr.onrender.com/).
+Try the [hosted ReTrust demo](https://retrust-q2tr.onrender.com/) — a
+free-tier instance that cold-starts in ~30 seconds and serves one request at a
+time. For a live audience, run locally from a snapshot instead: same numbers,
+no network.
 
 To use the shorter `retrust` command below, install the CLI in a virtual environment:
 
@@ -165,7 +168,7 @@ not count every extra match. Version coverage measures whether a range can be
 parsed, not accuracy against independently labelled firmware cases.
 
 The current historical backtest gives score versus later CVE disclosure rho
-+0.456, falling to +0.258 within vendors and +0.045 when Siemens is excluded.
++0.431, falling to +0.269 within vendors and +0.044 when Siemens is excluded.
 These diagnostics do not validate prediction of compromise. See the
 [benchmark report](docs/benchmark-report.md) for methods and limitations and the
 [tool comparison](docs/tool-comparison.md) for official-source capability summaries.

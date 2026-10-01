@@ -106,9 +106,10 @@ def test_not_assessed_gets_no_score():
 def test_certification_absence_is_never_a_penalty():
     """Most OT products are never certified; that is not evidence of insecurity."""
     pillar = score._certification([])
-    assert pillar.score == 50.0          # neutral, not zero
-    assert pillar.coverage == 0.0
-    assert any("not evidence of insecurity" in e for e in pillar.evidence)
+    assert pillar.coverage == 0.0        # excluded from the composite entirely
+    assert any("excluded from the score" in e for e in pillar.evidence)
+    # The exclusion IS the non-penalty: a missing certificate changes nothing,
+    # where the old neutral 50 moved rankings between equally certified vendors.
 
 
 def test_certification_rewards_iec_62443():

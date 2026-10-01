@@ -131,10 +131,8 @@ echo
 echo "== alternatives =="
 check 0 "a gated product gets suggestions"         -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 contains "not a recommendation" "the caveat is printed" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500"
-# The S7-1500 family no longer skips anyone: its former "skipped" members were
-# its own board variants, which the resolver now excludes as the same product.
-contains "family member(s)" "skipped ones are counted, not hidden" \
-  -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1200"
+# Skip accounting (gated / unassessable / no evidence) is pinned by unit
+# tests; no live family currently exercises it, so no smoke line pretends to.
 contains "equal terms" "a version is flagged as unequal" -- $RETRUST alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 check 1 "a product with no family exits 1"         -- $RETRUST alternatives --vendor Moxa --product EDS-405A
 check 1 "an unresolvable product exits 1"          -- $RETRUST alternatives --vendor Nobody --product Nothing
@@ -206,6 +204,25 @@ contains "ADVISORY TIMELINE" "timeline draws a vendor" -- $RETRUST timeline --ve
 contains "could not resolve" "an unresolved product gets the resolver-honest annex" \
   -- $RETRUST questions --vendor Moxa --product "Nonexistent Widget 9000"
 check 1 "timeline abstains with the resolver"       -- $RETRUST timeline --vendor Nobody --product Nothing
+
+echo
+echo "== the review sanity board =="
+# The external ICS review's screenshot test, kept live: the hardcoded-
+# credential M340 must never read PREFER, and shipped Moxa fixes must count.
+$RETRUST score --vendor "Schneider Electric" --product "Modicon M340" 2>/dev/null | grep -qE "PREFER +· " \
+  && { echo "  FAIL  M340 reads PREFER again"; fail=$((fail+1)); failed+=("sanity M340"); } \
+  || { echo "  ok    M340 does not read PREFER"; pass=$((pass+1)); }
+contains "Capped below PREFER" "the unmitigable cap fires on M340" \
+  -- $RETRUST score --vendor "Schneider Electric" --product "Modicon M340"
+contains "have a vendor fix" "Moxa's shipped fixes count as fixes" \
+  -- $RETRUST score --vendor Moxa --product EDS-405A
+$RETRUST score --vendor Moxa --product EDS-405A 2>/dev/null | grep -q " 0/10 advisory findings have a vendor fix" \
+  && { echo "  FAIL  Moxa shows 0/10 fixed again"; fail=$((fail+1)); failed+=("moxa fix"); } \
+  || { echo "  ok    Moxa no longer shows 0/10 fixed"; pass=$((pass+1)); }
+contains "CAUTION" "a bundled KEV cautions instead of gating" \
+  -- $RETRUST score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
+contains "narrowed the scope" "the firmware delta is said out loud" \
+  -- $RETRUST score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
 
 echo
 echo "== vex and profiles =="

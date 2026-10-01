@@ -106,6 +106,46 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                               vendor_key=normalize_vendor(effective_vendor or ""),
                               network_exposure=network_exposure)
     assessment.notes.extend(screening_notes)
+
+    # A firmware version narrowing the scope can lower the score -- the CVEs
+    # that remain on the latest firmware are precisely the unfixed ones -- and
+    # read cold that looks like "more information made it worse". Show the
+    # delta and the reason instead of leaving the reader to reconstruct it.
+    if version and resolution.resolved:
+        broad = match.findings(connection, resolution)
+        if len({f.cve for f in broad}) != assessment.findings_count:
+            baseline = score.assess(
+                label, broad, {f.advisory_id for f in broad},
+                weights=context.get("weights"), bands=context.get("bands"),
+                certificates=certificates, screening_gates=screening_gates,
+                vendor_key=normalize_vendor(effective_vendor or ""),
+                network_exposure=network_exposure)
+            moved = ("unchanged" if baseline.score == assessment.score
+                     else f"moved {baseline.score} -> {assessment.score}")
+            note = (f"Firmware {version} narrowed the scope from "
+                    f"{baseline.findings_count} to {assessment.findings_count}"
+                    f" CVE(s), and the score {moved}.")
+            if (baseline.score or 0) > (assessment.score or 0):
+                note += (" A narrower scope can score worse: what remains on"
+                         " current firmware is exactly the set nothing fixes"
+                         " yet, and that is the honest reading of it.")
+            assessment.notes.insert(0, note)
+
+    # A family query is honest about its breadth: resolving "Modicon M340"
+    # reaches the platform's modules too, which a buyer comparing CPUs may
+    # not want. Say so, with the spread, rather than leaving 74 products to
+    # be discovered in the small print.
+    if resolution.resolved and product:
+        spread = {m.name_key if hasattr(m, "name_key") else m.name
+                  for m in resolution.matches}
+        if len(spread) > 12:
+            samples = sorted({m.name for m in resolution.matches})[:3]
+            assessment.notes.append(
+                f"The name matched {len(spread)} distinct products across the"
+                f" family (e.g. {', '.join(samples)}). If you meant one model,"
+                " its manufacturer order number narrows this to exactly that"
+                " device.")
+
     assessment.inputs = (findings, advisories, certificates, screening_gates,
                          normalize_vendor(effective_vendor or ''))
     return assessment, resolution, findings
@@ -152,6 +192,10 @@ def _render_one(assessment, resolution, findings, context=None):
         lines += ["", console.prose(f"HARD GATE: {gate['gate']}", style="avoid"),
                   console.prose(gate['detail'], indent="    "),
                   console.prose(f"Source: {gate['source']}", indent="    ", style="label")]
+    for caution in getattr(assessment, "cautions", ()):
+        lines += ["", console.prose(f"CAUTION: {caution['caution']}", style="conditional"),
+                  console.prose(caution['detail'], indent="    "),
+                  console.prose(f"Source: {caution['source']}", indent="    ", style="label")]
     if assessment.pillars:
         lines += ["", console.heading("Evidence by pillar")]
     for pillar in assessment.pillars:

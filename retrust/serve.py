@@ -661,6 +661,13 @@ network exposure adds 10%; evidence quality is reported separately.</p></div></l
 <h2>Where the data came from</h2>
 <div class="tw"><table><thead><tr><th>Source</th><th>Detail</th><th class="n">Captured</th>
 </tr></thead><tbody>{sources}</tbody></table></div>
+<p class="empty">Certification evidence comes from the ISASecure certified-component,
+-process and -system directories, the Common Criteria certified-products list, and a
+small curated layer for IEC 62443 certificates issued outside those directories
+(each curated entry names its source and says to verify with the certifying body).
+Supplier screening uses the trade.gov Consolidated Screening List and the FCC
+Covered List. <a href="https://github.com/MRALPHA20/retrust">Source code on
+GitHub</a>.</p>
 <h2>What this server does and does not do</h2>
 <pre style="white-space:pre-wrap">{_esc(SAFETY)}</pre>
 <p class="empty">{deployment}</p>""")
