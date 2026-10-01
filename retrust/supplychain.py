@@ -24,6 +24,7 @@ Two kinds of list:
 import csv
 import json
 import re
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -110,6 +111,11 @@ def refresh(data_dir="data", timeout=120):
     request = urllib.request.Request(CSL_URL, headers={"User-Agent": "ReTrust/0.1"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
+            # A redirect must not move the fetch onto plain http: a sanctions
+            # list read over a rewritable channel is worse than none.
+            landed = getattr(response, "url", CSL_URL)
+            if urllib.parse.urlsplit(landed).scheme != "https":
+                raise ValueError(f"redirected to {landed}; refusing non-https")
             # The real list is ~17 MB; cap the read so a hostile or broken
             # endpoint cannot exhaust memory.
             raw = response.read(MAX_DOWNLOAD_BYTES + 1)

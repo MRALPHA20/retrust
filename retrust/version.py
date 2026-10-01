@@ -62,9 +62,19 @@ _AND_OLDER = re.compile(r"^(.*?)[_\s]+and[_\s]+(?:older|below|earlier|prior)$", 
 _UNTIL = re.compile(r"^(.*?)[_\s]+(?:until|thru|through)[_\s]+(.*)$", re.I)
 
 
+# A real version component is a handful of digits. A run of thousands is not a
+# version; it is a poisoned advisory aiming int() at Python's 4,300-digit string
+# cap, which would raise mid-parse and crash a later score or eval. Refused as
+# unparseable here -- which keeps the range in scope, never assumed safe.
+_MAX_COMPONENT_DIGITS = 18
+_OVERSIZED_DIGITS = re.compile(r"\d{%d,}" % (_MAX_COMPONENT_DIGITS + 1))
+
+
 def parse_version(text):
     """Turn "V4.5.1 Update 3" into a sortable tuple, or None if it isn't a version."""
     if not text:
+        return None
+    if _OVERSIZED_DIGITS.search(text):
         return None
     s = text.strip()
 

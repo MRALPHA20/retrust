@@ -17,6 +17,7 @@ dependency that silently does nothing when absent is the kind of quiet
 failure this tool exists to refuse.
 """
 
+import os
 import re
 import shutil
 import struct
@@ -41,6 +42,22 @@ def find_browser():
         if path := (shutil.which(name) or (name if Path(name).exists() else None)):
             return path
     return None
+
+
+def _sandbox_flags():
+    """Keep Chrome's renderer sandbox on unless the environment forbids it.
+
+    The sandbox is the main containment between a malicious page and the host,
+    and these shots load a report from a privileged file:// origin -- so it
+    stays on for a normal user. Chrome refuses to start the sandbox as root
+    (the usual case on Kali and in containers); there --no-sandbox is the only
+    way to run at all, and the page being rendered is the tool's own escaped
+    HTML. RETRUST_CHROME_NO_SANDBOX=1 forces it off for any other locked-down
+    environment that needs it.
+    """
+    forced = os.environ.get("RETRUST_CHROME_NO_SANDBOX") == "1"
+    is_root = hasattr(os, "geteuid") and os.geteuid() == 0
+    return ["--no-sandbox"] if (forced or is_root) else []
 
 
 def _theme_variant(html_path, theme):
@@ -192,7 +209,7 @@ def capture(html_path, out_path, width=DEFAULT_WIDTH, height=DEFAULT_HEIGHT,
 
     command = [
         browser, "--headless=new", "--disable-gpu", "--hide-scrollbars",
-        "--no-sandbox", "--force-device-scale-factor=2",
+        *_sandbox_flags(), "--force-device-scale-factor=2",
         f"--window-size={width},{shot_height}",
         f"--screenshot={target}",
         (temporary or source).as_uri(),

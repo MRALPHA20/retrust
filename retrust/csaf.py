@@ -143,9 +143,18 @@ NO_FIX_IN_TEXT = re.compile(
     r"|\bend[- ]of[- ](?:life|support)\b|\bno longer supported\b", re.I)
 
 
+# The optional qualifier runs in FIX_IN_TEXT backtrack quadratically on a long
+# run of "a a a ..." with no fix-noun after it, so a crafted multi-megabyte
+# remediation `details` in one advisory would stall the whole single-pass build.
+# Across the real corpus every genuine fix is named within the first 1,206
+# characters and no `details` exceeds 3,708, so scanning a 2 KB window loses no
+# real match (all 4,010 preserved) while bounding the worst case to milliseconds.
+_FIX_SCAN_LIMIT = 2048
+
+
 def _names_a_shipped_fix(text):
     """The remediation text names a fix that already shipped, not a promise."""
-    text = text or ""
+    text = (text or "")[:_FIX_SCAN_LIMIT]
     return bool(FIX_IN_TEXT.search(text)) and not NO_FIX_IN_TEXT.search(text)
 
 
@@ -163,8 +172,18 @@ class Advisory:
     vulnerabilities: dict = field(default_factory=dict)
 
 
-def _walk(branches, inherited=None):
+# A real CSAF product tree is a handful of levels deep. A pathologically nested
+# one (the JSON decoder sets no nesting cap) would otherwise recurse until it
+# raised RecursionError; stopping at an explicit, generous ceiling makes the
+# limit a deliberate defense rather than an incidental crash that happens to be
+# caught upstream.
+_MAX_TREE_DEPTH = 100
+
+
+def _walk(branches, inherited=None, depth=0):
     """Yield (attributes, product) for every leaf of a product tree."""
+    if depth > _MAX_TREE_DEPTH:
+        return
     inherited = inherited or {}
     for branch in branches or []:
         attributes = dict(inherited)
@@ -179,7 +198,7 @@ def _walk(branches, inherited=None):
             attributes.setdefault(category, name)
         if "product" in branch:
             yield attributes, branch["product"]
-        yield from _walk(branch.get("branches"), attributes)
+        yield from _walk(branch.get("branches"), attributes, depth + 1)
 
 
 def _from_relationships(tree, leaves):
@@ -373,7 +392,10 @@ def _vulnerability(vulnerability, product_groups=None):
 
     return {
         "cve": vulnerability["cve"],
-        "product_ids": list(status.get("known_affected") or []),
+        # _list, not list(): a string known_affected would otherwise iterate into
+        # one-character product ids, exactly the junk the per-product map above
+        # already guards against with _list.
+        "product_ids": _list(status.get("known_affected")),
         "cvss": cvss,
         "cwe": (vulnerability.get("cwe") or {}).get("id"),
         "vector": vector,

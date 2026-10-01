@@ -111,14 +111,22 @@ def restore(snapshot_path, data_dir="data", verify=True):
                     raise SystemExit(
                         f"snapshot manifest names {name!r}, which is not a "
                         "file a ReTrust snapshot carries. Refusing to unpack.")
-                info = bundle.getinfo(name)
-                total += info.file_size
-                if total > MAX_UNPACKED_BYTES:
-                    raise SystemExit(
-                        f"{snapshot_path} unpacks to more than "
-                        f"{MAX_UNPACKED_BYTES // 1_000_000} MB; refusing to "
-                        "expand it. This is what a decompression bomb looks like.")
-                bundle.extract(name, staged)
+                # Cap on bytes actually decompressed, not the size the archive
+                # claims: a bomb declares a tiny uncompressed size in its header
+                # and expands to gigabytes when the stream is read. Copying the
+                # member in bounded chunks and aborting past the ceiling is the
+                # only count that cannot be lied about.
+                destination = staged / name
+                with bundle.open(name) as source, open(destination, "wb") as sink:
+                    while chunk := source.read(1 << 20):
+                        total += len(chunk)
+                        if total > MAX_UNPACKED_BYTES:
+                            raise SystemExit(
+                                f"{snapshot_path} unpacks to more than "
+                                f"{MAX_UNPACKED_BYTES // 1_000_000} MB; refusing "
+                                "to expand it. This is what a decompression bomb "
+                                "looks like.")
+                        sink.write(chunk)
                 if verify and _digest(staged / name) != meta["sha256"]:
                     mismatched.append(name)
                 restored.append(name)

@@ -25,6 +25,7 @@ import csv
 import html
 import json
 import re
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -48,6 +49,13 @@ MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
 def _fetch(url, timeout=60):
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
+        # These hosts are fixed and trusted, but a redirect could still move the
+        # fetch onto plain http; a certificate listing read over a rewritable
+        # channel is not evidence, so refuse it.
+        landed = getattr(response, "url", url)
+        if urllib.parse.urlsplit(landed).scheme != "https":
+            raise ValueError(f"{url} redirected to {landed}; refusing to fetch "
+                             "certification data over anything but https")
         raw = response.read(MAX_DOWNLOAD_BYTES + 1)
     if len(raw) > MAX_DOWNLOAD_BYTES:
         raise ValueError(f"{url} returned more than "

@@ -15,8 +15,10 @@ resumes where it stopped.
 
 import gzip
 import io
+import ipaddress
 import json
 import shutil
+import socket
 import time
 import subprocess
 import urllib.parse
@@ -45,20 +47,82 @@ class StepFailed(Exception):
     """A setup step failed in a way the user can act on."""
 
 
-def _read_capped(stream, url):
-    """Read a stream fully, refusing to go past MAX_FEED_BYTES."""
+def _host_is_private(host):
+    """Does this hostname resolve to any address we must never fetch from?
+
+    An SSRF reaches a cloud metadata endpoint (169.254.169.254), the loopback,
+    or an internal 10./192.168. service by naming it in a URL. Resolution that
+    fails here returns False rather than blocking: the real connection would
+    resolve the same way and fail on its own, and a DNS hiccup must not turn a
+    legitimate fetch into an error.
+    """
+    if not host:
+        return True
+    try:
+        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
+    except OSError:
+        return False
+    for info in infos:
+        address = ipaddress.ip_address(info[4][0])
+        if (address.is_private or address.is_loopback or address.is_link_local
+                or address.is_reserved or address.is_multicast
+                or address.is_unspecified):
+            return True
+    return False
+
+
+def _require_public_https(url):
+    """Vet a URL taken from fetched content before it is ever requested.
+
+    urllib's default opener will open file://, ftp:// and http:// just as
+    readily as https, and follows redirects across schemes. A provider's
+    metadata document is attacker-influenceable, so every URL read out of it --
+    each feed, advisory, hash and signature link -- is checked here first: https
+    only, and never pointed at a non-public address. This is what stops a feed
+    URL from becoming a local-file read or an SSRF into the metadata service.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https":
+        raise StepFailed(f"{url} is not https; refusing to fetch over a channel "
+                         "anyone on the path can rewrite")
+    if _host_is_private(parts.hostname or ""):
+        raise StepFailed(f"{url} resolves to a non-public address; refusing, "
+                         "this is how a feed URL becomes a request to an "
+                         "internal service or a cloud metadata endpoint")
+    return url
+
+
+def _check_landed(response, url):
+    """A redirect can move a vetted https URL onto http or an internal host.
+
+    `_require_public_https` vets the address before the request; this vets where
+    the request actually landed, so a 302 from a public host to http:// or to a
+    private address is refused rather than followed and read.
+    """
+    landed = getattr(response, "url", url)
+    parts = urllib.parse.urlsplit(landed)
+    if parts.scheme != "https":
+        raise StepFailed(f"{url} redirected to {landed}; refusing to fetch "
+                         "over anything but https")
+    if _host_is_private(parts.hostname or ""):
+        raise StepFailed(f"{url} redirected to {landed}, a non-public address; "
+                         "refusing")
+
+
+def _read_capped(stream, url, cap=MAX_FEED_BYTES):
+    """Read a stream fully, refusing to go past `cap` bytes."""
     chunks, total = [], 0
     while chunk := stream.read(1 << 20):
         total += len(chunk)
-        if total > MAX_FEED_BYTES:
+        if total > cap:
             raise StepFailed(
-                f"{url} is over {MAX_FEED_BYTES // 1_000_000} MB, which no "
-                "feed this tool fetches has ever been. Refusing the rest.")
+                f"{url} is over {cap // 1_000_000} MB, more than this fetch "
+                "should ever return. Refusing the rest.")
         chunks.append(chunk)
     return b"".join(chunks)
 
 
-def _download(url, destination, decompress=False):
+def _download(url, destination, decompress=False, max_bytes=MAX_FEED_BYTES):
     """Fetch a URL to a file, atomically.
 
     Writing straight to the destination would leave a truncated file behind if
@@ -69,17 +133,16 @@ def _download(url, destination, decompress=False):
     schemes, and a feed that lands on plain http arrives over a channel anyone
     on the path can rewrite.
     """
+    _require_public_https(url)
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_name(destination.name + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-        landed = getattr(response, "url", url)
-        if urllib.parse.urlsplit(landed).scheme != "https":
-            raise StepFailed(f"{url} redirected to {landed}; refusing to fetch "
-                             "over anything but https")
-        payload = _read_capped(response, url)
+        _check_landed(response, url)
+        payload = _read_capped(response, url, max_bytes)
     if decompress:
-        payload = _read_capped(gzip.GzipFile(fileobj=io.BytesIO(payload)), url)
+        payload = _read_capped(gzip.GzipFile(fileobj=io.BytesIO(payload)), url,
+                               max_bytes)
     partial.write_bytes(payload)
     partial.replace(destination)
     return destination.stat().st_size
@@ -193,7 +256,7 @@ def build_index(data_dir="data", db_path="data/retrust.db"):
     try:
         connection, counts = index.build(db_path, str(advisories),
                                         kev_path=feeds["kev"], epss_path=feeds["epss"])
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         raise StepFailed(f"Index build failed; existing index preserved: {error}") from error
     loaded = counts["exploitation"]
     connection.close()
@@ -276,6 +339,11 @@ PROVIDERS_DIR = "CSAF-providers"
 # claim is a broken feed, not an advisory.
 MAX_ADVISORY_BYTES = 30 * 1024 * 1024
 
+# A provider that enumerates more advisories than this from one metadata URL is
+# either implausibly large or hostile; stop and say how many, rather than let a
+# single feed URL fill the disk unbounded. The largest real OT feed is ~1,600.
+MAX_PROVIDER_ADVISORIES = 50_000
+
 
 def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
     """Fetch every TLP:WHITE advisory a CSAF provider publishes.
@@ -291,12 +359,11 @@ def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
     Only TLP:WHITE feeds are read: anything else is not public, and this
     tool must never make it so.
     """
-    if urllib.parse.urlsplit(metadata_url).scheme != "https":
-        raise StepFailed(f"{metadata_url} is not https; a provider feed"
-                         " fetched over a rewritable channel proves nothing")
+    _require_public_https(metadata_url)
     request = urllib.request.Request(metadata_url,
                                      headers={"User-Agent": _USER_AGENT})
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        _check_landed(response, metadata_url)
         metadata = json.loads(_read_capped(response, metadata_url))
 
     host = urllib.parse.urlsplit(metadata_url).netloc
@@ -308,16 +375,25 @@ def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
         raise StepFailed(f"{metadata_url} advertises no TLP:WHITE ROLIE feed;"
                          " nothing public to fetch")
 
-    fetched = already = failed = 0
+    fetched = already = failed = seen = 0
     last_error = ""
+    capped = False
     for feed in feeds:
+        # feed["url"] comes from the fetched metadata, so it is vetted exactly
+        # like the operator-typed metadata URL was, before any request is made.
+        _require_public_https(feed["url"])
         with urllib.request.urlopen(
                 urllib.request.Request(feed["url"],
                                        headers={"User-Agent": _USER_AGENT}),
                 timeout=TIMEOUT) as response:
+            _check_landed(response, feed["url"])
             listing = json.loads(_read_capped(response, feed["url"]))
         entries = (listing.get("feed") or listing).get("entry") or []
         for entry in entries:
+            if seen >= MAX_PROVIDER_ADVISORIES:
+                capped = True
+                break
+            seen += 1
             links = {link.get("rel"): link.get("href")
                      for link in entry.get("link") or []}
             advisory_url = links.get("self")
@@ -329,7 +405,10 @@ def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
                 already += 1
                 continue
             try:
-                _download_patiently(advisory_url, destination)
+                # Per-advisory cap, not the 200 MB feed cap: an advisory file is
+                # tens of KB, so a huge one is a broken or hostile feed.
+                _download_patiently(advisory_url, destination,
+                                    max_bytes=MAX_ADVISORY_BYTES)
                 # The digest and signature the provider serves beside it,
                 # fetched best-effort: their absence weakens verification,
                 # never the advisory itself.
@@ -337,7 +416,8 @@ def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
                     if links.get(rel):
                         suffix = links[rel].rsplit("/", 1)[-1]
                         try:
-                            _download_patiently(links[rel], target / suffix)
+                            _download_patiently(links[rel], target / suffix,
+                                                max_bytes=MAX_ADVISORY_BYTES)
                         except (StepFailed, OSError):
                             pass
                 fetched += 1
@@ -346,13 +426,16 @@ def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
                 last_error = str(error)
             if progress and (fetched + already) % 50 == 0:
                 progress(fetched, already, len(entries))
+        if capped:
+            break
 
     return {"host": host, "directory": str(target), "fetched": fetched,
             "already_present": already, "failed": failed,
-            "last_error": last_error}
+            "last_error": last_error, "capped": capped,
+            "cap": MAX_PROVIDER_ADVISORIES if capped else None}
 
 
-def _download_patiently(url, destination, attempts=4):
+def _download_patiently(url, destination, attempts=4, max_bytes=MAX_FEED_BYTES):
     """_download with backoff. A provider serving hundreds of small files
     rate-limits a naive burst -- the first Siemens fetch lost 756 of 841 to
     exactly that -- so failures wait and retry, and every file is followed by
@@ -360,7 +443,7 @@ def _download_patiently(url, destination, attempts=4):
     """
     for attempt in range(attempts):
         try:
-            size = _download(url, destination)
+            size = _download(url, destination, max_bytes=max_bytes)
             time.sleep(0.05)              # politeness between hundreds of files
             return size
         except (StepFailed, OSError):

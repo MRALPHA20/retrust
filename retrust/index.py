@@ -366,11 +366,18 @@ def load_exploitation(connection, kev_path=None, epss_path=None):
     with connection:
         if kev_path:
             catalog = json.loads(Path(kev_path).read_text())
+            # A KEV file that is not the expected object -- a bare list, a
+            # truncated download -- must fail as a clean ValueError the caller
+            # already handles, not an AttributeError from .get on a list. Entries
+            # missing a CVE id are skipped rather than crashing the whole load.
+            if not isinstance(catalog, dict):
+                raise ValueError(f"{kev_path} is not a KEV catalog object")
             rows = [
-                (item["cveID"], 1,
+                (cve, 1,
                  int(str(item.get("knownRansomwareCampaignUse", "")).lower() == "known"),
                  (item.get("dateAdded") or "")[:10])
                 for item in catalog.get("vulnerabilities", [])
+                if isinstance(item, dict) and (cve := item.get("cveID"))
             ]
             connection.executemany(
                 "INSERT INTO exploitation (cve, in_kev, ransomware, kev_added)"

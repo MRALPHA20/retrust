@@ -232,6 +232,10 @@ def cmd_provider(args):
             print(f"  {done + skip}/{total} advisories", end="\r", flush=True))
     print(f"  {result['fetched']:,} fetched, {result['already_present']:,} "
           f"already present, {result['failed']:,} failed")
+    if result.get("capped"):
+        print(f"  NOTE: stopped at {result['cap']:,} advisories, the per-provider "
+              "ceiling. This feed enumerates more than any genuine OT provider; "
+              "confirm the metadata URL before trusting it.")
     print(f"\nAdvisories in {result['directory']}.")
     print("Index them beside the CISA corpus with:\n"
           f"  retrust ingest --csaf data/CSAF --csaf {result['directory']} "
@@ -1138,7 +1142,19 @@ def cmd_verify(args):
     print(" " * 40, end="\r")      # wipe the progress line before the report
     print()
     print(integrity.format_report(results, root, keyring.exists(), keys))
-    # Non-zero when anything failed, so a build can refuse to score on it.
+    # Non-zero when anything failed, so a build can refuse to score on it. The
+    # default stays honest: "not established" (no keyring, no digest shipped) is
+    # not a failure, so a corpus whose signer could not be checked does not read
+    # as broken. --strict is for a pipeline that must not confuse "could not
+    # check" with "verified": there, anything short of a positive result fails.
+    if args.strict:
+        established = all(
+            r.hashed is True and (args.no_signatures or r.signed is True)
+            for r in results)
+        if not established:
+            print("\n  --strict: origin or content was not established for every "
+                  "file; exiting non-zero.")
+            return 1
     return 1 if any(not r.intact for r in results) else 0
 
 
@@ -1659,6 +1675,10 @@ def build_parser():
                         "metadata, refusing a fingerprint mismatch")
     p.add_argument("--key", metavar="FILE",
                    help="import a signing key you obtained out of band")
+    p.add_argument("--strict", action="store_true",
+                   help="exit non-zero unless origin and content were positively "
+                        "established for every file, so a pipeline cannot read "
+                        "\"not checked\" as \"verified\"")
     p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser("serve", help="a local web interface")
