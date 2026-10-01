@@ -21,13 +21,35 @@ $ retrust compare \
     --candidate "Siemens|SIMATIC S7-1500|3.1.6" \
     --candidate "Hikvision|IP Camera"
 
-CANDIDATE                                 VERDICT       SCORE  CVES  ROBUST  NOTES
-ABB AC 800M                               PREFER         82.2    10    93%
-Schneider Electric Modicon M340           PREFER         76.4    49    80%
-Moxa EDS-405A                             CONDITIONAL    56.1    10    77%
-Rockwell Automation ControlLogix          CONDITIONAL    54.8    35    98%
-Siemens SIMATIC S7-1500 (firmware 3.1.6)  AVOID          39.6   942   gated  Known exploited vulnerability
-Hikvision IP Camera                       AVOID           --      -     -     Named on a covered list
+  CANDIDATE COMPARISON ───────────────────────────────────────────────────────
+
+  ABB AC 800M
+  PREFER  ·  82.2/100
+  CVEs 10  ·  ROBUST 88%
+
+  Moxa EDS-405A
+  PREFER  ·  73.0/100
+  CVEs 10  ·  ROBUST 51%
+
+  Rockwell Automation ControlLogix
+  PREFER  ·  70.9/100
+  CVEs 35  ·  ROBUST 58%
+
+  Schneider Electric Modicon M340
+  CONDITIONAL  ·  69.9/100
+  CVEs 48  ·  ROBUST 100%
+
+  Siemens SIMATIC S7-1500 (firmware 3.1.6)
+  AVOID  ·  56.5/100
+  CVEs 942  ·  ROBUST gated
+  Known exploited vulnerability
+
+  Hikvision IP Camera
+  AVOID  ·  no score
+  ROBUST not sampled
+  Named on a covered list
+
+  AVOID: 2  ·  CONDITIONAL: 1  ·  PREFER: 3
 ```
 
 ---
@@ -489,7 +511,7 @@ better advisory record.
 $ retrust alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 
 ALTERNATIVES TO  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  39.6   Known exploited vulnerability
+  AVOID  56.5   Known exploited vulnerability
 
 ReTrust does not know whether any of these will do the same job. It holds
 advisory history, not specifications: no I/O counts, no form factors, no
@@ -665,17 +687,42 @@ retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 ```
 
 ```
-CANDIDATE                                     VERDICT      SCORE  NOTES
-ABB AC 800M                                   PREFER        82.2
-Schneider Electric Modicon M340               PREFER        77.2
-Rockwell Automation ControlLogix              CONDITIONAL   56.4
-Moxa EDS-405A                                 CONDITIONAL   55.9
-Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP  AVOID         44.6  Known exploited vulnerability
-Siemens SIMATIC S7-1500 (firmware 3.1.6)      AVOID         39.6  Known exploited vulnerability
-Hikvision IP Camera                           AVOID          --   Named on a covered list
-Acme Widgets Nonexistent 9000                 NOT ASSESSED   --   vendor not in the advisory corpus
+CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-  AVOID: 3, CONDITIONAL: 2, NOT ASSESSED: 1, PREFER: 2
+ABB AC 800M
+PREFER  ·  82.2/100
+CVEs 10  ·  ROBUST 88%
+
+Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
+PREFER  ·  75.7/100
+CVEs 1034  ·  ROBUST 78%
+
+Moxa EDS-405A
+PREFER  ·  73.0/100
+CVEs 10  ·  ROBUST 52%
+
+Rockwell Automation ControlLogix
+PREFER  ·  70.9/100
+CVEs 35  ·  ROBUST 60%
+
+Schneider Electric Modicon M340
+CONDITIONAL  ·  69.9/100
+CVEs 48  ·  ROBUST 100%
+
+Siemens SIMATIC S7-1500 (firmware 3.1.6)
+AVOID  ·  56.5/100
+CVEs 942
+Known exploited vulnerability
+
+Hikvision IP Camera
+AVOID  ·  no score
+Named on a covered list
+
+Acme Widgets Nonexistent 9000
+NOT ASSESSED  ·  no score
+vendor 'Acme Widgets' does not appear in the advisory corpus
+
+AVOID: 2  ·  CONDITIONAL: 1  ·  NOT ASSESSED: 1  ·  PREFER: 4
   exit 1: a candidate is disqualified
 ```
 
@@ -816,10 +863,10 @@ That is fair, and the honest answer is to measure it instead of arguing about it
 simplex and reports how often the verdict survives:
 
 ```
-$ retrust sensitivity --vendor "Rockwell Automation" --product ControlLogix
+$ retrust sensitivity --vendor "Schneider Electric" --product "Modicon M340"
 
 CONDITIONAL under 100% of weightings -- the verdict does not hinge on the weights
-  score across 500 random weightings: 39.4 to 74.1 (median 56.4)
+  score across 500 random weightings: 42.8 to 70.0 (median 69.9)
 ```
 
 A verdict that holds under 96% of weightings is not a matter of opinion. One

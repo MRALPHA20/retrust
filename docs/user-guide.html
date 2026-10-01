@@ -440,10 +440,22 @@ what you typed.</p>
 <pre class="cmd">$ retrust compare --candidate "ABB|AC 800M" \
       --candidate "Schneider Electric|Modicon M340" \
       --candidate "Hikvision|IP Camera" --html decision.html</pre>
-<pre>CANDIDATE                          VERDICT       SCORE  CVES  ROBUST  NOTES
-ABB AC 800M                        PREFER         82.2    10    93%
-Schneider Electric Modicon M340    PREFER         76.4    49    80%
-Hikvision IP Camera                AVOID           --      -     -    Named on a covered list</pre>
+<pre>CANDIDATE COMPARISON ───────────────────────────────────────────────────────
+
+ABB AC 800M
+PREFER  ·  82.2/100
+CVEs 10  ·  ROBUST 88%
+
+Schneider Electric Modicon M340
+CONDITIONAL  ·  69.9/100
+CVEs 48  ·  ROBUST 100%
+
+Hikvision IP Camera
+AVOID  ·  no score
+ROBUST not sampled
+Named on a covered list
+
+AVOID: 1  ·  CONDITIONAL: 1  ·  PREFER: 1</pre>
 
 <p>The candidate string is pipe-separated: <span class="id">Vendor|Product|Version|OrderNumber</span>,
 and everything after the vendor is optional.</p>

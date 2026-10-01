@@ -136,7 +136,12 @@ def candidates(records):
         if record.get("cves") is not None:
             details.append(f"CVEs {record['cves']}")
         if record.get("robust") is not None:
-            details.append(f"ROBUST {record['robust']}")
+            # A share of weightings: shown as a percentage to match the
+            # single-product report, so the two surfaces never disagree. Some
+            # callers pass an already-formatted string ("gated"); pass it through.
+            robust = record["robust"]
+            shown = f"{robust:.0%}" if isinstance(robust, (int, float)) else robust
+            details.append(f"ROBUST {shown}")
         if details:
             lines.append(prose("  ·  ".join(details), style="label"))
         gates = record.get("gates") or []

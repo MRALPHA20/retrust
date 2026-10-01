@@ -19,14 +19,14 @@ $ retrust compare \
 
   ABB AC 800M
   PREFER  ·  82.2/100
-  CVEs 10  ·  ROBUST 93%
+  CVEs 10  ·  ROBUST 88%
 
   Moxa EDS-405A
-  CONDITIONAL  ·  56.1/100
-  CVEs 10  ·  ROBUST 77%
+  PREFER  ·  73.0/100
+  CVEs 10  ·  ROBUST 51%
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  39.6/100
+  AVOID  ·  56.5/100
   CVEs 942  ·  ROBUST gated
   Known exploited vulnerability
 
@@ -35,7 +35,7 @@ $ retrust compare \
   ROBUST not sampled
   Named on a covered list
 
-  AVOID: 2  ·  CONDITIONAL: 1  ·  PREFER: 1
+  AVOID: 2  ·  PREFER: 2
 ```
 
 ## How it works

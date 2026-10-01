@@ -81,9 +81,11 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
         context["certificates"], effective_vendor, product)
 
     if not label:
-        # When only an order number was given we have no name to show, so take
-        # the one the advisory uses.
-        if not (vendor or product) and resolution.matches:
+        # With no product name typed we have nothing to print, so take the name
+        # the advisory uses -- whether the row was keyed by order number alone
+        # or by vendor plus order number. Showing just the vendor ("Siemens")
+        # above a thousand CVEs reads as the whole catalogue, not one device.
+        if not product and resolution.matches:
             first = resolution.matches[0]
             label = f"{first.vendor} {first.name}".strip()
         else:
