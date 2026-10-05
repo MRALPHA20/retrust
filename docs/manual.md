@@ -233,9 +233,19 @@ which is how corruption gets in.
 The same posture runs through the rest of the tool. Feeds are fetched over
 https only -- a redirect that lands on plain http is refused -- and reads are
 capped, so a hostile mirror can fill neither memory nor disk, gzip bombs
-included. PGP key material is refused over anything but https and size-capped
-too. A snapshot's manifest travels inside the archive, so its file names are
-validated before anything is unpacked: `../` cannot escape the data directory.
+included. When `retrust provider` follows a vendor's own CSAF feed, the feed,
+each advisory, and the digest and signature beside them are all addresses that
+document hands the tool, so every one is vetted before the request and again
+after any redirect: https only, and never a private, loopback or link-local
+host -- a crafted feed cannot turn a fetch into a read of a local file or a
+request to a cloud metadata endpoint. That feed is capped at 50,000 advisories
+and 30 MB apiece. All of this fetching lives in the CLI; the web server fetches
+nothing, so none of it is reachable over HTTP. PGP key material is refused over
+anything but https and size-capped too. A snapshot's manifest travels inside
+the archive, so its file names are validated before anything is unpacked:
+`../` cannot escape the data directory, and the unpack aborts at a size ceiling
+counted on the bytes actually decompressed -- not the size the archive
+declares -- so a zip bomb cannot fill the disk either.
 And CSV cells are neutralised against spreadsheet formula injection, because
 this tool's output is opened in Excel by procurement -- a hostile advisory must
 not be able to put `=HYPERLINK(...)` in front of a buyer.
@@ -783,6 +793,10 @@ are interactive; `batch` defaults to `avoid` because it is a gate.
 
 **Screenshots.** Uses whatever Chrome or Chromium is already on the machine; it
 is not a dependency, and its absence costs you screenshots and nothing else.
+Chrome's renderer sandbox stays on; it is dropped only where Chrome itself
+refuses to start it (as root, the usual case in a container), and
+`RETRUST_CHROME_NO_SANDBOX=1` forces it off for any other locked-down
+environment that needs it.
 
 ```bash
 retrust screenshot reports/comparison.html --both-themes
@@ -996,8 +1010,14 @@ ORIGIN    who signed it?
 BSI CSAF aggregator points at. A verifier who looks only at the conventional
 location finds a 404 and concludes the key is unpublished. It is not.
 
-Exit code is non-zero if anything failed, so a build can refuse to score on a
-corpus it could not verify.
+Exit code is non-zero if anything *failed* a check -- a digest that did not
+match, a signature that did not verify -- so a build can refuse to score on a
+corpus it could not verify. **"Not established" is not a failure.** The first
+run above holds no keyring, so every signature is unestablished, and it still
+exits zero: "could not check" is not "checked and wrong". A pipeline that must
+not read the one as the other runs `retrust verify --strict`, which exits
+non-zero unless both origin and content were positively established for every
+advisory.
 
 ## Data sources
 

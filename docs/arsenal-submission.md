@@ -16,7 +16,7 @@ An OT purchase requisition commonly contains a manufacturer, model, order number
 
 ReTrust brings those inputs into a local procurement workflow. It indexes CISA OT CSAF advisories, resolves a candidate by order number or normalized product name, filters affected ranges where firmware is known, and produces an evidence-backed verdict. Five weighted pillars cover exploitation, severity, patch availability, vendor practice and certification. Hard gates surface disqualifying evidence even when the composite score would otherwise look favorable. Unresolved queries receive no numeric score, and uncertain version ranges remain visible and in scope.
 
-The demonstration uses the browser workspace and interactive terminal to compare candidates, explain a known-exploitation gate, inspect uncertainty, generate supplier questions and export a record. The core assessment runs offline after data acquisition, with no third-party Python runtime dependencies.
+The demonstration uses the browser workspace and interactive terminal to compare candidates, explain a known-exploitation gate, inspect uncertainty, generate supplier questions and export a record. The core assessment runs offline after data acquisition, with no third-party Python runtime dependencies. Acquisition verifies the advisory base against CISA's signing key before it is indexed: verification fails closed, pins the expected fingerprint, and `retrust verify --strict` refuses to proceed unless each advisory's origin and content were positively established.
 
 ReTrust includes reproducible evaluation commands and publishes the limits of its measurements. On the current local corpus, a 4,000-query internal round-trip benchmark recovers the source advisory with 99.85% precision and 99.70% recall. It does not penalize extra matches, so this is not general matching-accuracy validation. A historical backtest does not establish prediction of compromise. The tool organizes current public evidence for a buyer's review; it complements operational scanners, inventory tools and firmware analysis.
 
@@ -37,13 +37,13 @@ Use [the demo runbook](demo-runbook.md) for operational checks. Scores depend on
 - 3,937 advisories, 28,951 product entries, 12,061 distinct CVEs in the measured local index.
 - Version-range coverage: 94.91%; eligible-range coverage: 96.80%.
 - Authored buyer queries: 20/21. This is a small internal set.
-- Latest functionality verification: 775 automated tests and 89 real-data smoke checks passed.
+- Latest functionality verification: 831 automated tests and 94 real-data smoke checks passed.
 - Median local assessment time: approximately 505 ms for ABB AC 800M; shared-machine conditions apply.
 - [Methods and raw measurements](benchmark-report.md), [official-source tool comparison](tool-comparison.md), [PDF overview](ReTrust-Guide.pdf), [QA review](qa-review.md).
 
 ## Boundaries
 
-No live network scanning, traffic monitoring, identity attack-path collection or firmware binary analysis. No validated prediction of compromise. Vendor-family matches, missing evidence, screening scope and certification scope require analyst review. The browser service is intended for a local workstation and has no multi-user authentication.
+No live network scanning, traffic monitoring, identity attack-path collection or firmware binary analysis. No validated prediction of compromise. Vendor-family matches, missing evidence, screening scope and certification scope require analyst review. The browser service is intended for a local workstation and has no multi-user authentication; it is read-only, serving pages over GET under a strict content-security policy with a DNS-rebinding guard, and exposes none of the commands that fetch data or change local state (`provider`, `setup`, `refresh`, `snapshot`, `ingest`). The optional hosted deployment (`RETRUST_HOSTED=1`) carries the same read-only surface, so data acquisition — and its network egress — stays command-line only and is never reachable over HTTP.
 
 ## Information to complete before submission
 

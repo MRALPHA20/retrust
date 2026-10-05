@@ -85,6 +85,9 @@ For a hosted demonstration, use the included `render.yaml` Blueprint. See
 [Deploy on Render](docs/render-deployment.md) for setup, data refresh behavior
 and free-instance limits. Hosted assessments are processed on the server;
 the local installation remains available for confidential procurement inputs.
+The hosted interface is read-only and answers GET requests only: it serves
+assessment queries and never exposes the commands that fetch data or change the
+index.
 
 Try the [hosted ReTrust demo](https://retrust-q2tr.onrender.com/) — a
 free-tier instance that cold-starts in ~30 seconds and serves one request at a
@@ -190,7 +193,9 @@ after installing the optional documentation dependencies: `pip install -e '.[doc
 - **`retrust sensitivity` attacks the weights** — a verdict that survives
   fewer than 90% of random reweightings is flagged as a judgement call.
 - **`retrust verify` checks the inputs** — SHA-512 digests and PGP signatures
-  on all 3,937 advisories, with key discovery following the CSAF standard.
+  on all 3,937 advisories, with key discovery following the CSAF standard. The
+  default never reads "could not check" as "verified"; `--strict` turns anything
+  short of a positive result into a non-zero exit, for a pipeline that must not.
 
 ### Every command
 

@@ -542,6 +542,8 @@ a gate rather than a report somebody has to read.</p>
     <tr><td>How much does the verdict depend on the weights?</td><td><code>retrust sensitivity --vendor V --product P</code></td></tr>
     <tr><td>Reproduce the published accuracy figures</td><td><code>retrust eval --sample 4000</code></td></tr>
     <tr><td>Is this installation current enough to trust?</td><td><code>retrust doctor</code></td></tr>
+    <tr><td>Are these the advisories CISA actually published?</td><td><code>retrust verify</code></td></tr>
+    <tr><td>Make a build refuse anything short of verified</td><td><code>retrust verify --strict</code></td></tr>
     <tr><td>What do we ask the vendor before signing?</td><td><code>retrust questions --vendor V --product P</code></td></tr>
     <tr><td>What does this product's history look like?</td><td><code>retrust timeline --vendor V --product P</code></td></tr>
     <tr><td>Does anything we are buying carry this CVE?</td><td><code>retrust cve CVE-2023-44487</code></td></tr>

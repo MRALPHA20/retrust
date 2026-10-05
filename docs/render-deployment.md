@@ -20,7 +20,7 @@ For a manually configured web service, use:
 | Start command | `python -u -m retrust.cli serve --host 0.0.0.0 --port "$PORT"` |
 | Health check | `/healthz` |
 | Instance | Free |
-| Environment | `RETRUST_HOSTED=1`, `RETRUST_BUILD_LEV_HISTORY=1` |
+| Environment | `RETRUST_HOSTED=1`, `RETRUST_BUILD_LEV_HISTORY=1`, `PYTHONUNBUFFERED=1` |
 
 ## Data and updates
 
@@ -47,6 +47,13 @@ wake. Open it before a presentation. This deployment uses the existing serial,
 read-only HTTP server behind Render's HTTPS proxy; it is intended for a demo
 or light use. A service designed for substantial concurrent traffic needs a
 separate production-serving change and load testing.
+
+The hosted surface is strictly read-only: the server answers GET requests only
+and routes each one through an explicit table of read pages -- search, scoring,
+comparison, the advisory views and `/healthz`. None of the commands that fetch
+from the network or change state (`provider`, `setup`, `refresh`, `snapshot`,
+`ingest`) is wired into it; that work runs only on the command line, so the
+public URL cannot be driven to fetch a URL or alter the index.
 
 After deployment check search, an order-number assessment, comparison, all
 three comparison downloads, the advisory timeline and exploitation estimates.

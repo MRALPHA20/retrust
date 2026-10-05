@@ -30,7 +30,7 @@ loaded database, rather than a slide or a fixed example.
 ### 2. Identify the hardware (one minute)
 
 Search for `6ES7518-4AX00-1AB0`. Open the result and add the firmware version
-under **Edit product details and firmware**. Explain that the order number is
+under **Edit product, firmware, or network exposure**. Explain that the order number is
 a procurement identifier and the firmware narrows the affected ranges.
 
 Alternatively, use **Assess a product** and enter the order number directly.
@@ -84,7 +84,10 @@ Keep these distinctions in the presentation.
 - Exercise the examples using the exact snapshot you will present; verdicts
   and counts may change after a data refresh.
 - If refresh is needed, do it before the event, then verify the corpus with
-  `python3 -m retrust.cli verify` and review its signature status.
+  `python3 -m retrust.cli verify` and review its signature status. Add
+  `--strict` to make "not established" (no keyring, no shipped digest) a
+  failure rather than a silent pass, so a signer you have not actually
+  confirmed cannot slip through before the event.
 - Save a snapshot with `python3 -m retrust.cli snapshot` and keep a known-good
   copy separately. A snapshot holds data; preserve any custom scoring config too.
 - Keep the default loopback bind. The browser server has no authentication.

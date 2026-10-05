@@ -48,7 +48,7 @@ python3 -m pytest -q
 bash smoke.sh
 ```
 
-The latest functionality verification recorded 775 passing automated tests and 89 passing real-data smoke checks. See [QA review](qa-review.md). Full benchmark evidence: [evaluation JSON](benchmarks/evaluation.json), [evaluation text](benchmarks/evaluation.txt), [backtest JSON](benchmarks/backtest.json), [backtest text](benchmarks/backtest.txt).
+The latest functionality verification recorded 831 passing automated tests and 94 passing real-data smoke checks, including regression guards against injection, SSRF and decompression-bomb inputs. See [QA review](qa-review.md) for an earlier dated run. Full benchmark evidence: [evaluation JSON](benchmarks/evaluation.json), [evaluation text](benchmarks/evaluation.txt), [backtest JSON](benchmarks/backtest.json), [backtest text](benchmarks/backtest.txt).
 
 Database SHA-256: `7c1e38886df7fc4ce06fed9f889bc8304c4030c2d6d597eb947050252d1189ed`.
 

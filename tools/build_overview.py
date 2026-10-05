@@ -146,11 +146,11 @@ def build():
         p('Setup needs network access to obtain sources. Once populated, assessments run locally. The browser workspace defaults to 127.0.0.1:8765. The core package requires Python 3.10+ and no third-party Python runtime packages; some setup, signature and screenshot commands use external tools.'),
         p('Reproduce the measurements','H2'),
         p('python3 -m retrust.cli eval --sample 4000 --json eval.json<br/>python3 -m retrust.cli backtest --permutations 1000<br/>python3 -m pytest -q<br/>bash smoke.sh','Code'),
-        p('Local verification: 775 automated tests passed; 89 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases. They do not constitute an independent security audit.'),
+        p('Local verification: 831 automated tests passed; 94 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases, including guards against injection, SSRF and decompression-bomb inputs. They do not constitute an independent security audit.'),
         p('Know the remaining gaps','H2'),
         p('<b>Evidence coverage:</b> absent advisories, missing certification or uncertain ranges are not proof of safety. Family-level queries can collect several variants; prefer precise identifiers.'),
         p('<b>Scoring:</b> weights and gates encode a review policy. Certification may be vendor-level, screening requires scope confirmation, and raw disclosure volume is not a risk ground truth.'),
-        p('<b>Operations:</b> the local web UI has no multi-user authentication or enterprise case-management workflow. Preserve provenance and snapshots, review source freshness with doctor, and recheck supplier evidence before a decision.'),
+        p('<b>Operations:</b> the local web UI has no multi-user authentication or enterprise case-management workflow, but it is read-only and answers GET requests only, exposing none of the commands that fetch data or change the index. Preserve provenance and snapshots, confirm advisory origin with verify (--strict in a pipeline), review source freshness with doctor, and recheck supplier evidence before a decision.'),
         p('<b>Next validation:</b> build an independently labeled product/version set, measure extra matches and abstention quality, record buyer usability results, and evaluate outcomes across vendors and time.'),
         note('Reproducibility record',f"Data captured locally on 28 September 2026. SQLite SHA-256:<br/><font face='Courier' size='7.7'>{latency['database_sha256']}</font><br/>Benchmark JSON/text and this PDF builder are retained in the repository."),PageBreak()]
 
