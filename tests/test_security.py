@@ -36,6 +36,43 @@ def test_fetched_urls_must_be_public_https():
     assert bootstrap._require_public_https(ok) == ok
 
 
+def test_redirect_to_private_host_is_refused_before_connecting():
+    """urllib follows redirects itself, so vetting only the returned response
+    would run after the connection to the redirect target was already opened --
+    a public feed could 302 the fetch onto an internal host. The opener's
+    redirect handler must refuse the hop before any request reaches the target."""
+    import http.server
+    import threading
+
+    hit = {"target": False}
+
+    class Target(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):                      # the "internal" host records a hit
+            hit["target"] = True
+            self.send_response(200); self.end_headers(); self.wfile.write(b"x")
+        def log_message(self, *a): pass
+
+    class Redirector(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{target.server_address[1]}/")
+            self.end_headers()
+        def log_message(self, *a): pass
+
+    target = http.server.HTTPServer(("127.0.0.1", 0), Target)
+    redirector = http.server.HTTPServer(("127.0.0.1", 0), Redirector)
+    threading.Thread(target=target.serve_forever, daemon=True).start()
+    threading.Thread(target=redirector.serve_forever, daemon=True).start()
+    try:
+        from retrust import bootstrap
+        with pytest.raises(bootstrap.StepFailed):
+            bootstrap._OPENER.open(
+                f"http://127.0.0.1:{redirector.server_address[1]}/", timeout=5)
+        assert hit["target"] is False      # the internal target was never reached
+    finally:
+        target.shutdown(); redirector.shutdown()
+
+
 # --- ReDoS: the fix-text scan is bounded, not quadratic on hostile prose ---
 
 def test_fix_text_scan_is_bounded():

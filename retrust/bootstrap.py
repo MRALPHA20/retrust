@@ -92,12 +92,30 @@ def _require_public_https(url):
     return url
 
 
-def _check_landed(response, url):
-    """A redirect can move a vetted https URL onto http or an internal host.
+class _VettedRedirect(urllib.request.HTTPRedirectHandler):
+    """Vet every redirect target before it is followed.
 
-    `_require_public_https` vets the address before the request; this vets where
-    the request actually landed, so a 302 from a public host to http:// or to a
-    private address is refused rather than followed and read.
+    urllib follows redirects itself, so a check on the *returned* response runs
+    only after the connection to the final URL was already opened -- a public
+    feed could 302 the fetch onto http:// or an internal host and the request
+    would fire before anything rejected it. `redirect_request` is called to
+    build the next hop *before* it is opened, so vetting here refuses a bad
+    target with no connection made to it at all.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _require_public_https(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# The one opener these fetches use: default handlers, but with redirects vetted.
+_OPENER = urllib.request.build_opener(_VettedRedirect)
+
+
+def _check_landed(response, url):
+    """Belt-and-suspenders: the opener vets every hop before connecting, so by
+    here the landed URL is already clean. This re-asserts it on the response in
+    case the fetch ever runs through a plain opener.
     """
     landed = getattr(response, "url", url)
     parts = urllib.parse.urlsplit(landed)
@@ -137,7 +155,7 @@ def _download(url, destination, decompress=False, max_bytes=MAX_FEED_BYTES):
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_name(destination.name + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+    with _OPENER.open(request, timeout=TIMEOUT) as response:
         _check_landed(response, url)
         payload = _read_capped(response, url, max_bytes)
     if decompress:
@@ -362,7 +380,7 @@ def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
     _require_public_https(metadata_url)
     request = urllib.request.Request(metadata_url,
                                      headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+    with _OPENER.open(request, timeout=TIMEOUT) as response:
         _check_landed(response, metadata_url)
         metadata = json.loads(_read_capped(response, metadata_url))
 
@@ -382,7 +400,7 @@ def fetch_provider(metadata_url, data_dir="data", force=False, progress=None):
         # feed["url"] comes from the fetched metadata, so it is vetted exactly
         # like the operator-typed metadata URL was, before any request is made.
         _require_public_https(feed["url"])
-        with urllib.request.urlopen(
+        with _OPENER.open(
                 urllib.request.Request(feed["url"],
                                        headers={"User-Agent": _USER_AGENT}),
                 timeout=TIMEOUT) as response:

@@ -49,7 +49,7 @@ class _Response:
 
 
 def test_download_writes_the_payload(tmp_path, monkeypatch):
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+    monkeypatch.setattr(bootstrap._OPENER, "open",
                         lambda *a, **k: _Response(b"hello"))
     destination = tmp_path / "out" / "f.json"
     assert bootstrap._download("https://example.invalid/f", destination) == 5
@@ -58,7 +58,7 @@ def test_download_writes_the_payload(tmp_path, monkeypatch):
 
 def test_download_decompresses_gzip(tmp_path, monkeypatch):
     import gzip
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+    monkeypatch.setattr(bootstrap._OPENER, "open",
                         lambda *a, **k: _Response(gzip.compress(b"cve,epss\n")))
     destination = tmp_path / "epss.csv"
     bootstrap._download("https://example.invalid/g", destination, decompress=True)
@@ -67,7 +67,7 @@ def test_download_decompresses_gzip(tmp_path, monkeypatch):
 
 def test_a_download_that_lands_on_http_is_refused(tmp_path, monkeypatch):
     """urllib follows redirects across schemes; security data must not."""
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+    monkeypatch.setattr(bootstrap._OPENER, "open",
                         lambda *a, **k: _Response(b"x", url="http://mitm.example/f"))
     with pytest.raises(bootstrap.StepFailed, match="https"):
         bootstrap._download("https://example.invalid/f", tmp_path / "f.json")
@@ -85,7 +85,7 @@ def test_an_oversized_download_is_refused(tmp_path, monkeypatch):
         def __exit__(self, *_):
             return False
 
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+    monkeypatch.setattr(bootstrap._OPENER, "open",
                         lambda *a, **k: _Endless())
     with pytest.raises(bootstrap.StepFailed, match="Refusing"):
         bootstrap._download("https://example.invalid/f", tmp_path / "f.json")
@@ -96,7 +96,7 @@ def test_a_gzip_bomb_is_refused(tmp_path, monkeypatch):
     """A small .gz that expands past the cap stops at the cap."""
     import gzip
     bomb = gzip.compress(b"\0" * (bootstrap.MAX_FEED_BYTES + 2))
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+    monkeypatch.setattr(bootstrap._OPENER, "open",
                         lambda *a, **k: _Response(bomb))
     with pytest.raises(bootstrap.StepFailed, match="Refusing"):
         bootstrap._download("https://example.invalid/g", tmp_path / "g.csv",
@@ -113,7 +113,7 @@ def test_a_failed_download_leaves_no_file_behind(tmp_path, monkeypatch):
     def explode(*_a, **_k):
         raise OSError("connection reset")
 
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen", explode)
+    monkeypatch.setattr(bootstrap._OPENER, "open", explode)
     destination = tmp_path / "kev.json"
     with pytest.raises(OSError):
         bootstrap._download("https://example.invalid/k", destination)
@@ -125,14 +125,14 @@ def test_a_failed_download_leaves_no_file_behind(tmp_path, monkeypatch):
 
 def test_a_present_feed_is_not_refetched(tmp_path, monkeypatch):
     (tmp_path / "kev.json").write_text(json.dumps({"vulnerabilities": []}))
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+    monkeypatch.setattr(bootstrap._OPENER, "open",
                         lambda *a, **k: pytest.fail("should not have fetched"))
     assert "already present" in bootstrap.fetch_feed(str(tmp_path), "kev")
 
 
 def test_force_refetches_a_present_feed(tmp_path, monkeypatch):
     (tmp_path / "kev.json").write_text("stale")
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen",
+    monkeypatch.setattr(bootstrap._OPENER, "open",
                         lambda *a, **k: _Response(b"fresh"))
     bootstrap.fetch_feed(str(tmp_path), "kev", force=True)
     assert (tmp_path / "kev.json").read_text() == "fresh"
@@ -142,7 +142,7 @@ def test_a_network_failure_is_reported_as_a_step_failure(tmp_path, monkeypatch):
     def explode(*_a, **_k):
         raise OSError("name resolution failed")
 
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen", explode)
+    monkeypatch.setattr(bootstrap._OPENER, "open", explode)
     with pytest.raises(bootstrap.StepFailed) as failure:
         bootstrap.fetch_feed(str(tmp_path), "kev")
     assert "KEV" in str(failure.value)
@@ -233,7 +233,7 @@ def _provider_world(tmp_path, monkeypatch, tlp="WHITE"):
             raise OSError(f"unexpected fetch: {url}")
         return _Response(documents[url].encode(), url=url)
 
-    monkeypatch.setattr(bootstrap.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(bootstrap._OPENER, "open", fake_urlopen)
     return documents
 
 

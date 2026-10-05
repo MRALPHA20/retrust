@@ -235,10 +235,11 @@ https only -- a redirect that lands on plain http is refused -- and reads are
 capped, so a hostile mirror can fill neither memory nor disk, gzip bombs
 included. When `retrust provider` follows a vendor's own CSAF feed, the feed,
 each advisory, and the digest and signature beside them are all addresses that
-document hands the tool, so every one is vetted before the request and again
-after any redirect: https only, and never a private, loopback or link-local
-host -- a crafted feed cannot turn a fetch into a read of a local file or a
-request to a cloud metadata endpoint. That feed is capped at 50,000 advisories
+document hands the tool, so every one is vetted before the request, and each
+redirect is vetted before it is followed -- urllib would otherwise open the
+connection to a redirect target before anything could object: https only, and
+never a private, loopback or link-local host, so a crafted feed cannot turn a
+fetch into a read of a local file or a request to a cloud metadata endpoint. That feed is capped at 50,000 advisories
 and 30 MB apiece. All of this fetching lives in the CLI; the web server fetches
 nothing, so none of it is reachable over HTTP. PGP key material is refused over
 anything but https and size-capped too. A snapshot's manifest travels inside
