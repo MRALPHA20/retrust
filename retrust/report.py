@@ -205,6 +205,14 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     parts.append(f'<div class="verdict"><span class="v">'
                  f'{_esc(assessment.verdict)}</span>{summary}</div>')
 
+    if assessment.vector:
+        parts.append('<details class="vector"><summary>Reproduction vector</summary>'
+                     f'<p><code>{_esc(assessment.vector)}</code></p>'
+                     '<p class="tnote">Includes the scoring version, supplied firmware and '
+                     'operator choices. The data token fingerprints recorded source '
+                     'provenance metadata; the source dates and counts appear below.</p>'
+                     '</details>')
+
     if stability is not None:
         klass = "robust" if (stability.gated or stability.robust) else "fragile"
         parts.append(

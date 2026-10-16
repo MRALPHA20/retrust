@@ -79,8 +79,20 @@ def test_a_fix_that_exists_is_not_a_fix_that_is_installed():
     fixed = _finding(remediation="vendor_fix")
     purchase = exposure.applicability(fixed, "purchase")
     installed = exposure.applicability(fixed, "installed")
-    assert purchase < installed == 1.0          # leverage on an order, not on a box
+    assert purchase == installed == 1.0
+    assert exposure.applicability(fixed, "purchase", "available") == 1.0
     assert exposure.applicability(fixed, "installed", "applied") == 0.0
+    assert exposure.applicability(fixed, "purchase", "planned") == 1.0
+
+
+def test_planned_remediation_is_not_current_evidence_or_risk_reduction():
+    finding = _finding(remediation="vendor_fix")
+    risk_now = exposure.risk(finding, assessment_type="purchase")
+    risk_planned = exposure.risk(finding, assessment_type="purchase",
+                                 remediation="planned")
+    assert risk_planned == risk_now
+    assert exposure.measure([finding], remediation="planned")[1] == \
+        exposure.measure([finding], remediation="unknown")[1]
 
 
 # --- concentration, and the breadth it must not lose ------------------------
@@ -142,3 +154,16 @@ def test_the_vector_records_every_choice_and_is_stable():
         assert fragment in first
     # An unanswered question reads as unset, never as a default that scored.
     assert "OC:unset" in score.vector()
+
+
+def test_assessment_vector_keeps_supplied_firmware_and_provenance():
+    token = score.provenance_token([
+        {"source": "CISA KEV", "detail": "12 entries", "captured": "2026-10-01"}])
+    result = score.assess("PLC", [_finding(cvss=5.0)], version="3.1.6",
+                          snapshot=token)
+    assert "FW:3.1.6" in result.vector
+    assert f"DS:{token}" in result.vector
+    assert token == score.provenance_token([
+        {"source": "CISA KEV", "detail": "12 entries", "captured": "2026-10-01"}])
+    assert token != score.provenance_token([
+        {"source": "CISA KEV", "detail": "13 entries", "captured": "2026-10-01"}])

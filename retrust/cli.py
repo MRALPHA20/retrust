@@ -121,7 +121,9 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                               network_exposure=network_exposure,
                               consequence=consequence, interface=interface,
                               assessment_type=assessment_type,
-                              remediation=remediation)
+                              remediation=remediation, version=version,
+                              snapshot=score.provenance_token(
+                                  index.provenance(connection)))
     assessment.notes.extend(screening_notes)
 
     # A firmware version narrowing the scope can lower the score -- the CVEs

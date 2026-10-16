@@ -897,11 +897,11 @@ rather than quietly becoming a best or worst case.
 
 | Input | Choices | Effect |
 |---|---|---|
-| `--assessment-type` | `purchase` (default), `installed` | On a purchase an available fix is leverage you can pin in the order; on an installed asset it changes nothing until somebody applies it |
+| `--assessment-type` | `purchase` (default), `installed` | Records whether this is a procurement decision or an existing asset review |
 | `--network-exposure` | `isolated`, `it_ot`, `internet_ot` | Narrows `A`. Folded into reachability rather than scored separately: "an attacker cannot route here" is the statement `A` already makes |
 | `--consequence` | `safety`, `control`, `recoverable`, `minor`, `negligible` | Scales `H`. Left blank, exposure is reported at full process impact — the conservative reading, and said out loud |
 | `--interface` | `exposed`, `blocked`, `unknown` | Only a *verified* block narrows `A` |
-| `--remediation` | `applied`, `mitigated`, `available`, `unknown` | "A fix exists" and "the fix is on the box" are different facts and do not score alike |
+| `--remediation` | `applied`, `mitigated`, `available`, `planned`, `unknown` | Use for all in-scope findings; planned work does not reduce current risk |
 
 Every declaration can only ever narrow the risk: saying nothing is already the
 conservative reading, so a claim about your own plant never makes a flaw worse
@@ -911,8 +911,12 @@ Each assessment also carries a reproducible vector, so a result can be re-run
 and disputed by somebody who was not there:
 
 ```
-RT1/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:2026-10-05
+RT2/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:4f3a9c2d6b18
 ```
+
+`DS` is a short fingerprint of the recorded source, count and capture-date
+metadata, not a checksum of the full advisory database. The report lists those
+source records below the vector.
 
 ### What the vector says, not just the score
 

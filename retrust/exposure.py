@@ -62,6 +62,7 @@ REMEDIATIONS = {
     "applied":   ("Fix verified present on this firmware", 0.0),
     "mitigated": ("Compensating control implemented and verified", 0.4),
     "available": ("Fix exists but is not applied", 1.0),
+    "planned":   ("Remediation planned, not implemented", 1.0),
     "unknown":   ("Not established", 1.0),
 }
 
@@ -69,11 +70,6 @@ ASSESSMENT_TYPES = {
     "purchase":  "New equipment purchase",
     "installed": "Installed asset",
 }
-
-# A fix that exists but has not been pinned to the delivered firmware is worth
-# something short of applied: on a purchase you can still require it in the
-# order, which is precisely what the RFQ annex asks the supplier to confirm.
-UNPINNED_FIX = 0.25
 
 # How far the CVSS attack vector gets an attacker on its own.
 VECTOR_REACH = {"network": 1.0, "adjacent": 0.6, "local": 0.3, "physical": 0.1}
@@ -150,13 +146,14 @@ def reach(finding, interface="unknown", network=None):
 
 
 def applicability(finding, assessment_type="purchase", remediation="unknown"):
-    """U: does this still apply to the firmware being bought or run?"""
+    """U: does this still apply to the firmware being bought or run?
+
+    Patch availability belongs to P, not U. Only an explicit operator
+    assertion that every in-scope finding is fixed or mitigated changes U;
+    buying a product that has a fix available does not assume it will ship.
+    """
     if remediation in ("applied", "mitigated"):
         return REMEDIATIONS[remediation][1]
-    if finding.fixed and remediation != "available":
-        # A fix exists. On a purchase that is leverage; on an installed asset
-        # it changes nothing until somebody applies it.
-        return UNPINNED_FIX if assessment_type == "purchase" else 1.0
     return 1.0
 
 
@@ -208,7 +205,8 @@ def measure(findings, consequence=None, interface="unknown",
 
     # Coverage: the two terms ReTrust reads itself are always measured; the two
     # the operator supplies are not, and that is said rather than hidden.
-    measured = 2 + (consequence is not None) + (remediation != "unknown")
+    remediation_measured = remediation in ("applied", "mitigated", "available")
+    measured = 2 + (consequence is not None) + remediation_measured
     if consequence is None:
         evidence.append(
             "process consequence not supplied, so exposure is shown at full "

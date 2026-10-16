@@ -25,6 +25,8 @@ Two rules keep this defensible:
 """
 
 from dataclasses import dataclass, field
+import hashlib
+import json
 
 from . import cvss, exposure as exposure_model, weakness
 
@@ -32,7 +34,7 @@ BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
 
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
-SCORING_VERSION = "RT1"
+SCORING_VERSION = "RT2"
 
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
@@ -52,6 +54,20 @@ def vector(assessment_type="purchase", version=None, network_exposure=None,
                         ("RS", remediation), ("DS", snapshot)):
         parts.append(f"{code}:{value if value else 'unset'}")
     return "/".join(parts)
+
+
+def provenance_token(provenance):
+    """Fingerprint the source-provenance rows attached to an assessment.
+
+    This identifies the recorded source/count/capture metadata, not the full
+    advisory database bytes. Reports retain the detailed rows alongside it.
+    """
+    rows = sorted((str(row.get("source", "")), str(row.get("detail", "")),
+                   str(row.get("captured", ""))) for row in provenance or [])
+    if not rows:
+        return ""
+    packed = json.dumps(rows, ensure_ascii=True, separators=(",", ":"))
+    return hashlib.sha256(packed.encode("utf-8")).hexdigest()[:12]
 
 
 @dataclass
@@ -597,7 +613,8 @@ def not_assessed(product_label, reason):
 def assess(product_label, findings, advisories=(), weights=None, today_year=2026,
            certificates=(), screening_gates=(), bands=None, vendor_key=None,
            network_exposure=None, consequence=None, interface="unknown",
-           assessment_type="purchase", remediation="unknown"):
+           assessment_type="purchase", remediation="unknown", version=None,
+           snapshot=""):
     """Score a resolved product. Returns an Assessment.
 
     The last four arguments are facts only the asset owner has: what a
@@ -758,12 +775,12 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             "No process consequence was declared, so exposure is reported at"
             " full process impact. That is the conservative reading, not a"
             " measurement: declare the consequence to narrow it.")
-    if assessment_type == "purchase" and any(f.fixed for f in base):
+    if any(f.fixed for f in base) and remediation not in ("applied", "mitigated"):
         notes.append(
-            "Scored as a new purchase, so a finding with an available fix is"
-            " treated as largely answerable -- which holds only if the order"
-            " pins the fixed firmware. The RFQ annex asks the supplier to"
-            " confirm it in writing.")
+            "A fix is available for one or more findings, but exposure still"
+            " treats them as applicable until the selected firmware or a"
+            " verified mitigation is established. Fix availability contributes"
+            " to patchability, not a second exposure discount.")
 
     # What kind of flaws these are, which is a different question from how many
     # or how bad. Notes rather than a scoring term: a credential baked into
@@ -783,7 +800,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         confidence=round(confidence.coverage, 2),
         network_exposure=network_exposure,
         assessment_type=assessment_type, consequence=consequence,
-        vector=vector(assessment_type, None, network_exposure, interface,
-                      consequence, remediation),
+        vector=vector(assessment_type, version, network_exposure, interface,
+                      consequence, remediation, snapshot),
         notes=notes,
     )

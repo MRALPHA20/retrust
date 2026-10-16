@@ -272,17 +272,19 @@ S = max( S_with_C , S_without_C )      it may lift, never lower</div>
     <table>
       <thead><tr><th>Input</th><th>Choices</th><th>What it changes</th></tr></thead>
       <tbody>
-        <tr><td class="prod">Assessment type</td><td>purchase · installed</td><td>On a purchase an available fix is leverage you can pin in the order; on an installed asset it changes nothing until somebody applies it</td></tr>
+        <tr><td class="prod">Assessment type</td><td>purchase · installed</td><td>Records whether this is a procurement decision or an existing asset review</td></tr>
         <tr><td class="prod">Network exposure</td><td>isolated · IT–OT · internet–OT</td><td>Narrows <code>A</code>. Folded into reachability rather than scored separately — “an attacker cannot route here” is the statement <code>A</code> already makes</td></tr>
         <tr><td class="prod">Process consequence</td><td>safety · control · recoverable · minor · negligible</td><td>Scales <code>H</code>. Left blank, exposure is reported at full process impact</td></tr>
         <tr><td class="prod">Interface reachable?</td><td>exposed · blocked · unknown</td><td>Only a <em>verified</em> block narrows <code>A</code></td></tr>
-        <tr><td class="prod">Is the fix on the box?</td><td>applied · mitigated · available · unknown</td><td>“A fix exists” and “the fix is installed” are different facts and do not score alike</td></tr>
+        <tr><td class="prod">Fix / mitigation status</td><td>applied · mitigated · available · planned · unknown</td><td>Apply only to all in-scope findings; planned work does not reduce current risk</td></tr>
       </tbody>
     </table>
   </div>
   <p class="note-txt" style="margin-top:.9rem">Each assessment also carries a reproducible vector, so a result
     can be re-run and disputed by somebody who was not in the room — CVSS’s idea, and a good one:</p>
-  <div class="eq" style="margin-bottom:1.5rem">RT1/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:2026-10-05</div>
+  <div class="eq" style="margin-bottom:1.5rem">RT2/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:4f3a9c2d6b18</div>
+  <p class="note-txt">The firmware and operator choices are recorded with each result. <code>DS</code> fingerprints the
+    recorded source, count and capture-date metadata; it is not a checksum of the full advisory database.</p>
 
   <h2 id="gates">5 · The gates (outside the maths — any one → AVOID)</h2>
   <p class="note-txt">These are facts that <em>end</em> the assessment. They’re checked on the product’s own

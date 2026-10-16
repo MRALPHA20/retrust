@@ -320,16 +320,16 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
             + _choice('network_exposure', 'Network exposure',
                       score.NETWORK_EXPOSURES, network_exposure,
                       blank='Choose if known',
-                      helper='Narrows how reachable a flaw is. Operator-reported, not verified.')
+                      helper='Operator-reported, not verified. This describes deployment; it does not prove a specific CVE is unreachable.')
             + _choice('consequence', 'If compromised, the process would suffer',
                       score.CONSEQUENCES, consequence, blank='Choose if known',
                       helper='Left blank, exposure is shown at full process impact.')
             + _choice('interface', 'Vulnerable interface reachable?',
                       score.INTERFACES, interface,
-                      helper='Only a verified block narrows the score.')
+                      helper='Only a verified block narrows the score. This summary applies to all in-scope findings; it is not CVE-specific proof.')
             + _choice('remediation', 'Is the fix on the box?',
                       score.REMEDIATIONS, remediation,
-                      helper='"Available" and "applied" are different facts.')
+                      helper='Use only for all in-scope findings. Planned work does not reduce current risk.')
             + '</div>')
 
 
@@ -342,7 +342,8 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
             '<p class="form-divider">Or identify it by vendor and product. If you enter both, they must agree.</p>'
             '<div class="form-grid">' + _field('v', 'vendor', 'Vendor', vendor, 'e.g. Siemens')
             + _field('p', 'product', 'Product / model', product, 'e.g. SIMATIC S7-1500')
-            + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
+            + _field('f', 'version', 'Firmware version (or unknown)', version, 'e.g. 3.1.6')
+            + '<p class="helper">Enter the exact version, or leave blank if unknown; unconfirmed advisory ranges stay pending review.</p>'
             + '</div>'
             '<p class="form-divider">Deployment and operational context. Optional, and '
             'all operator-reported: ReTrust supplies the vulnerability evidence, you '
