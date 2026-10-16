@@ -31,9 +31,17 @@ that page will then explain that its required data is missing.
 
 Data is part of the deployment artifact. Runtime requests read it and generate
 downloads in memory, so a restart requires no persistent disk. Each new build
-refreshes the main sources. Automatic deployment is disabled; use **Manual
-Deploy > Deploy latest commit** when an update is ready. Inspect source dates
-on **Data & methodology** after deploying.
+refreshes the main sources. Automatic deployment is enabled
+(`autoDeployTrigger: commit`), so every push to the tracked branch rebuilds and
+redeploys; **Manual Deploy > Deploy latest commit** still forces one on demand.
+
+Because the build runs `setup --force` and `lev --update`, it refetches the
+whole advisory corpus and 67 EPSS snapshots — tens of minutes on the free plan,
+and a slow deploy is expected rather than a hang. It also means the live index
+is rebuilt from current sources on every deploy, so hosted figures can differ
+from the ones in these docs. Inspect source dates on **Data & methodology**
+after deploying. Before a presentation, prefer a local snapshot: same numbers,
+no cold start.
 
 The app has no accounts or saved procurement projects. Hosted assessments are
 processed on Render, and requests pass through Render's infrastructure. Run
