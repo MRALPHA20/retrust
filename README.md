@@ -249,6 +249,12 @@ after installing the optional documentation dependencies: `pip install -e '.[doc
   design decision with the measurement that justified it.
 - **[ReTrust-Guide.pdf](docs/ReTrust-Guide.pdf)** — an 11-page printable user
   guide that opens on a three-step quick start.
+- **[docs/explainers/](docs/explainers/)** — three self-contained pages for
+  explaining the tool to somebody else: [what it is and how it
+  works](docs/explainers/overview.html), [every command by the job it
+  does](docs/explainers/commands.html), and [the full scoring
+  methodology](docs/explainers/scoring.html) with the formula worked through.
+  Open any one in a browser; they cross-link.
 - **[examples/](examples/)** — a candidate CSV, a CycloneDX SBOM, and the
   hand-written buyer-query benchmark.
 

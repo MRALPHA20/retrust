@@ -1,0 +1,490 @@
+<title>ReTrust Explained</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+  /* ---- palette: ISA-101 control-room echo. Light default; dark redefines tokens. ---- */
+  :root{
+    --bg:#eceff1; --surface:#f8fafb; --sunk:#e1e6e9; --rule:#ccd3d8;
+    --ink:#1b242b; --soft:#54606a; --faint:#889299;
+    --accent:#0d7a64; --accent-soft:#0d7a6418;
+    --prefer:#1c7a4a; --cond:#a2690a; --avoid:#b02a20;
+    --shadow:0 1px 2px rgba(20,30,40,.06),0 8px 24px rgba(20,30,40,.05);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme=light]){
+      --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+      --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+      --accent:#49cdac; --accent-soft:#49cdac1f;
+      --prefer:#49b67e; --cond:#d79a26; --avoid:#e46a60;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme=dark]{
+    --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+    --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+    --accent:#49cdac; --accent-soft:#49cdac1f;
+    --prefer:#49b67e; --cond:#d79a26; --avoid:#e46a60;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.6;font-size:17px;-webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility}
+  .wrap{max-width:880px;margin:0 auto;padding:clamp(1.3rem,4vw,3rem) clamp(1.1rem,4vw,2rem) 5rem}
+
+  /* ---- masthead ---- */
+  .top{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2.6rem}
+  .brand{display:flex;align-items:center;gap:.7rem;font-weight:700;font-size:1.18rem;letter-spacing:-.01em}
+  .mark{width:38px;height:38px;flex:none;display:grid;place-items:center;position:relative;
+    border:1.5px solid var(--accent);border-radius:11px 3px 11px 3px;color:var(--accent);
+    font-family:var(--mono);font-weight:600;font-size:1.25rem}
+  .mark sup{position:absolute;top:3px;right:5px;font-size:.6rem}
+  .toggle{appearance:none;border:1px solid var(--rule);background:var(--surface);color:var(--soft);
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;
+    padding:.5rem .8rem;border-radius:7px;cursor:pointer}
+  .toggle:hover{color:var(--ink);border-color:var(--accent)}
+
+  .eyebrow{font-family:var(--mono);font-size:.74rem;font-weight:500;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 .9rem}
+  h1{font-size:clamp(2rem,6vw,3rem);line-height:1.08;letter-spacing:-.025em;font-weight:700;
+    margin:0 0 1rem;text-wrap:balance}
+  .lede{font-size:clamp(1.05rem,2.4vw,1.28rem);color:var(--soft);max-width:36ch;margin:0 0 .4rem}
+  .hero .lede{max-width:46ch}
+
+  h2{font-size:1.5rem;letter-spacing:-.015em;font-weight:700;margin:3.4rem 0 .5rem;text-wrap:balance}
+  .section-note{color:var(--soft);margin:0 0 1.4rem;max-width:58ch}
+  section:first-of-type h2{margin-top:2.2rem}
+
+  .card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;
+    padding:1.4rem 1.5rem;box-shadow:var(--shadow)}
+  .grid{display:grid;gap:14px}
+  @media(min-width:620px){.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}}
+
+  /* the one question */
+  .question{border-left:4px solid var(--accent);background:var(--accent-soft);
+    border-radius:0 12px 12px 0;padding:1.2rem 1.4rem;margin:.4rem 0 0}
+  .question p{margin:0;font-size:1.18rem;line-height:1.5}
+  .question em{font-style:normal;color:var(--accent);font-weight:600}
+
+  /* flow figure */
+  figure{margin:1rem 0 0}
+  figure svg{display:block;width:100%;height:auto}
+  figcaption{color:var(--faint);font-size:.86rem;margin-top:.7rem;font-family:var(--mono)}
+
+  /* verdict chips */
+  .verdicts{display:grid;gap:12px;margin-top:.3rem}
+  @media(min-width:620px){.verdicts{grid-template-columns:1fr 1fr}}
+  .verdict{display:flex;gap:.9rem;align-items:flex-start;background:var(--surface);
+    border:1px solid var(--rule);border-left-width:4px;border-radius:10px;padding:.9rem 1.1rem}
+  .verdict .v{font-family:var(--mono);font-weight:600;font-size:.95rem;letter-spacing:.02em;flex:none;
+    padding-top:.05rem}
+  .verdict small{display:block;color:var(--soft);font-size:.92rem;line-height:1.45;font-family:var(--sans)}
+  .v-prefer{border-left-color:var(--prefer)} .v-prefer .v{color:var(--prefer)}
+  .v-cond{border-left-color:var(--cond)}     .v-cond .v{color:var(--cond)}
+  .v-avoid{border-left-color:var(--avoid)}   .v-avoid .v{color:var(--avoid)}
+  .v-na{border-left-color:var(--faint)}      .v-na .v{color:var(--faint)}
+
+  /* numbered steps */
+  ol.steps{list-style:none;counter-reset:s;margin:.3rem 0 0;padding:0;display:grid;gap:12px}
+  ol.steps li{counter-increment:s;display:flex;gap:1rem;align-items:flex-start}
+  ol.steps li::before{content:counter(s);flex:none;width:30px;height:30px;border-radius:50%;
+    display:grid;place-items:center;font-family:var(--mono);font-size:.9rem;font-weight:600;
+    color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent)}
+  ol.steps b{font-weight:600}
+  ol.steps p{margin:.1rem 0 0;color:var(--soft);font-size:.96rem}
+
+  /* way-to-find & feature tiles */
+  .tile h3{margin:0 0 .3rem;font-size:1.02rem;font-weight:600;display:flex;align-items:center;gap:.5rem}
+  .tile p{margin:0;color:var(--soft);font-size:.94rem}
+  .pill{font-family:var(--mono);font-size:.72rem;color:var(--accent);background:var(--accent-soft);
+    border-radius:20px;padding:.12rem .55rem;font-weight:500}
+  code,kbd{font-family:var(--mono);font-size:.86em;background:var(--sunk);border:1px solid var(--rule);
+    border-radius:5px;padding:.08em .4em;white-space:nowrap}
+
+  /* example table */
+  .tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:430px;background:var(--surface);font-size:.95rem}
+  th,td{text-align:left;padding:.75rem 1rem;border-bottom:1px solid var(--rule)}
+  th{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--soft);background:var(--sunk);font-weight:500}
+  tbody tr:last-child td{border-bottom:none}
+  td.prod{font-weight:600} td .sub{display:block;color:var(--faint);font-size:.8rem;font-weight:400;font-family:var(--mono)}
+  td.n{font-family:var(--mono);text-align:right}
+  .tag{font-family:var(--mono);font-size:.76rem;font-weight:600;padding:.12rem .5rem;border-radius:6px}
+  .tag.prefer{color:var(--prefer);background:color-mix(in srgb,var(--prefer) 14%,transparent)}
+  .tag.avoid{color:var(--avoid);background:color-mix(in srgb,var(--avoid) 14%,transparent)}
+
+  /* feature grid */
+  .features{display:grid;gap:10px}
+  @media(min-width:620px){.features{grid-template-columns:1fr 1fr}}
+  .feat{display:flex;gap:.7rem;padding:.7rem .3rem;border-bottom:1px solid var(--rule)}
+  .feat .cmd{font-family:var(--mono);font-size:.82rem;color:var(--accent);flex:none;width:7.2rem;font-weight:500}
+  .feat span{color:var(--soft);font-size:.92rem}
+
+  ul.honest{list-style:none;margin:.3rem 0 0;padding:0;display:grid;gap:12px}
+  ul.honest li{display:flex;gap:.8rem;color:var(--soft)}
+  ul.honest li b{color:var(--ink);font-weight:600}
+  ul.honest .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:.55rem}
+
+  .run{background:var(--sunk);border:1px solid var(--rule);border-radius:12px;padding:1.1rem 1.3rem;
+    font-family:var(--mono);font-size:.86rem;line-height:1.9;overflow-x:auto}
+  .run .c{color:var(--faint)}
+  .run b{color:var(--accent);font-weight:500}
+
+  /* scoring section */
+  .layers{display:grid;gap:10px;margin:.3rem 0 1.7rem}
+  .layer{display:flex;gap:.85rem;align-items:center;background:var(--surface);
+    border:1px solid var(--rule);border-radius:10px;padding:.7rem 1rem}
+  .layer .ln{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+    font-family:var(--mono);font-weight:600;font-size:.82rem;color:var(--accent);
+    background:var(--accent-soft);border:1px solid var(--accent)}
+  .layer div{font-size:.96rem;color:var(--soft)} .layer b{color:var(--ink);font-weight:600}
+  .formula{display:grid;place-items:center;background:var(--sunk);border:1px solid var(--rule);
+    border-radius:12px;padding:1.5rem 1rem;margin:.2rem 0 1.5rem}
+  .frac{text-align:center;font-family:var(--mono);font-size:clamp(.78rem,2.3vw,.95rem);color:var(--ink)}
+  .frac .num{display:block;padding:0 1.1rem .55rem} .frac .den{display:block;padding:.55rem 1.1rem 0;
+    border-top:2px solid var(--accent);color:var(--soft)}
+  td.tot{font-weight:600;border-top:2px solid var(--rule)} tr.tot td{background:var(--sunk)}
+
+  .related{display:grid;gap:10px;margin:1.4rem 0 0}
+  @media(min-width:560px){.related{grid-template-columns:1fr 1fr}}
+  .related a{display:flex;gap:.6rem;align-items:center;text-decoration:none;background:var(--surface);
+    border:1px solid var(--rule);border-radius:10px;padding:.8rem 1rem;color:var(--ink)}
+  .related a:hover{border-color:var(--accent)}
+  .related .emo{font-size:1.3rem;flex:none}
+  .related small{display:block;color:var(--faint);font-size:.82rem}
+
+  footer{margin-top:4rem;padding-top:1.6rem;border-top:1px solid var(--rule);color:var(--faint);
+    font-size:.86rem;display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;align-items:center}
+  footer .mono{font-family:var(--mono)}
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand"><span class="mark">R<sup>↗</sup></span> ReTrust</div>
+    <button class="toggle" id="themeBtn" aria-label="Switch light or dark theme">◐ theme</button>
+  </div>
+
+  <section class="hero">
+    <p class="eyebrow">Open-source OT risk tooling</p>
+    <h1>Know the cyber risk of a PLC before you buy it.</h1>
+    <p class="lede">ReTrust scores industrial hardware — PLCs, switches, controllers — for cyber
+      risk from public advisory data, and shows the evidence behind every number.</p>
+  </section>
+
+  <section>
+    <h2>The one question it answers</h2>
+    <div class="question">
+      <p>“Of these candidate products, which one should we put on the
+      <em>purchase order?</em>”</p>
+    </div>
+    <p class="section-note" style="margin-top:1rem">It is decision support for the moment <em>before</em> you
+      buy — a shortlist review, not a live scanner. It never touches the device; it reads what the
+      world already knows about that model and turns it into a verdict you can defend.</p>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <p class="section-note">You give it a product. It resolves exactly what you mean, checks the
+      deal-breakers first, then weighs the evidence into one verdict.</p>
+
+    <figure>
+      <svg viewBox="0 0 860 220" role="img" aria-label="Flow: a requisition is resolved to a product; hard gates are checked; if a gate trips the verdict is AVOID, otherwise four weighted pillars multiply into a PREFER, CONDITIONAL or AVOID verdict.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+          </marker>
+          <marker id="arA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--accent)"/>
+          </marker>
+          <marker id="arR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="var(--avoid)"/>
+          </marker>
+        </defs>
+        <g font-family="var(--mono)" font-size="12.5" fill="currentColor" text-anchor="middle">
+          <!-- node 1 -->
+          <rect x="6" y="80" width="150" height="58" rx="10" fill="var(--surface)" stroke="currentColor" stroke-opacity=".4"/>
+          <text x="81" y="104" font-weight="600">Your requisition</text>
+          <text x="81" y="122" fill="var(--faint)">order no. · model</text>
+          <!-- node 2 -->
+          <rect x="196" y="80" width="150" height="58" rx="10" fill="var(--surface)" stroke="currentColor" stroke-opacity=".4"/>
+          <text x="271" y="104" font-weight="600">Resolve product</text>
+          <text x="271" y="122" fill="var(--faint)">or abstain</text>
+          <!-- gate diamond -->
+          <path d="M461 68 L519 109 L461 150 L403 109 Z" fill="var(--surface)" stroke="currentColor" stroke-opacity=".4"/>
+          <text x="461" y="105" font-weight="600">Hard</text>
+          <text x="461" y="121">gates?</text>
+          <!-- node 4 pillars -->
+          <rect x="566" y="80" width="150" height="58" rx="10" fill="var(--surface)" stroke="var(--accent)" stroke-opacity=".6"/>
+          <text x="641" y="104" font-weight="600" fill="var(--accent)">Four pillars</text>
+          <text x="641" y="122" fill="var(--faint)">multiplied</text>
+          <!-- verdict -->
+          <rect x="754" y="80" width="100" height="58" rx="10" fill="var(--surface)" stroke="currentColor" stroke-opacity=".4"/>
+          <text x="804" y="104" font-weight="600">Verdict</text>
+          <text x="804" y="122" fill="var(--faint)">+ evidence</text>
+          <!-- AVOID (gate tripped) -->
+          <rect x="411" y="176" width="100" height="34" rx="8" fill="none" stroke="var(--avoid)" stroke-opacity=".6"/>
+          <text x="461" y="197" font-weight="600" fill="var(--avoid)">AVOID</text>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-opacity=".55">
+          <line x1="158" y1="109" x2="192" y2="109" marker-end="url(#ar)"/>
+          <line x1="348" y1="109" x2="399" y2="109" marker-end="url(#ar)"/>
+        </g>
+        <!-- clear path (accent) -->
+        <g fill="none" stroke="var(--accent)" stroke-width="1.8">
+          <line x1="521" y1="109" x2="562" y2="109" marker-end="url(#arA)"/>
+          <line x1="718" y1="109" x2="750" y2="109" marker-end="url(#arA)"/>
+        </g>
+        <!-- tripped path (avoid) -->
+        <g fill="none" stroke="var(--avoid)" stroke-width="1.6" stroke-dasharray="4 3">
+          <path d="M461 151 L461 174" marker-end="url(#arR)"/>
+        </g>
+        <g font-family="var(--mono)" font-size="11">
+          <text x="541" y="100" fill="var(--accent)">clear</text>
+          <text x="470" y="167" fill="var(--avoid)">tripped</text>
+        </g>
+      </svg>
+      <figcaption>A gate (known-exploited, sanctioned, unfixable) forces AVOID on its own. Only a clear product reaches the weighted score.</figcaption>
+    </figure>
+
+    <ol class="steps" style="margin-top:1.8rem">
+      <li><div><b>Identify the hardware.</b><p>Give a manufacturer order number, or a vendor and model. It resolves the exact product in a local index built from public sources — or it abstains rather than guess.</p></div></li>
+      <li><div><b>Check the deal-breakers.</b><p>Hard gates fire first: a known-exploited vulnerability, a ransomware link, an unfixable critical flaw, or a sanctions / covered-list match. Any one of these means AVOID, and no good score elsewhere can average it away.</p></div></li>
+      <li><div><b>Weigh the evidence.</b><p>If it clears the gates, four pillars multiply into a 0–100 score. Evidence quality is reported separately — it never flatters the number.</p></div></li>
+      <li><div><b>Read the verdict.</b><p>PREFER, CONDITIONAL, AVOID or NOT ASSESSED — each shown with the pillars, the CVEs, and any gate behind it. Never a bare number.</p></div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>What the verdict means</h2>
+    <div class="verdicts">
+      <div class="verdict v-prefer"><span class="v">PREFER</span><small>Clears every gate and scores well. The stronger candidate on the evidence.</small></div>
+      <div class="verdict v-cond"><span class="v">CONDITIONAL</span><small>Usable, but with a caution a human should look at before signing.</small></div>
+      <div class="verdict v-avoid"><span class="v">AVOID</span><small>A hard gate tripped, or the score is poor. Keep it off the purchase order.</small></div>
+      <div class="verdict v-na"><span class="v">NOT ASSESSED</span><small>Couldn’t be resolved or lacks evidence. “Needs review” — never read as safe.</small></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How to find a product</h2>
+    <p class="section-note">Three ways to name what you’re buying — most precise first.</p>
+    <div class="grid g3">
+      <div class="card tile"><h3><span class="pill">best</span> Order number</h3><p>Type the manufacturer part number straight off the requisition, e.g. <code>6ES7518-4AX00-1AB0</code>. The most exact match.</p></div>
+      <div class="card tile"><h3>Vendor + model</h3><p>Enter a maker and product, e.g. <code>Siemens</code> + <code>SIMATIC S7-1500</code>. Add firmware to narrow the affected CVEs.</p></div>
+      <div class="card tile"><h3>Search</h3><p>Not sure of the spelling? <code>retrust search moxa</code> returns a shortlist — misspellings and shorthand still land.</p></div>
+    </div>
+    <p class="section-note" style="margin-top:1.3rem">…and three ways to drive it, same answers behind each:</p>
+    <div class="grid g3">
+      <div class="card tile"><h3>Terminal</h3><p><code>retrust score …</code> — flags, for engineers and pipelines.</p></div>
+      <div class="card tile"><h3>Menu</h3><p><code>retrust shell</code> — asks questions instead; no flags to remember.</p></div>
+      <div class="card tile"><h3>Browser</h3><p><code>retrust serve</code> — the same pages on <code>127.0.0.1</code>, for whoever signs the order.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What’s inside the score</h2>
+    <p class="section-note">Four weighted pillars, each reading only public evidence. Raw CVE counts are never
+      scored — that would punish a vendor for disclosing honestly.</p>
+    <div class="grid g2">
+      <div class="card tile"><h3>🎯 Exposure <span class="pill">60%</span></h3><p>How dangerous are the actual flaws, on this box? Threat (is it being exploited?) × reachability × impact × whether it still applies — worked out per flaw, then concentrated on the worst few rather than averaged.</p></div>
+      <div class="card tile"><h3>🔧 Patchability</h3><p>Can you fix it? Whether real fixes have shipped for the affected versions.</p></div>
+      <div class="card tile"><h3>🏢 Vendor practice</h3><p>Does the maker disclose and document well? A proxy for security maturity.</p></div>
+      <div class="card tile"><h3>📜 Certification</h3><p>Independent assurance — IEC 62443 / Common Criteria — counted only when it helps.</p></div>
+      <div class="card tile"><h3>🌐 Network exposure <span class="pill">optional</span></h3><p>How the box sits in your plant (isolated vs internet-facing). You supply it; it’s never assumed.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How the score is calculated</h2>
+    <p class="section-note">The pillars combine into one 0–100 number by a weighted <em>product</em> — but that
+      is only ever the <em>middle</em> layer. A verdict is three layers:</p>
+    <div class="layers">
+      <div class="layer"><span class="ln">1</span><div><b>Hard gates</b> — pass / fail, outside the maths. Any one tripping → AVOID.</div></div>
+      <div class="layer"><span class="ln">2</span><div><b>Weighted score</b> — the 0–100 average of the pillars that had evidence.</div></div>
+      <div class="layer"><span class="ln">3</span><div><b>Bands</b> — the number becomes a word: ≥ 70 PREFER · ≥ 40 CONDITIONAL · else AVOID.</div></div>
+    </div>
+
+    <div class="formula" role="img" aria-label="S equals E to the power 0.60 times P to the power 0.20 times V to the power 0.15 times C to the power 0.05">
+      <div class="frac" style="font-size:clamp(.95rem,3.2vw,1.3rem)">S &nbsp;=&nbsp; E<sup>0.60</sup> &nbsp;×&nbsp; P<sup>0.20</sup> &nbsp;×&nbsp; V<sup>0.15</sup> &nbsp;×&nbsp; C<sup>0.05</sup></div>
+    </div>
+    <p class="section-note"><b>A product, not an average,</b> so dangerous exposure cannot be bought back with a
+      good vendor record and a certificate — the same rule the gates enforce, applied to the weighted part.</p>
+
+    <p class="section-note">Worked on the real ABB AC 800M result — each pillar raised to its exponent, then
+      multiplied together:</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Pillar</th><th class="n">Exponent</th><th class="n">Score</th><th class="n">Factor</th></tr></thead>
+        <tbody>
+          <tr><td>E — Exposure</td><td class="n">0.60</td><td class="n">82.2</td><td class="n">14.10</td></tr>
+          <tr><td>P — Patch availability</td><td class="n">0.20</td><td class="n">52.0</td><td class="n">2.20</td></tr>
+          <tr><td>V — Vendor practice</td><td class="n">0.15</td><td class="n">100.0</td><td class="n">2.00</td></tr>
+          <tr><td>C — Certification</td><td class="n">0.05</td><td class="n">100.0</td><td class="n">1.26</td></tr>
+          <tr class="tot"><td class="tot">multiplied together</td><td class="n tot"></td><td class="n tot"></td><td class="n tot">78.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-note" style="margin-top:.9rem"><b>14.10 × 2.20 × 2.00 × 1.26 = 78.0.</b> The factors
+      multiply — each pillar contributes <code>score<sup>exponent</sup></code>. Pillars enter as 1–100, never 0,
+      so one unmeasured term cannot annihilate the result; and a pillar with no evidence at all is
+      <b>dropped and the remaining exponents renormalised</b>, never scored as a neutral 50. Two rules override
+      the maths: a certificate may only <em>lift</em> the score (never drag it down), and an unfixable
+      hardcoded-credential flaw <em>caps</em> it just below PREFER whatever the number says.</p>
+  </section>
+
+  <section>
+    <h2>What you tell it about your plant</h2>
+    <p class="section-note">Five optional inputs describe <em>your</em> situation rather than the product.
+      The division of labour is the whole design rule: <b>ReTrust supplies the vulnerability intelligence;
+      you supply the facts about your plant.</b> It never asks you to score a vendor or guess a percentage.</p>
+    <div class="grid g2">
+      <div class="card tile"><h3>Buying, or already own it?</h3><p>On a purchase, a fix that exists is leverage you can require in the order. On an installed asset it changes nothing until somebody actually applies it.</p></div>
+      <div class="card tile"><h3>What would a compromise cost?</h3><p>Safety or environmental harm, loss of process control, recoverable disruption, minor, or negligible. This is the one thing only you know.</p></div>
+      <div class="card tile"><h3>Can the flaw actually be reached?</h3><p>Where the box sits, and whether you have <em>verified</em> the vulnerable interface is blocked. An unverified claim doesn’t count.</p></div>
+      <div class="card tile"><h3>Is the fix on the box?</h3><p>Applied, mitigated, merely available, or unknown. “A fix exists” and “the fix is installed” are different facts and don’t score alike.</p></div>
+    </div>
+    <div class="question" style="margin-top:1.2rem">
+      <p style="font-size:1.05rem">Every answer can only ever <em>narrow</em> the risk. Saying nothing is
+      already the cautious reading, so a claim about your own plant never makes a flaw look worse than its
+      own evidence says — and an unanswered question stays <em>unresolved</em>, never quietly set to a
+      best or worst case.</p>
+    </div>
+    <p class="section-note" style="margin-top:1.1rem">Each assessment also prints a short vector recording
+      every choice, so somebody who wasn’t in the room can re-run and dispute it — the idea borrowed from CVSS:</p>
+    <div class="run" style="margin-top:.3rem">RT1/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:2026-10-16</div>
+  </section>
+
+  <section>
+    <h2>Why network exposure is optional</h2>
+    <p class="section-note">This is the one thing the tool refuses to guess. It describes <em>your plant</em>,
+      not the product — and ReTrust never scans your network. Leaving it out does <b>not</b> assume the best
+      (isolated): silence is read as full reachability, the conservative case, and the product is judged on its
+      own evidence. Declare it and it <b>narrows reachability inside Exposure</b> — it is an input to the
+      <code>A</code> term rather than a pillar of its own, because “an attacker cannot route here” is the same
+      statement reachability already makes, and scoring it twice would double one declared fact. The three
+      choices describe <em>where the box lives</em>:</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Option</th><th class="n">Reach</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr><td class="prod">Isolated</td><td class="n">×0.3</td><td>No network route from office IT or the internet into OT — air-gapped or fully segmented. Reaching it needs local access.</td></tr>
+          <tr><td class="prod">IT–OT</td><td class="n">×0.7</td><td>OT joined to enterprise IT across a firewall / DMZ. Not internet-facing, but a compromised office machine could pivot toward it.</td></tr>
+          <tr><td class="prod">Internet–OT</td><td class="n">×1.0</td><td>A routed path from the internet can reach OT — directly, or via a remote-access gateway, VPN or cellular link.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-note" style="margin-top:.9rem">The same PLC can be any of these depending on where you
+      install it — so the risk shifts with the deployment, not the part number. Internet–OT is the
+      no-narrowing case, which is exactly what silence already assumed. Declaring it moves the score; on the
+      same ABB box:</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Network exposure you declare</th><th class="n">Score</th></tr></thead>
+        <tbody>
+          <tr><td>not supplied <span class="sub" style="display:inline">(the conservative reading)</span></td><td class="n">78.0</td></tr>
+          <tr><td>isolated</td><td class="n">84.9</td></tr>
+          <tr><td>IT–OT</td><td class="n">81.0</td></tr>
+          <tr><td>internet–OT</td><td class="n">78.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="question" style="margin-top:1.2rem">
+      <p style="font-size:1.05rem">Isolation only <em>nudges</em> the number. It can never rescue a gate or a cap.</p>
+    </div>
+    <ul class="honest" style="margin-top:1.1rem">
+      <li><span class="dot"></span><div><b>A gated part stays AVOID, however isolated.</b> The exploited Siemens S7-1500 rises 51.3 → 79.3 when you declare “isolated” — well into PREFER territory on the number alone — but the known-exploited gate still forces AVOID — a CVE being attacked in the wild isn’t un-attacked by your topology, and an air-gap erodes over a 20-year asset life.</div></li>
+      <li><span class="dot"></span><div><b>A capped part stays capped.</b> The Modicon M340 sits at 69.9 with or without isolation: a hardcoded credential with no fix can’t be isolated into being preferable.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>A worked example</h2>
+    <p class="section-note">One command, four candidates, ranked — this is what someone sees:</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Candidate</th><th>Verdict</th><th class="n">Score</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td class="prod">Moxa EDS-405A</td><td><span class="tag prefer">PREFER</span></td><td class="n">87.6</td><td>shipped fixes count</td></tr>
+          <tr><td class="prod">ABB AC 800M</td><td><span class="tag prefer">PREFER</span></td><td class="n">78.0</td><td>clean evidence</td></tr>
+          <tr><td class="prod">Siemens S7-1500<span class="sub">firmware 3.1.6</span></td><td><span class="tag avoid">AVOID</span></td><td class="n">51.3</td><td>known-exploited gate</td></tr>
+          <tr><td class="prod">Hikvision IP Camera</td><td><span class="tag avoid">AVOID</span></td><td class="n">—</td><td>on a covered list</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-note" style="margin-top:1rem">The Siemens box scores mid-table, but a gate still forces AVOID — that’s the point:
+      a deal-breaker can’t be out-voted by a decent score.</p>
+  </section>
+
+  <section>
+    <h2>What else it does</h2>
+    <p class="section-note">Beyond scoring, the same evidence drives a handful of procurement tools.</p>
+    <div class="features">
+      <div class="feat"><span class="cmd">compare</span><span>Rank a shortlist for one decision.</span></div>
+      <div class="feat"><span class="cmd">alternatives</span><span>Safer products in the same vendor family.</span></div>
+      <div class="feat"><span class="cmd">questions</span><span>An RFQ security annex — what to ask the supplier.</span></div>
+      <div class="feat"><span class="cmd">timeline</span><span>A vendor’s advisory history as a shape.</span></div>
+      <div class="feat"><span class="cmd">batch</span><span>Score a whole bill-of-materials or SBOM, with a CI exit code.</span></div>
+      <div class="feat"><span class="cmd">vex</span><span>Export the assessment as a CycloneDX VEX document.</span></div>
+      <div class="feat"><span class="cmd">verify</span><span>Confirm the advisories are the ones CISA signed.</span></div>
+      <div class="feat"><span class="cmd">sensitivity</span><span>Does the verdict survive different weightings?</span></div>
+      <div class="feat"><span class="cmd">doctor</span><span>Is the installation current enough to trust right now?</span></div>
+      <div class="feat"><span class="cmd">eval · backtest</span><span>Reproduce the accuracy figures yourself.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why you can trust it</h2>
+    <ul class="honest">
+      <li><span class="dot"></span><div><b>Hard gates sit outside the score.</b> A known-exploited hit or a sanctions match can’t be averaged away.</div></li>
+      <li><span class="dot"></span><div><b>Raw CVE counts are never scored.</b> A diligent discloser shouldn’t rank below a silent one.</div></li>
+      <li><span class="dot"></span><div><b>No resolution, no score.</b> An unknown product gets “needs review”, never a flattering 100.</div></li>
+      <li><span class="dot"></span><div><b>Every number shows its evidence,</b> and the inputs are signature-checked back to CISA.</div></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Run it yourself</h2>
+    <p class="section-note">Python 3.10+, no dependencies. Works offline once the public sources are fetched.</p>
+    <div class="run">
+<span class="c"># clone and build the local index from public sources</span>
+git clone …/retrust &amp;&amp; cd retrust
+python3 -m retrust.cli <b>setup</b>
+
+<span class="c"># open the browser workspace, or score from the terminal</span>
+python3 -m retrust.cli <b>serve</b>
+python3 -m retrust.cli <b>score</b> --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
+    </div>
+  </section>
+
+  <section>
+    <h2>More</h2>
+    <div class="related">
+      <a href="commands.html"><span class="emo">🧰</span><span><strong>ReTrust Commands</strong><small>Every command, by job</small></span></a>
+      <a href="scoring.html"><span class="emo">🧮</span><span><strong>How ReTrust Scores</strong><small>The full scoring methodology</small></span></a>
+    </div>
+  </section>
+
+  <footer>
+    <span class="mono">ReTrust</span>
+    <span>Decision support, not a certification.</span>
+    <span>Apache-2.0 · built on public CISA, FIRST &amp; vendor data</span>
+  </footer>
+</div>
+
+<script>
+  (function(){
+    var btn=document.getElementById('themeBtn'),root=document.documentElement;
+    btn.addEventListener('click',function(){
+      var dark=matchMedia('(prefers-color-scheme:dark)').matches;
+      var cur=root.getAttribute('data-theme')||(dark?'dark':'light');
+      root.setAttribute('data-theme',cur==='dark'?'light':'dark');
+    });
+  })();
+</script>
