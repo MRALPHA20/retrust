@@ -22,9 +22,14 @@ def _findings():
                     version_range="", decided=True, remediation="vendor_fix")]
 
 
-def test_default_weights_reserve_ten_percent_for_network_exposure():
+def test_network_exposure_is_an_input_not_a_weighted_pillar():
+    """It narrows reachability inside Exposure instead of carrying its own weight.
+
+    Scoring it separately double-counted one declared fact: "an attacker cannot
+    route here" is the same statement reachability already makes.
+    """
     assert sum(score.DEFAULT_WEIGHTS.values()) == pytest.approx(1.0)
-    assert score.DEFAULT_WEIGHTS["network_exposure"] == pytest.approx(0.10)
+    assert "network_exposure" not in score.DEFAULT_WEIGHTS
 
 
 def test_omitting_network_exposure_preserves_the_scored_pillars():
@@ -35,22 +40,24 @@ def test_omitting_network_exposure_preserves_the_scored_pillars():
     assert not network.scored and network.coverage == 0
 
 
-@pytest.mark.parametrize(
-    ("exposure", "pillar_score"),
-    [("isolated", 100), ("it_ot", 60), ("internet_ot", 20)],
-)
-def test_network_exposure_adds_a_weighted_pillar(exposure, pillar_score):
-    base = score.assess("Example", _findings(), {"A"})
-    assessment = score.assess("Example", _findings(), {"A"},
-                              network_exposure=exposure)
-    assert _pillar(assessment, "Network exposure").score == pillar_score
-    assert "Operator-reported" in _pillar(assessment, "Network exposure").evidence[0]
-    # The pillar moves the composite in its own direction: a worse exposure
-    # must never raise the score, a perfect one never lower it.
-    if pillar_score < base.score:
-        assert assessment.score < base.score
-    else:
-        assert assessment.score >= base.score
+def test_declaring_the_deployment_can_only_narrow_reachability():
+    """An operator's claim about their plant never makes a flaw worse.
+
+    Saying nothing is already the conservative reading -- full reachability --
+    so every declaration either improves the score or leaves it alone, and a
+    tighter deployment must score at least as well as a looser one.
+    """
+    undeclared = score.assess("Example", _findings(), {"A"}).score
+    scores = {level: score.assess("Example", _findings(), {"A"},
+                                  network_exposure=level).score
+              for level in ("isolated", "it_ot", "internet_ot")}
+    assert scores["isolated"] > scores["it_ot"] > scores["internet_ot"]
+    # Internet-exposed is the no-narrowing case, which is what silence assumed.
+    assert scores["internet_ot"] == pytest.approx(undeclared, abs=0.1)
+    assert all(value >= undeclared - 0.1 for value in scores.values())
+    assert "Operator-reported" in _pillar(
+        score.assess("Example", _findings(), {"A"}, network_exposure="it_ot"),
+        "Network exposure").evidence[0]
 
 
 def test_network_exposure_rejects_unknown_values():
@@ -62,13 +69,16 @@ def test_web_form_explains_and_retains_the_selected_network_context():
     form = serve._score_form("ABB", "AC 800M", "", network_exposure="it_ot")
     assert 'name="network_exposure"' in form
     assert 'value="it_ot" selected' in form
-    assert "Default weight 10%" in form
+    assert "Operator-reported, not verified" in form
+    # The whole owner-input group travels with it.
+    for field in ("assessment_type", "consequence", "interface", "remediation"):
+        assert f'name="{field}"' in form
     assert "Isolated" in form and "IT–OT" in form and "Internet–OT" in form
 
 
-def test_report_shows_the_network_pillar_and_its_weight():
-    # A certificate keeps every pillar covered, so the configured weights show
-    # unrenormalized in the table.
+def test_report_shows_the_declared_deployment_as_a_diagnostic():
+    """Still shown, with its number -- but marked not scored, because it is an
+    input to Exposure rather than a term of its own."""
     assessment = score.assess(
         "Example", _findings(), {"A"},
         certificates=[{"scheme": "IEC 62443-4-1", "matches_product": False}],
@@ -76,4 +86,4 @@ def test_report_shows_the_network_pillar_and_its_weight():
     markup = report._pillar_table(assessment, score.DEFAULT_WEIGHTS)
     assert "Network exposure" in markup
     assert "Internet–OT" in markup
-    assert '<td class="n">0.100</td>' in markup
+    assert "not scored" in markup

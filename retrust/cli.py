@@ -36,11 +36,22 @@ from pathlib import Path
 from .index import normalize_vendor
 from . import (alternatives, appetites, backtest, batch, bootstrap,
                certification, config, console, cvelookup, diff, doctor, dossier,
-               evaluate, index, integrity, lev, match, questions, report, score,
-               screenshot, search, sensitivity, serve, shell, snapshot, ssvc,
-               supplychain, timeline, vex)
+               evaluate, exposure, index, integrity, lev, match, questions,
+               report, score, screenshot, search, sensitivity, serve, shell,
+               snapshot, ssvc, supplychain, timeline, vex)
 
 DEFAULT_DB = "data/retrust.db"
+
+
+def _owner_inputs(args):
+    """The asset-owner facts a command was given, defaulted to unresolved."""
+    return dict(
+        network_exposure=getattr(args, "network_exposure", None),
+        consequence=getattr(args, "consequence", None),
+        interface=getattr(args, "interface", "unknown") or "unknown",
+        assessment_type=getattr(args, "assessment_type", "purchase") or "purchase",
+        remediation=getattr(args, "remediation", "unknown") or "unknown",
+    )
 
 
 def _open(path):
@@ -64,7 +75,8 @@ def _context(data_dir="data", config_path=None):
 
 
 def _assess(connection, vendor, product, version, order_number, label=None, context=None,
-            network_exposure=None):
+            network_exposure=None, consequence=None, interface="unknown",
+            assessment_type="purchase", remediation="unknown"):
     """Resolve, collect findings, and score. Shared by `score` and `compare`."""
     context = context or _context()
     resolution = match.resolve(
@@ -106,7 +118,10 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                               bands=context.get("bands"),
                               certificates=certificates, screening_gates=screening_gates,
                               vendor_key=normalize_vendor(effective_vendor or ""),
-                              network_exposure=network_exposure)
+                              network_exposure=network_exposure,
+                              consequence=consequence, interface=interface,
+                              assessment_type=assessment_type,
+                              remediation=remediation)
     assessment.notes.extend(screening_notes)
 
     # A firmware version narrowing the scope can lower the score -- the CVEs
@@ -291,7 +306,7 @@ def cmd_score(args):
     context = _context(config_path=getattr(args, "config", None))
     assessment, resolution, findings = _assess(
         connection, args.vendor, args.product, args.version, args.order_number,
-        context=context, network_exposure=getattr(args, "network_exposure", None))
+        context=context, **_owner_inputs(args))
 
     stability = None
     if args.json and not args.no_sensitivity and getattr(assessment, "inputs", None):
@@ -427,7 +442,7 @@ def cmd_sensitivity(args):
     context = _context(config_path=args.config)
     assessment, resolution, _ = _assess(
         connection, args.vendor, args.product, args.version, args.order_number,
-        context=context, network_exposure=getattr(args, "network_exposure", None))
+        context=context, **_owner_inputs(args))
 
     print(f"{assessment.verdict}  {assessment.product}\n")
     if not (inputs := getattr(assessment, "inputs", None)):
@@ -436,7 +451,7 @@ def cmd_sensitivity(args):
 
     result = sensitivity.stability(*inputs, samples=args.samples,
                                    bands=context["bands"],
-                                   network_exposure=getattr(args, "network_exposure", None))
+                                   **_owner_inputs(args))
     print(f"  {result.summary()}")
     if not result.gated:
         print(f"  score across {result.samples} random weightings: "
@@ -446,11 +461,13 @@ def cmd_sensitivity(args):
             bar = "#" * round(40 * count / result.samples)
             print(f"    {verdict:<12} {count / result.samples:>5.0%}  {bar}")
 
-    print("\n  where the points went (largest loss first):")
-    print(f"    {'pillar':<20} {'score':>6} {'weight':>7} {'gave':>7} {'lost':>7}")
+    print("\n  where the points went (most to gain first):")
+    print(f"    {'pillar':<20} {'score':>6} {'weight':>7} {'factor':>7} {'to gain':>8}")
     for row in sensitivity.contributions(assessment, context["weights"]):
         print(f"    {row['pillar']:<20} {row['score']:>6.1f} {row['weight']:>7.2f} "
-              f"{row['points']:>7.1f} {row['points_lost']:>7.1f}")
+              f"{row['points']:>7.2f} {row['points_lost']:>8.1f}")
+    print("    The composite is a product, so 'to gain' is how far the score "
+          "would rise\n    if that pillar alone were perfect.")
     return 0
 
 
@@ -1165,9 +1182,12 @@ def cmd_serve(args):
     handler = serve.build_handler(
         connection,
         lambda vendor, product, version=None, order_number=None,
-               network_exposure=None: _assess(
+               network_exposure=None, consequence=None, interface="unknown",
+               assessment_type="purchase", remediation="unknown": _assess(
             connection, vendor, product, version, order_number, context=context,
-            network_exposure=network_exposure),
+            network_exposure=network_exposure, consequence=consequence,
+            interface=interface, assessment_type=assessment_type,
+            remediation=remediation),
         context, dossier, index.stats(connection), index.provenance(connection),
         args.host, args.port)
 
@@ -1817,10 +1837,33 @@ def build_parser():
     p = sub.add_parser("stats", help="show what the index contains")
     p.set_defaults(func=cmd_stats)
 
+    def _owner_args(parser):
+        """The facts only the asset owner has. Every one optional; left out, an
+        unanswered question stays unresolved rather than becoming a best or
+        worst case silently."""
+        parser.add_argument("--network-exposure",
+                            choices=list(score.NETWORK_EXPOSURES),
+                            help="where it sits: isolated, it_ot or internet_ot")
+        parser.add_argument("--consequence",
+                            choices=list(exposure.CONSEQUENCES),
+                            help="what a compromise would cost this process: "
+                                 "safety, control, recoverable, minor, negligible")
+        parser.add_argument("--interface", choices=list(exposure.INTERFACES),
+                            default="unknown",
+                            help="have you verified the vulnerable interface is "
+                                 "unreachable? exposed, blocked or unknown")
+        parser.add_argument("--assessment-type",
+                            choices=list(exposure.ASSESSMENT_TYPES),
+                            default="purchase",
+                            help="purchase (default) or installed")
+        parser.add_argument("--remediation",
+                            choices=list(exposure.REMEDIATIONS), default="unknown",
+                            help="is the fix actually on the box? applied, "
+                                 "mitigated, available or unknown")
+
     p = sub.add_parser("score", help="assess one product")
     _product_args(p)
-    p.add_argument("--network-exposure", choices=list(score.NETWORK_EXPOSURES),
-                   help="operator-reported OT network context: isolated, it_ot, or internet_ot")
+    _owner_args(p)
     p.add_argument("--html", help="also write an HTML report here")
     p.add_argument("--json", metavar="FILE",
                    help='write the full assessment as JSON; "-" for stdout')
@@ -1883,8 +1926,7 @@ def build_parser():
     p = sub.add_parser("sensitivity",
                        help="how much the verdict depends on the weights")
     _product_args(p)
-    p.add_argument("--network-exposure", choices=list(score.NETWORK_EXPOSURES),
-                   help="operator-reported OT network context")
+    _owner_args(p)
     _scoring_args(p, samples=500)
     p.set_defaults(func=cmd_sensitivity)
 

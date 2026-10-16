@@ -69,16 +69,15 @@ APPETITES = (
         weights=MappingProxyType({
             # Consequence follows what an attacker reaches and how bad the
             # worst flaw is, so the direct-evidence pillars absorb the increase.
-            "exploitation": 0.315, "severity": 0.270, "patchability": 0.135,
-            "vendor_practice": 0.090, "certification": 0.090,
-            "network_exposure": 0.100,
+            "exposure": 0.70, "patchability": 0.16,
+            "vendor_practice": 0.10, "certification": 0.04,
         }),
         # Stricter on both edges: more score before either favourable verdict.
         bands=MappingProxyType({"prefer": 75, "conditional": 45}),
         why=("For processes where a compromise can injure people or destroy"
              " equipment. There the cost of a wrong PREFER is far larger than"
              " the cost of a wrong AVOID, so both bands demand more score"
-             " before a favourable verdict, and exploitation and severity weigh"
+             " before a favourable verdict, and exposure weighs"
              " more because consequence follows from what an attacker can reach"
              " and how bad the worst flaw is -- not from the vendor's"
              " paperwork. The evidence is unchanged; only the score it takes to"
@@ -89,9 +88,8 @@ APPETITES = (
         weights=MappingProxyType({
             # Reachable gear meets the attacker population KEV and EPSS
             # actually measure, so the probability pillar dominates outright.
-            "exploitation": 0.405, "severity": 0.225, "patchability": 0.135,
-            "vendor_practice": 0.090, "certification": 0.045,
-            "network_exposure": 0.100,
+            "exposure": 0.75, "patchability": 0.13,
+            "vendor_practice": 0.08, "certification": 0.04,
         }),
         bands=MappingProxyType(_default_bands()),
         why=("For gear reachable from the IT network or the internet."
@@ -108,14 +106,13 @@ APPETITES = (
         weights=MappingProxyType({
             # Presence-gated exploitation counts less; the pillars pricing what
             # it costs to live with a flaw for years count more.
-            "exploitation": 0.135, "severity": 0.135, "patchability": 0.270,
-            "vendor_practice": 0.225, "certification": 0.135,
-            "network_exposure": 0.100,
+            "exposure": 0.40, "patchability": 0.28,
+            "vendor_practice": 0.22, "certification": 0.10,
         }),
         bands=MappingProxyType(_default_bands()),
         why=("For an air-gapped cell where exploitation needs presence at the"
              " process. Probability signals built largely from internet-facing"
-             " telemetry overstate that risk, so exploitation weighs less; what"
+             " telemetry overstate that risk, so exposure weighs less; what"
              " dominates instead is a device that cannot take a vendor fix"
              " inside an outage window, because it carries its flaws for the"
              " life of the asset -- so patchability and vendor practice weigh"

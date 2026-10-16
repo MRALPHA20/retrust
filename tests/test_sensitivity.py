@@ -25,26 +25,26 @@ def test_defaults_when_no_file(tmp_path):
 
 def test_custom_weights_are_read(tmp_path):
     path = tmp_path / "c.json"
-    path.write_text(json.dumps({"weights": {"exploitation": 1.0, "severity": 1.0}}))
+    path.write_text(json.dumps({"weights": {"exposure": 1.0, "patchability": 1.0}}))
     weights, _, source = config.load(path)
-    assert weights["exploitation"] == 1.0
-    assert weights["severity"] == 1.0
+    assert weights["exposure"] == 1.0
+    assert weights["patchability"] == 1.0
     assert str(path) in source
 
 
 def test_a_partial_weights_block_keeps_the_other_pillars(tmp_path):
     """The bug this guards: naming one pillar silently dropped the other four.
 
-    {"weights": {"exploitation": 1.0}} quietly became a single-pillar score with
+    {"weights": {"exposure": 1.0}} quietly became a single-pillar score with
     no warning, so a user nudging one weight lost certification, patchability
     and the rest entirely.
     """
     path = tmp_path / "c.json"
-    path.write_text(json.dumps({"weights": {"exploitation": 1.0}}))
+    path.write_text(json.dumps({"weights": {"exposure": 1.0}}))
     weights, _, _ = config.load(path)
     assert set(weights) == set(score.DEFAULT_WEIGHTS)
-    assert weights["exploitation"] == 1.0                      # the override
-    assert weights["severity"] == score.DEFAULT_WEIGHTS["severity"]   # untouched
+    assert weights["exposure"] == 1.0                          # the override
+    assert weights["patchability"] == score.DEFAULT_WEIGHTS["patchability"]
 
 
 def test_non_numeric_weight_is_rejected(tmp_path):
@@ -217,8 +217,12 @@ def test_contributions_sum_to_the_score():
     findings = [_finding(cvss=7.0, epss=0.02)]
     assessment = score.assess("x", findings, {"A"})
     rows = sensitivity.contributions(assessment)
-    assert sum(r["points"] for r in rows) == pytest.approx(assessment.score, abs=0.2)
-    # Ordered by how many points each pillar cost, so the worst is first.
+    # The composite is a product, so the per-pillar factors MULTIPLY to it.
+    product = 1.0
+    for row in rows:
+        product *= row["points"]
+    assert product == pytest.approx(assessment.score, abs=0.2)
+    # Ordered by how much each pillar still has to give, so the worst is first.
     assert rows == sorted(rows, key=lambda r: -r["points_lost"])
 
 

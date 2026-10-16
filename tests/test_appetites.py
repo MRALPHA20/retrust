@@ -49,15 +49,15 @@ def test_safety_critical_is_stricter_than_the_default_on_both_bands():
     assert strict.bands["conditional"] > default.bands["conditional"]
 
 
-def test_exposed_puts_exploitation_first_and_severity_second():
+def test_exposed_puts_exposure_first_and_patchability_second():
     ranked = sorted(appetites.get("exposed").weights.items(),
                     key=lambda kv: -kv[1])
-    assert [key for key, _ in ranked[:2]] == ["exploitation", "severity"]
+    assert [key for key, _ in ranked[:2]] == ["exposure", "patchability"]
 
 
-def test_isolated_cell_trades_exploitation_for_patchability_and_practice():
+def test_isolated_cell_trades_exposure_for_patchability_and_practice():
     cell = appetites.get("isolated-cell")
-    assert cell.weights["exploitation"] < DEFAULT_WEIGHTS["exploitation"]
+    assert cell.weights["exposure"] < DEFAULT_WEIGHTS["exposure"]
     assert cell.weights["patchability"] > DEFAULT_WEIGHTS["patchability"]
     assert cell.weights["vendor_practice"] > DEFAULT_WEIGHTS["vendor_practice"]
     # Bands unchanged: an air gap changes likelihood, not how strict a
@@ -151,11 +151,13 @@ def test_the_listing_prints_the_same_twice():
 
 
 def test_the_strict_appetite_raises_the_weights_its_why_claims():
-    """The why says exploitation and severity weigh more; the numbers must."""
+    """The why says exposure weighs more; the numbers must."""
     from retrust.score import DEFAULT_WEIGHTS
     strict = appetites.get("safety-critical")
-    assert strict.weights["exploitation"] > DEFAULT_WEIGHTS["exploitation"]
-    assert strict.weights["severity"] > DEFAULT_WEIGHTS["severity"]
+    assert strict.weights["exposure"] > DEFAULT_WEIGHTS["exposure"]
+    # and it buys that from the softer, proxy pillars
+    assert (strict.weights["vendor_practice"] + strict.weights["certification"]
+            < DEFAULT_WEIGHTS["vendor_practice"] + DEFAULT_WEIGHTS["certification"])
 
 
 def test_a_named_template_differs_from_the_plain_one_in_its_comment():

@@ -191,21 +191,48 @@ def _demo_page():
                  'and the supplier’s answer still belong in the purchasing decision.</p>', active='/demo')
 
 
+# What each owner-supplied fact means when nobody answered it. Only answers
+# that differ from these are forwarded, so a caller that never asks about plant
+# context keeps the simpler call it always had.
+UNDECLARED = {"consequence": None, "interface": "unknown",
+              "assessment_type": "purchase", "remediation": "unknown"}
+
+
 def _run_assessment(assess, vendor, product, version=None, order_number=None,
-                    network_exposure=None):
-    options = {"network_exposure": network_exposure} if network_exposure else {}
+                    network_exposure=None, owner=None):
+    options = {key: value for key, value in (owner or {}).items()
+               if key in UNDECLARED and value != UNDECLARED[key]}
+    if network_exposure:
+        options["network_exposure"] = network_exposure
     if order_number:
         return assess(vendor, product, version or None, order_number=order_number,
                       **options)
     return assess(vendor, product, version or None, **options)
 
 
+def _owner_from(params_first):
+    """The owner-supplied facts in a request, each validated against its table."""
+    def pick(name, table, default):
+        value = params_first(name)
+        return value if value in table else default
+    return dict(
+        consequence=pick("consequence", score.CONSEQUENCES, None),
+        interface=pick("interface", score.INTERFACES, "unknown"),
+        assessment_type=pick("assessment_type", score.ASSESSMENT_TYPES, "purchase"),
+        remediation=pick("remediation", score.REMEDIATIONS, "unknown"),
+    )
+
+
 def _score_page(connection, assess, context, vendor, product, version, order_number="",
-                submitted=False, network_exposure=None):
+                submitted=False, network_exposure=None, owner=None):
     """A verdict first, with editable inputs and the evidence below it."""
     if network_exposure not in score.NETWORK_EXPOSURES:
         network_exposure = None
-    form = _score_form(vendor, product, version, order_number, network_exposure)
+    owner = owner or {}
+    form = _score_form(vendor, product, version, order_number, network_exposure,
+                       owner.get("consequence"), owner.get("interface", "unknown"),
+                       owner.get("assessment_type", "purchase"),
+                       owner.get("remediation", "unknown"))
     if not (vendor or product or order_number):
         notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
                   'or a vendor and product, before assessing.</p>' if submitted else '')
@@ -214,10 +241,11 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
                      'Add the firmware version to narrow the affected vulnerabilities.</p>'
                      + notice + form)
     assessment, resolution, findings = _run_assessment(
-        assess, vendor, product, version, order_number, network_exposure)
-    parameters = urllib.parse.urlencode(dict(vendor=vendor, product=product,
-                                             version=version, order_number=order_number,
-                                             network_exposure=network_exposure or ""))
+        assess, vendor, product, version, order_number, network_exposure, owner)
+    parameters = urllib.parse.urlencode(dict(
+        vendor=vendor, product=product, version=version,
+        order_number=order_number, network_exposure=network_exposure or "",
+        **{key: value or "" for key, value in owner.items()}))
     body = ('<h1>Product assessment</h1><p class="lead">A procurement verdict, '
             'with the evidence behind every number.</p>'
             '<details><summary>Edit product, firmware, or network exposure</summary>' + form + '</details>'
@@ -259,7 +287,55 @@ def _field(id_, name, label, value='', placeholder=''):
             f'maxlength="{MAX_QUERY}"></div>')
 
 
-def _score_form(vendor, product, version, order_number='', network_exposure=None):
+def _choice(name, label, table, chosen, blank=None, helper=''):
+    """One labelled dropdown over an exposure table.
+
+    Options and their wording come from the table that scores them, so the form
+    can never offer a choice the model does not know, or describe it differently.
+    """
+    options = ''
+    if blank:
+        options += f'<option value="">{blank}</option>'
+    for key, entry in table.items():
+        text = entry[0] if isinstance(entry, tuple) else entry
+        selected = ' selected' if key == chosen else ''
+        options += f'<option value="{key}"{selected}>{_esc(text)}</option>'
+    return (f'<div><label for="{name}">{label}</label>'
+            f'<select id="{name}" name="{name}">{options}</select>'
+            + (f'<p class="helper">{helper}</p>' if helper else '') + '</div>')
+
+
+def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
+                  assessment_type='purchase', remediation='unknown'):
+    """The facts only the asset owner has, each optional and each explained.
+
+    ReTrust supplies the vulnerability intelligence; these describe the plant.
+    Nothing here is verified, so every one is labelled operator-reported, and
+    leaving one unanswered keeps it unresolved rather than guessing either way.
+    """
+    return ('<div class="form-grid">'
+            + _choice('assessment_type', 'Assessment type',
+                      score.ASSESSMENT_TYPES, assessment_type,
+                      helper='Buying it, or assessing one already installed.')
+            + _choice('network_exposure', 'Network exposure',
+                      score.NETWORK_EXPOSURES, network_exposure,
+                      blank='Choose if known',
+                      helper='Narrows how reachable a flaw is. Operator-reported, not verified.')
+            + _choice('consequence', 'If compromised, the process would suffer',
+                      score.CONSEQUENCES, consequence, blank='Choose if known',
+                      helper='Left blank, exposure is shown at full process impact.')
+            + _choice('interface', 'Vulnerable interface reachable?',
+                      score.INTERFACES, interface,
+                      helper='Only a verified block narrows the score.')
+            + _choice('remediation', 'Is the fix on the box?',
+                      score.REMEDIATIONS, remediation,
+                      helper='"Available" and "applied" are different facts.')
+            + '</div>')
+
+
+def _score_form(vendor, product, version, order_number='', network_exposure=None,
+                consequence=None, interface='unknown',
+                assessment_type='purchase', remediation='unknown'):
     return ('<form class="form-panel" method="get" action="/score">'
             '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number', order_number,
                                                  'e.g. 6ES7518-4AX00-1AB0') + '</div>'
@@ -267,13 +343,14 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
             '<div class="form-grid">' + _field('v', 'vendor', 'Vendor', vendor, 'e.g. Siemens')
             + _field('p', 'product', 'Product / model', product, 'e.g. SIMATIC S7-1500')
             + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
-            + '<div><label for="network_exposure">Network exposure (optional)</label>'
-            + '<select id="network_exposure" name="network_exposure">'
-            + '<option value="">Choose if known</option>'
-            + ''.join(f'<option value="{key}"{" selected" if key == network_exposure else ""}>{label}</option>'
-                      for key, (label, _, _) in score.NETWORK_EXPOSURES.items())
-            + '</select><p class="helper">Default weight 10%: Isolated 100, IT–OT 60, Internet–OT 20. Operator-reported, not verified.</p></div></div>'
-            '<p class="helper">Unsure of the model name? <a href="/">Search the advisory index first.</a></p>'
+            + '</div>'
+            '<p class="form-divider">Deployment and operational context. Optional, and '
+            'all operator-reported: ReTrust supplies the vulnerability evidence, you '
+            'supply the facts about your plant. Anything left blank stays unresolved '
+            'rather than assumed.</p>'
+            + _owner_fields(network_exposure, consequence, interface,
+                            assessment_type, remediation)
+            + '<p class="helper">Unsure of the model name? <a href="/">Search the advisory index first.</a></p>'
             '<button type="submit">Assess product →</button></form>')
 
 
@@ -722,11 +799,11 @@ def _export_comparison(assess, context, provenance, path, candidates):
 
 
 def _export(assess, context, provenance, path, vendor, product, version, order_number,
-            network_exposure=None):
+            network_exposure=None, owner=None):
     if network_exposure not in score.NETWORK_EXPOSURES:
         network_exposure = None
     block = _run_assessment(assess, vendor, product, version, order_number,
-                            network_exposure)
+                            network_exposure, owner)
     if path.endswith('.json'):
         query = dict(vendor=vendor, product=product, version=version,
                      order_number=order_number, network_exposure=network_exposure)
@@ -774,8 +851,9 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             return _demo_page()
         if path in ("/export.html", "/export.json"):
             return _export(assess, context, provenance, path,
-                           first("vendor"), first("product"), first("version"), first("order_number"),
-                           first("network_exposure"))
+                           first("vendor"), first("product"), first("version"),
+                           first("order_number"), first("network_exposure"),
+                           _owner_from(first))
         if path in ("/compare.html", "/compare.json", "/compare.csv"):
             return _export_comparison(assess, context, provenance, path, _candidate_rows(params))
         if path == "/":
@@ -785,7 +863,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                                first("product"), first("version"), first("order_number"),
                                submitted=any(key in params for key in
                                              ("vendor", "product", "version", "order_number")),
-                               network_exposure=first("network_exposure"))
+                               network_exposure=first("network_exposure"),
+                               owner=_owner_from(first))
         if path == "/compare":
             return _compare_page(assess, context,
                                  _candidate_rows(params),

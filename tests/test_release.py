@@ -109,16 +109,16 @@ def test_later_advisory_replaces_all_previous_children(tmp_path):
 
 def test_disabling_one_pillar_keeps_other_defaults(tmp_path):
     path = tmp_path / 'config.json'
-    path.write_text(json.dumps({'weights': {'exploitation': 0}}))
+    path.write_text(json.dumps({'weights': {'exposure': 0}}))
     weights, _, _ = config.load(path)
-    assert weights == {**score.DEFAULT_WEIGHTS, 'exploitation': 0}
+    assert weights == {**score.DEFAULT_WEIGHTS, 'exposure': 0}
     # Empty findings no longer score: absence of evidence is excluded,
     # not read as safety. The config mechanics still round-trip.
     assert score.assess('Example', [], weights=weights).verdict == 'NOT ASSESSED'
 
 
-@pytest.mark.parametrize('document', [[], {'weights': {'exploitation': 'nan'}},
-                                     {'weights': {'severity': 'inf'}},
+@pytest.mark.parametrize('document', [[], {'weights': {'exposure': 'nan'}},
+                                     {'weights': {'patchability': 'inf'}},
                                      {'bands': {'prefer': 'nan'}}])
 def test_invalid_configuration_is_refused_cleanly(tmp_path, document):
     path = tmp_path / 'config.json'

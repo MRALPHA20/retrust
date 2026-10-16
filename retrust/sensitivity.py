@@ -20,6 +20,7 @@ Sampling is seeded, so results are reproducible run to run.
 import random
 from dataclasses import dataclass, field
 
+from . import score as score_module
 from .score import BANDS, DEFAULT_WEIGHTS, PILLARS, assess
 
 PILLAR_KEYS = list(DEFAULT_WEIGHTS)
@@ -103,16 +104,26 @@ def _band(score, bands):
 
 def stability(findings, advisories=(), certificates=(), screening_gates=(),
               vendor_key=None, samples=500, seed=7, bands=None,
-              network_exposure=None):
-    """Score one product under many weightings and report the spread."""
+              network_exposure=None, consequence=None, interface="unknown",
+              assessment_type="purchase", remediation="unknown"):
+    """Score one product under many weightings and report the spread.
+
+    The owner-supplied facts are held FIXED across the sampling. They are not
+    weights and reweighting them would answer a different question: this
+    measures how much the verdict depends on the pillar weights, given the
+    deployment the operator described.
+    """
     bands = bands or BANDS
     rng = random.Random(seed)
+    declared = dict(network_exposure=network_exposure, consequence=consequence,
+                    interface=interface, assessment_type=assessment_type,
+                    remediation=remediation)
 
     # A gated product is AVOID whatever the weights say; sampling would only
     # manufacture a misleading 100% agreement figure.
     probe = assess("probe", findings, advisories, certificates=certificates,
                    screening_gates=screening_gates, vendor_key=vendor_key,
-                   network_exposure=network_exposure)
+                   **declared)
     if probe.gates:
         return Stability(samples=0, verdicts={"AVOID": 1}, gated=True,
                          score_min=probe.score or 0.0, score_max=probe.score or 0.0,
@@ -129,7 +140,7 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
         weights = _random_weights(rng)
         result = assess("probe", findings, advisories, weights=weights,
                         certificates=certificates, screening_gates=screening_gates,
-                        vendor_key=vendor_key, network_exposure=network_exposure)
+                        vendor_key=vendor_key, **declared)
         scores.append(result.score)
         verdict = _band(result.score, bands)
         verdicts[verdict] = verdicts.get(verdict, 0) + 1
@@ -172,25 +183,40 @@ def dominance(a_inputs, b_inputs, samples=500, seed=7):
 
 
 def contributions(assessment, weights=None):
-    """Points each pillar contributed to the composite, largest first.
+    """What each pillar costs the composite, largest cost first.
 
-    Turns "why is this 62.5?" into an answer: the weighted points each pillar
-    added, and how many it gave up against a perfect 100.
+    The composite is a product, not a sum, so a pillar does not own a slice of
+    the points -- it owns a factor. The number a reader can act on is the
+    headroom: how far the score would rise if this one pillar were perfect and
+    nothing else changed. That answers "where do I get the most back?", which
+    is the question a buyer actually has, and it sums to nothing in particular
+    because the terms interact. `gave` is the factor it multiplied in by.
     """
     weights = weights or DEFAULT_WEIGHTS
     scored = [p for p in assessment.pillars
               if p.name != "Evidence quality" and p.scored]
     active_keys = [PILLAR_KEYS_BY_NAME[p.name] for p in scored]
     total = sum(weights.get(key, 0) for key in active_keys) or 1.0
+    shares = [weights.get(key, 0) / total for key in active_keys]
+
+    def composite(values):
+        product = 1.0
+        for value, share in zip(values, shares):
+            product *= max(value, score_module.FLOOR) ** share
+        return product
+
+    current = [p.score for p in scored]
+    base = composite(current)
 
     out = []
-    for pillar, key in zip(scored, active_keys):
-        share = weights.get(key, 0) / total
+    for index, (pillar, share) in enumerate(zip(scored, shares)):
+        perfect = list(current)
+        perfect[index] = 100.0
         out.append({
             "pillar": pillar.name,
             "score": round(pillar.score, 1),
             "weight": round(share, 3),
-            "points": round(pillar.score * share, 1),
-            "points_lost": round((100 - pillar.score) * share, 1),
+            "points": round(max(pillar.score, score_module.FLOOR) ** share, 4),
+            "points_lost": round(composite(perfect) - base, 1),
         })
     return sorted(out, key=lambda row: -row["points_lost"])

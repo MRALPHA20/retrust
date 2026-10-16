@@ -8,7 +8,13 @@ Three layers, in this order:
     2. pillars      each scores 0-100 (higher is better) and reports how much
                     evidence it had, so a thin pillar says so instead of
                     defaulting to a confident middle.
-    3. composite    a weighted mean of the pillars, shown as a band.
+    3. composite    a weighted PRODUCT of the pillars, shown as a band:
+
+                        S = E^0.60 x P^0.20 x V^0.15 x C^0.05
+
+                    Multiplicative, not a mean, so dangerous exposure cannot be
+                    bought back with good vendor and certification scores --
+                    the rule the gates enforce, applied to the weighted part.
 
 Two rules keep this defensible:
 
@@ -20,9 +26,32 @@ Two rules keep this defensible:
 
 from dataclasses import dataclass, field
 
-from . import cvss, weakness
+from . import cvss, exposure as exposure_model, weakness
 
 BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
+
+# Bumped when a change to the maths would move a score, so an old vector is
+# never silently re-read under new rules.
+SCORING_VERSION = "RT1"
+
+
+def vector(assessment_type="purchase", version=None, network_exposure=None,
+           interface="unknown", consequence=None, remediation="unknown",
+           snapshot=""):
+    """A compact, reproducible record of the choices behind one score.
+
+    Borrowed from CVSS: a result nobody can reproduce is an opinion. This
+    records what the operator declared, what firmware was scored and which data
+    snapshot answered, so the same string re-run on the same index gives the
+    same verdict -- and a reviewer can see at a glance which facts were
+    supplied and which were left unresolved.
+    """
+    parts = [SCORING_VERSION, f"AT:{assessment_type}"]
+    for code, value in (("FW", version), ("NX", network_exposure),
+                        ("IF", interface), ("OC", consequence),
+                        ("RS", remediation), ("DS", snapshot)):
+        parts.append(f"{code}:{value if value else 'unset'}")
+    return "/".join(parts)
 
 
 @dataclass
@@ -57,6 +86,11 @@ class Assessment:
     # (findings, advisories, certificates, gates) -- lets sensitivity re-score
     # this product under other weightings without redoing the lookups.
     inputs: tuple | None = None
+    # A compact, reproducible record of the choices behind this score, so a
+    # result can be re-run and disputed by somebody who was not there.
+    vector: str = ""
+    assessment_type: str = "purchase"
+    consequence: str | None = None
 
 
 def _exploitation(findings):
@@ -342,6 +376,15 @@ NETWORK_EXPOSURES = {
 }
 
 
+# The operator-supplied vocabularies live beside the model that scores them.
+# Re-exported here so a renderer reads one module for the whole scoring
+# vocabulary and a new choice cannot appear in a form the model rejects.
+CONSEQUENCES = exposure_model.CONSEQUENCES
+INTERFACES = exposure_model.INTERFACES
+REMEDIATIONS = exposure_model.REMEDIATIONS
+ASSESSMENT_TYPES = exposure_model.ASSESSMENT_TYPES
+
+
 def _network_exposure(value):
     """Score the operator-reported route into the OT environment."""
     if value is None:
@@ -354,6 +397,35 @@ def _network_exposure(value):
     return Pillar("Network exposure", result, 1.0,
                   [f"Operator-reported: {label}. {description}",
                    "ReTrust has not independently verified the plant network."])
+
+
+def _exposure(findings, consequence=None, interface="unknown",
+              assessment_type="purchase", remediation="unknown", network=None):
+    """The E term: concentrated exposure, as a Pillar."""
+    score, coverage, evidence = exposure_model.measure(
+        findings, consequence, interface, assessment_type, remediation, network)
+    return Pillar("Exposure", score, coverage, evidence)
+
+
+# Pillars enter the product as 1-100, never 0: a single zero would annihilate
+# the result and make every other measurement irrelevant. The floor keeps a
+# catastrophic pillar catastrophic (E=0 lands near 5/100, deep in AVOID)
+# without letting one unmeasured term decide the whole assessment.
+FLOOR = 1.0
+
+
+def _composite(usable, weights):
+    """S = product(pillar ** exponent), exponents renormalized over what we measured.
+
+    Same missing-evidence rule as before: a pillar with no evidence is excluded
+    and the remaining exponents are renormalized to sum to 1, so a product with
+    less data is neither flattered nor punished by a phantom neutral value.
+    """
+    total = sum(weights.get(spec.key, 0) for spec, _ in usable) or 1.0
+    product = 1.0
+    for spec, pillar in usable:
+        product *= max(pillar.score, FLOOR) ** (weights.get(spec.key, 0) / total)
+    return product
 
 
 @dataclass(frozen=True)
@@ -374,26 +446,21 @@ class PillarSpec:
 
 
 PILLARS = [
-    PillarSpec("exploitation", "Exploitation", 0.270,
+    # Exposure subsumes what exploitation and severity used to score separately:
+    # threat, reachability, process consequence and applicability are the four
+    # terms of one per-finding risk, concentrated on the worst few.
+    PillarSpec("exposure", "Exposure", 0.60,
                lambda findings, advisories, certificates, vendor_key:
-                   _exploitation(findings)),
-    PillarSpec("severity", "Severity", 0.180,
-               lambda findings, advisories, certificates, vendor_key:
-                   _severity(findings)),
-    PillarSpec("patchability", "Patch availability", 0.180,
+                   _exposure(findings)),
+    PillarSpec("patchability", "Patch availability", 0.20,
                lambda findings, advisories, certificates, vendor_key:
                    _patchability(findings)),
-    PillarSpec("vendor_practice", "Vendor practice", 0.135,
+    PillarSpec("vendor_practice", "Vendor practice", 0.15,
                lambda findings, advisories, certificates, vendor_key:
                    _vendor_practice(findings, advisories, vendor_key)),
-    PillarSpec("certification", "Certification", 0.135,
+    PillarSpec("certification", "Certification", 0.05,
                lambda findings, advisories, certificates, vendor_key:
                    _certification(certificates)),
-    # Optional input: without it the five existing pillars are renormalized,
-    # preserving scores for callers who have not supplied plant context.
-    PillarSpec("network_exposure", "Network exposure", 0.10,
-               lambda findings, advisories, certificates, vendor_key:
-                   _network_exposure(None)),
 ]
 
 # Weights are deliberately editable; these are defaults, not truth.
@@ -529,8 +596,18 @@ def not_assessed(product_label, reason):
 
 def assess(product_label, findings, advisories=(), weights=None, today_year=2026,
            certificates=(), screening_gates=(), bands=None, vendor_key=None,
-           network_exposure=None):
-    """Score a resolved product. Returns an Assessment."""
+           network_exposure=None, consequence=None, interface="unknown",
+           assessment_type="purchase", remediation="unknown"):
+    """Score a resolved product. Returns an Assessment.
+
+    The last four arguments are facts only the asset owner has: what a
+    compromise would cost their process, whether they have verified the
+    vulnerable interface is unreachable, whether this is a purchase or an
+    installed asset, and whether a fix is actually on the box. ReTrust supplies
+    the vulnerability intelligence; it never asks the operator to score a
+    vendor or guess a percentage. Every one is optional, and an unanswered
+    question stays unresolved rather than quietly becoming a best or worst case.
+    """
     weights = weights or DEFAULT_WEIGHTS
 
     # Findings from the vendor's own advisories against those arriving in
@@ -548,17 +625,26 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     measured = []
     all_pillars = []
     for spec in PILLARS:
-        if spec.key == "network_exposure":
-            pillar = _network_exposure(network_exposure)
-            all_pillars.append(pillar)
-            if network_exposure is not None:
-                measured.append((spec, pillar))
-            continue
-        pillar = spec.measure(base, advisories, certificates, vendor_key)
+        if spec.key == "exposure":
+            pillar = _exposure(base, consequence, interface, assessment_type,
+                               remediation, network_exposure)
+        else:
+            pillar = spec.measure(base, advisories, certificates, vendor_key)
         measured.append((spec, pillar))
         all_pillars.append(pillar)
+
+    # Threat and severity now feed Exposure rather than scoring separately, but
+    # a reader still wants to see them. Reported as diagnostics -- shown with
+    # their numbers, excluded from the product -- so folding them in cost no
+    # explanation. Scoring them again here would double-count them.
+    diagnostics = []
+    for diagnostic in (_exploitation(base), _severity(base),
+                       _network_exposure(network_exposure)):
+        diagnostic.scored = False
+        diagnostics.append(diagnostic)
+
     confidence = _evidence_quality(base)
-    pillars = all_pillars + [confidence]
+    pillars = all_pillars + diagnostics + [confidence]
 
     # One rule for missing evidence, every pillar alike: coverage 0 means the
     # pillar measured nothing, so it is excluded and the rest renormalized --
@@ -571,18 +657,16 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         if pillar.coverage == 0:
             pillar.scored = False
 
-    # Gates and the empty-evidence test run on first-party findings, and the
-    # "has evidence" test ignores network exposure:
-    #  - network exposure is a deployment ASSUMPTION the operator typed, not
-    #    vulnerability evidence, so a product with no advisory findings must
-    #    stay NOT ASSESSED even when it is supplied -- otherwise "isolated"
-    #    alone scores a blank product PREFER 100.
-    #  - a KEV inside a third-party bundle is a CAUTION, never a gate; running
-    #    the gate on `base` (which falls back to the bundle when there are no
-    #    first-party findings) would make the very same bundled KEV gate or
-    #    caution depending on whether a first-party finding happens to exist.
-    risk_usable = [(spec, pillar) for spec, pillar in usable
-                   if spec.key != "network_exposure"]
+    # Gates run on first-party findings only: a KEV inside a third-party bundle
+    # is a CAUTION, never a gate. Running the gate on `base` (which falls back
+    # to the bundle when there are no first-party findings) would make the very
+    # same bundled KEV gate or caution depending on whether a first-party
+    # finding happens to exist.
+    #
+    # Network exposure is a deployment ASSUMPTION, not vulnerability evidence,
+    # so it can no longer make a blank product scoreable: it is an input to
+    # Exposure, and Exposure has coverage 0 when there are no findings.
+    risk_usable = usable
     gates = check_gates(first, product_label, screening_gates)
     cautions = _cautions(third)
 
@@ -600,9 +684,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
             notes=notes)
 
-    total = sum(weights.get(spec.key, 0) for spec, _ in usable) or 1.0
-    composite = sum(pillar.score * weights.get(spec.key, 0)
-                    for spec, pillar in usable) / total
+    composite = _composite(usable, weights)
 
     # Certification is positive evidence only: its ABSENCE is excluded, never a
     # penalty, so its PRESENCE must not lower the composite either -- otherwise
@@ -613,10 +695,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     if any(spec.key == "certification" for spec, _ in usable):
         others = [(spec, p) for spec, p in usable if spec.key != "certification"]
         if others:
-            base_total = sum(weights.get(spec.key, 0) for spec, _ in others) or 1.0
-            without_cert = sum(p.score * weights.get(spec.key, 0)
-                               for spec, p in others) / base_total
-            composite = max(composite, without_cert)
+            composite = max(composite, _composite(others, weights))
 
     prefer_threshold = (bands or BANDS)[0][0]
     cap_note = None
@@ -671,13 +750,20 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         notes.append(
             ", ".join(dropped) + (" had" if len(dropped) > 1 else " had")
             + " no evidence to measure, so "
-            + ("their weights were" if len(dropped) > 1 else "its weight was")
+            + ("their exponents were" if len(dropped) > 1 else "its exponent was")
             + " excluded and the remaining pillars renormalized -- one rule"
             " for every pillar, never a phantom neutral score.")
-    if network_exposure is None:
-        share = weights.get("network_exposure", 0.0) / (sum(weights.values()) or 1.0)
-        notes.append(f"Network exposure was not provided; its configured {share:.1%} "
-                     "weight was excluded and the other pillars were renormalized.")
+    if consequence is None:
+        notes.append(
+            "No process consequence was declared, so exposure is reported at"
+            " full process impact. That is the conservative reading, not a"
+            " measurement: declare the consequence to narrow it.")
+    if assessment_type == "purchase" and any(f.fixed for f in base):
+        notes.append(
+            "Scored as a new purchase, so a finding with an available fix is"
+            " treated as largely answerable -- which holds only if the order"
+            " pins the fixed firmware. The RFQ annex asks the supplier to"
+            " confirm it in writing.")
 
     # What kind of flaws these are, which is a different question from how many
     # or how bad. Notes rather than a scoring term: a credential baked into
@@ -696,5 +782,8 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         undecided_count=len({f.cve for f in undecided}),
         confidence=round(confidence.coverage, 2),
         network_exposure=network_exposure,
+        assessment_type=assessment_type, consequence=consequence,
+        vector=vector(assessment_type, None, network_exposure, interface,
+                      consequence, remediation),
         notes=notes,
     )

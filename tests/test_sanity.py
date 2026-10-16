@@ -55,13 +55,15 @@ def test_a_pillar_without_evidence_cannot_move_a_ranking():
     cert = next(p for p in without.pillars if p.name == "Certification")
     assert not cert.scored
     # The excluded pillar's phantom 50 must appear nowhere: the no-data score
-    # equals the renormalized mean of the pillars that DID measure something.
+    # is the renormalized PRODUCT of the pillars that DID measure something.
     keys = {spec.name: spec.key for spec in score.PILLARS}
     weights = score.DEFAULT_WEIGHTS
     scored = [p for p in without.pillars
               if p.scored and p.name != "Evidence quality"]
-    expected = (sum(p.score * weights[keys[p.name]] for p in scored)
-                / sum(weights[keys[p.name]] for p in scored))
+    total = sum(weights[keys[p.name]] for p in scored)
+    expected = 1.0
+    for pillar in scored:
+        expected *= max(pillar.score, score.FLOOR) ** (weights[keys[pillar.name]] / total)
     assert without.score == pytest.approx(expected, abs=0.1)
     assert with_data.score != without.score   # evidence moved it; absence did not
 
@@ -143,18 +145,21 @@ def test_network_exposure_alone_never_produces_a_score():
         assert a.score is None, exposure
 
 
-def test_missing_epss_does_not_drop_the_exploitation_pillar():
-    """KEV/ransomware are measured for every finding, so exploitation always has
-    coverage when findings exist -- a product with less EPSS data must not
-    score lower by having its highest-weighted pillar renormalized away."""
+def test_missing_epss_does_not_drop_the_exposure_pillar():
+    """Threat is only one term of Exposure, so missing EPSS must not drop it.
+
+    KEV and ransomware are known for every finding and severity comes from the
+    advisory, so Exposure always has coverage when findings exist -- a product
+    with less EPSS data must not score lower by having the pillar that carries
+    60% of the weight renormalized away."""
     no_epss = [_finding("C1", epss=None, cvss=5.0),
                _finding("C2", epss=None, cvss=6.0)]
     with_epss = [_finding("C1", epss=0.02, cvss=5.0),
                  _finding("C2", epss=0.03, cvss=6.0)]
     a = score.assess("A", no_epss, {"ICSA-26-001-01"})
     b = score.assess("B", with_epss, {"ICSA-26-001-01"})
-    expl = next(p for p in a.pillars if p.name == "Exploitation")
-    assert expl.scored and expl.coverage == 1.0
+    exposure = next(p for p in a.pillars if p.name == "Exposure")
+    assert exposure.scored and exposure.coverage > 0
     # The verdict must not flip on EPSS availability alone.
     assert a.verdict == b.verdict
     assert abs(a.score - b.score) < 5

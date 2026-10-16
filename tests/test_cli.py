@@ -140,7 +140,7 @@ def test_sensitivity_command(workspace, capsys):
 def test_config_shows_defaults(workspace, capsys):
     assert run(["config"]) == 0
     out = capsys.readouterr().out
-    assert "exploitation" in out
+    assert "exposure" in out
     assert "built-in defaults" in out
 
 
