@@ -167,3 +167,22 @@ def test_assessment_vector_keeps_supplied_firmware_and_provenance():
         {"source": "CISA KEV", "detail": "12 entries", "captured": "2026-10-01"}])
     assert token != score.provenance_token([
         {"source": "CISA KEV", "detail": "13 entries", "captured": "2026-10-01"}])
+
+
+# --- the unmitigable invariant, stated as a property ------------------------
+
+def test_an_unfixable_credential_can_never_read_prefer():
+    """The cap engages only when the composite would otherwise reach PREFER, so
+    asserting the cap NOTE is testing the mechanism. The invariant is the thing:
+    a credential the operator cannot change must never earn a favourable
+    verdict, whether that is because the cap fired or because the score never
+    got there."""
+    strong = [_finding(cve="CVE-2026-1000", cvss=2.0, epss=0.0,
+                       remediation="vendor_fix", fix_text=True)]
+    creds = _finding(cve="CVE-2026-2000", cvss=9.8, epss=0.9,
+                     remediation="none_available")
+    creds.cwe = "CWE-798"                      # hardcoded credentials, no fix
+    assessment = score.assess("x", strong + [creds], {"A"},
+                              certificates=[{"scheme": "IEC 62443-4-2",
+                                             "matches_product": True}])
+    assert assessment.verdict != "PREFER"

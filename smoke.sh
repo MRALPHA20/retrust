@@ -212,7 +212,12 @@ echo "== the review sanity board =="
 $RETRUST score --vendor "Schneider Electric" --product "Modicon M340" 2>/dev/null | grep -qE "PREFER +· " \
   && { echo "  FAIL  M340 reads PREFER again"; fail=$((fail+1)); failed+=("sanity M340"); } \
   || { echo "  ok    M340 does not read PREFER"; pass=$((pass+1)); }
-contains "Capped below PREFER" "the unmitigable cap fires on M340" \
+# Assert the PROPERTY, not the mechanism. The cap only engages when the
+# composite would otherwise reach PREFER; once exposure scores M340 below that
+# on its own the note is absent and nothing is wrong. What must never happen is
+# a favourable verdict on a credential the operator cannot change, and the
+# buyer must still be told the weakness is there.
+contains "hardcoded credentials" "the unmitigable weakness is named on M340" \
   -- $RETRUST score --vendor "Schneider Electric" --product "Modicon M340"
 contains "have a vendor fix" "Moxa's shipped fixes count as fixes" \
   -- $RETRUST score --vendor Moxa --product EDS-405A
