@@ -23,24 +23,24 @@ $ retrust compare \
 
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-  ABB AC 800M
-  PREFER  ·  82.2/100
-  CVEs 10  ·  ROBUST 88%
-
   Moxa EDS-405A
-  PREFER  ·  73.0/100
-  CVEs 10  ·  ROBUST 51%
+  PREFER  ·  87.6/100
+  CVEs 10  ·  ROBUST 100%
 
-  Rockwell Automation ControlLogix
-  PREFER  ·  70.9/100
-  CVEs 35  ·  ROBUST 58%
+  ABB AC 800M
+  PREFER  ·  78.0/100
+  CVEs 10  ·  ROBUST 85%
 
   Schneider Electric Modicon M340
   CONDITIONAL  ·  69.9/100
   CVEs 48  ·  ROBUST 100%
 
+  Rockwell ControlLogix
+  CONDITIONAL  ·  67.0/100
+  CVEs 35  ·  ROBUST 87%
+
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  56.5/100
+  AVOID  ·  51.3/100
   CVEs 942  ·  ROBUST gated
   Known exploited vulnerability
 
@@ -522,7 +522,7 @@ better advisory record.
 $ retrust alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 
 ALTERNATIVES TO  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  56.5   Known exploited vulnerability
+  AVOID  51.3   Known exploited vulnerability
 
 ReTrust does not know whether any of these will do the same job. It holds
 advisory history, not specifications: no I/O counts, no form factors, no
@@ -700,28 +700,29 @@ retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 ```
 CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-ABB AC 800M
-PREFER  ·  82.2/100
-CVEs 10  ·  ROBUST 88%
-
 Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
-PREFER  ·  75.7/100
-CVEs 1034  ·  ROBUST 78%
+PREFER  ·  89.3/100
+CVEs 1034  ·  ROBUST 100%
+Caution — KEV-listed CVE(s) in third-party component bundles
 
 Moxa EDS-405A
-PREFER  ·  73.0/100
-CVEs 10  ·  ROBUST 52%
+PREFER  ·  87.6/100
+CVEs 10  ·  ROBUST 100%
 
-Rockwell Automation ControlLogix
-PREFER  ·  70.9/100
-CVEs 35  ·  ROBUST 60%
+ABB AC 800M
+PREFER  ·  78.0/100
+CVEs 10  ·  ROBUST 85%
 
 Schneider Electric Modicon M340
 CONDITIONAL  ·  69.9/100
 CVEs 48  ·  ROBUST 100%
 
+Rockwell ControlLogix
+CONDITIONAL  ·  67.0/100
+CVEs 35  ·  ROBUST 87%
+
 Siemens SIMATIC S7-1500 (firmware 3.1.6)
-AVOID  ·  56.5/100
+AVOID  ·  51.3/100
 CVEs 942
 Known exploited vulnerability
 
@@ -736,6 +737,17 @@ vendor 'Acme Widgets' does not appear in the advisory corpus
 AVOID: 2  ·  CONDITIONAL: 1  ·  NOT ASSESSED: 1  ·  PREFER: 4
   exit 1: a candidate is disqualified
 ```
+
+**Read the caution on the top row.** The MFP carries 1,034 CVEs and still leads
+this ranking, which looks wrong until you see why: all but a handful arrive in
+third-party component-bundle advisories — the Linux and OpenSSL stack the device
+ships — and a bundle establishes that a component is present, not that each of
+its CVEs is reachable on the controller. Exposure therefore measures the
+vendor's own firmware, and the bundled KEV is raised as a caution instead of a
+gate, because gating on it would punish exactly the vendors who publish their
+component stacks. The caution is the output here, not a footnote: it names the
+CVEs and hands the buyer the question that decides them. Ask it before the
+order, which is what the RFQ annex is for.
 
 **The exit code is the point.** It makes this a gate, not a report
 somebody has to read:
@@ -823,23 +835,84 @@ already going to hear about.
 
 **2. Evidence pillars**, each 0–100 where higher is better:
 
-| Pillar | Weight | What it reads |
+| Pillar | Exponent | What it reads |
 |---|---:|---|
-| Exploitation | 0.270 | CISA KEV, ransomware linkage, peak EPSS |
-| Severity | 0.180 | worst CVSS, count of 9.0+ |
-| Patch availability | 0.180 | CSAF remediation status: a fix, a workaround, or nothing |
-| Vendor practice | 0.135 | whether advisories carry CVSS and CWE |
-| Certification | 0.135 | IEC 62443 (ISASecure) and Common Criteria certificates |
+| Exposure | 0.60 | concentrated per-finding risk — see below |
+| Patch availability | 0.20 | CSAF remediation status: a fix, a workaround, or nothing |
+| Vendor practice | 0.15 | whether the vendor runs its own CSAF feed, and advisory completeness |
+| Certification | 0.05 | IEC 62443 (ISASecure) and Common Criteria certificates |
 
-An optional **Network exposure** pillar carries 0.100: operator-reported
-Isolated (100), IT–OT (60), or Internet–OT (20). ReTrust does not verify the
-plant's network. If the user leaves this blank, the network pillar is omitted
-and the five evidence pillars are normalized to 100%; existing scores are
-therefore unchanged.
+**Exposure** is built per finding and then concentrated, because averaging is
+what a purchase decision least wants: a product with one catastrophic flaw and
+forty minor ones should not average out like forty-one middling ones.
 
-**3. A weighted composite**, reported as a band: `PREFER` (≥70),
-`CONDITIONAL` (≥40), `AVOID`. Weights and thresholds live in an editable config
-file; run `retrust config --init`.
+```
+z  = T' × A × H × U          one number per vulnerability, 0–1, higher is worse
+T' = 0.40 + 0.60 T           threat amplifies; it never zeroes the rest
+R  = 0.70 z₁ + 0.20 z₂ + 0.10 z₃ + 0.10 mean(the rest)
+E  = 100 (1 − R)
+```
+
+| Term | Reads | From |
+|---|---|---|
+| `T` threat | KEV, ransomware linkage, EPSS | evidence; never asked |
+| `A` reachability | the CVSS attack vector, narrowed by deployment and by a *verified* interface block | evidence + operator |
+| `H` impact | the finding's own CVSS severity, scaled by the declared process consequence | evidence + operator |
+| `U` applicability | does it still apply to the firmware being bought or run | CSAF + operator |
+
+Two decisions worth stating. `T` is mapped onto `[0.40, 1]` rather than used
+raw: the OT median EPSS is 0.007, so multiplying by it directly scored a
+critical, reachable, unfixed vulnerability as harmless purely because nobody had
+attacked it yet. And the tail term exists because the worst three alone cannot
+tell three severe flaws from three hundred — bounded at a tenth, so breadth can
+never outvote the worst case.
+
+**3. A weighted product**, reported as a band:
+
+```
+S = E^0.60 × P^0.20 × V^0.15 × C^0.05
+```
+
+A product rather than a mean, so dangerous exposure cannot be bought back with
+a good vendor record and a certificate — the rule the gates enforce, applied to
+the weighted part. Pillars enter as 1–100: a floor at 1 keeps a catastrophic
+pillar catastrophic (E = 0 lands near 5/100, deep in `AVOID`) without letting
+one unmeasured term annihilate every other measurement. Bands are `PREFER`
+(≥70), `CONDITIONAL` (≥40), `AVOID`. Exponents and thresholds live in an
+editable config file; run `retrust config --init`.
+
+Certification is the one asymmetric term. Most OT hardware is never submitted,
+so a missing certificate is excluded rather than penalised — and because its
+absence is never a penalty, its presence is never allowed to lower the score
+either: the composite is computed with and without it and the better taken. A
+`C^0.05` applied naively costs an uncertified product 20.6% of its score, which
+would punish the majority for a vendor's paperwork decision.
+
+### The facts only you have
+
+Four inputs describe your plant rather than the product. ReTrust supplies the
+vulnerability intelligence and never asks you to score a vendor or guess a
+percentage. Every one is optional, and an unanswered question stays unresolved
+rather than quietly becoming a best or worst case.
+
+| Input | Choices | Effect |
+|---|---|---|
+| `--assessment-type` | `purchase` (default), `installed` | On a purchase an available fix is leverage you can pin in the order; on an installed asset it changes nothing until somebody applies it |
+| `--network-exposure` | `isolated`, `it_ot`, `internet_ot` | Narrows `A`. Folded into reachability rather than scored separately: "an attacker cannot route here" is the statement `A` already makes |
+| `--consequence` | `safety`, `control`, `recoverable`, `minor`, `negligible` | Scales `H`. Left blank, exposure is reported at full process impact — the conservative reading, and said out loud |
+| `--interface` | `exposed`, `blocked`, `unknown` | Only a *verified* block narrows `A` |
+| `--remediation` | `applied`, `mitigated`, `available`, `unknown` | "A fix exists" and "the fix is on the box" are different facts and do not score alike |
+
+Every declaration can only ever narrow the risk: saying nothing is already the
+conservative reading, so a claim about your own plant never makes a flaw worse
+than its own vector says.
+
+Each assessment also carries a reproducible vector, so a result can be re-run
+and disputed by somebody who was not there:
+
+```
+RT1/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:2026-10-05
+```
 
 ### What the vector says, not just the score
 
@@ -860,11 +933,12 @@ other optional field in the data.
 | Automatable (that, and low complexity) | 35.5% |
 | Physical access only | 1.8% |
 
-The severity pillar weighs the wormable share alongside peak CVSS and critical
-share, so two products with the same worst-case number no longer score the same.
-An index built before vectors were stored falls back to the old formula and says
-so, because silently weighing reachability as zero would be a claim about the
-product rather than about the data.
+The vector is what `A` reads: a flaw reachable over the network scores the full
+reachability term, one needing physical access a tenth of it. A vector we could
+not read is treated as neither extreme and said so, because silently weighing
+reachability as zero would be a claim about the product rather than about the
+data. The severity pillar still reports peak CVSS, critical share and the
+wormable count as a diagnostic beside the score.
 
 `retrust ssvc --automatable auto` derives SSVC's Automatable from the vectors and
 shows its working. SSVC does not define that metric as a function of CVSS, so it
@@ -881,7 +955,7 @@ simplex and reports how often the verdict survives:
 $ retrust sensitivity --vendor "Schneider Electric" --product "Modicon M340"
 
 CONDITIONAL under 100% of weightings -- the verdict does not hinge on the weights
-  score across 500 random weightings: 42.8 to 70.0 (median 69.9)
+  score across 500 random weightings: 65.0 to 70.0 (median 69.9)
 ```
 
 A verdict that holds under 96% of weightings is not a matter of opinion. One

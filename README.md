@@ -17,16 +17,16 @@ $ retrust compare \
 
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-  ABB AC 800M
-  PREFER  ·  82.2/100
-  CVEs 10  ·  ROBUST 88%
-
   Moxa EDS-405A
-  PREFER  ·  73.0/100
-  CVEs 10  ·  ROBUST 51%
+  PREFER  ·  87.6/100
+  CVEs 10  ·  ROBUST 100%
+
+  ABB AC 800M
+  PREFER  ·  78.0/100
+  CVEs 10  ·  ROBUST 85%
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  56.5/100
+  AVOID  ·  51.3/100
   CVEs 942  ·  ROBUST gated
   Known exploited vulnerability
 
@@ -52,7 +52,7 @@ flowchart LR
     IDX --> MATCH
     MATCH --> GATE{"Hard gates<br/>KEV, covered list,<br/>sanctions"}
     GATE -->|tripped| AVOID["AVOID<br/>cannot be averaged away"]
-    GATE -->|clear| SCORE["Five weighted pillars<br/>+ evidence quality"]
+    GATE -->|clear| SCORE["Concentrated exposure<br/>× patch × vendor × cert"]
     SCORE --> OUT["PREFER / CONDITIONAL / AVOID<br/>terminal, HTML report, JSON, web UI"]
     IDX -.->|"retrust eval, backtest"| PROOF["Reproducible evaluation results"]
 ```
@@ -109,8 +109,11 @@ Then score something from a real requisition:
 retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
 ```
 
-You get a verdict, five pillar scores with the evidence behind each, and any
-hard gate that fired — never a bare number.
+You get a verdict, the pillar scores with the evidence behind each, and any
+hard gate that fired — never a bare number. Add `--consequence`,
+`--network-exposure`, `--interface` or `--remediation` to describe where the
+equipment will actually live; left out, each stays unresolved rather than
+guessed.
 
 ## Three ways to drive it
 
@@ -184,6 +187,12 @@ after installing the optional documentation dependencies: `pip install -e '.[doc
 
 - **Hard gates sit outside the weighted score** — a KEV hit or a covered-list
   match cannot be averaged away by good scores elsewhere.
+- **The score is a product, not a mean** — `E^0.60 × P^0.20 × V^0.15 × C^0.05`,
+  so dangerous exposure cannot be bought back with a good vendor record and a
+  certificate. Exposure itself is concentrated on the worst findings rather than
+  averaged across all of them.
+- **You supply the plant facts, never a percentage** — ReTrust asks what a
+  compromise would cost your process; it never asks you to score a vendor.
 - **Raw CVE counts are never scored** — that would rank a diligent discloser
   below a silent one.
 - **No resolution, no score** — every pillar reads "no CVEs found" as good

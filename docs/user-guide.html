@@ -215,14 +215,12 @@ so abstention is a feature rather than a failure.</p>
 <h3>Scoring pillars</h3>
 
 <table>
-  <thead><tr><th>Pillar</th><th>Weight</th><th>What it reads</th></tr></thead>
+  <thead><tr><th>Pillar</th><th>Exponent</th><th>What it reads</th></tr></thead>
   <tbody>
-    <tr><td>Exploitation</td><td class="n">0.270</td><td>CISA KEV, ransomware linkage, peak EPSS</td></tr>
-    <tr><td>Severity</td><td class="n">0.180</td><td>worst CVSS, and how many flaws are critical</td></tr>
-    <tr><td>Patch availability</td><td class="n">0.180</td><td>a fix, a workaround, or nothing</td></tr>
-    <tr><td>Vendor practice</td><td class="n">0.135</td><td>whether advisories carry CVSS and CWE, own CSAF feed</td></tr>
-    <tr><td>Certification</td><td class="n">0.135</td><td>IEC 62443 (ISASecure) and Common Criteria</td></tr>
-    <tr><td>Network exposure (optional)</td><td class="n">0.100</td><td>operator-reported: isolated 100, IT–OT 60, Internet–OT 20</td></tr>
+    <tr><td>Exposure</td><td class="n">0.60</td><td>per-finding risk (threat × reachability × impact × applicability), concentrated on the worst few</td></tr>
+    <tr><td>Patch availability</td><td class="n">0.20</td><td>a fix, a workaround, or nothing</td></tr>
+    <tr><td>Vendor practice</td><td class="n">0.15</td><td>own CSAF feed, and advisory completeness</td></tr>
+    <tr><td>Certification</td><td class="n">0.05</td><td>IEC 62443 (ISASecure) and Common Criteria</td></tr>
   </tbody>
 </table>
 
@@ -443,7 +441,7 @@ what you typed.</p>
 <pre>CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
 ABB AC 800M
-PREFER  ·  82.2/100
+PREFER  ·  78.0/100
 CVEs 10  ·  ROBUST 88%
 
 Schneider Electric Modicon M340

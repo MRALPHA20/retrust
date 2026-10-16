@@ -85,7 +85,7 @@ def build():
         note('An advisory product entry is not a unique device','The same product can appear in multiple advisories. Corpus totals describe records, not installed assets or unique hardware models.'),PageBreak()]
 
     story += page('How to read a verdict','02 / Scoring and safeguards')
-    story += [p('Higher scores indicate more favorable evidence under the configured weights. The default composite is a weighted mean of five pillars; the sixth display, evidence quality, is reported separately.'),
+    story += [p('Higher scores indicate more favorable evidence under the configured weights. The default composite is a weighted product of four pillars (exposure, patch availability, vendor practice, certification); evidence quality is reported separately and never scored.'),
         table(['PILLAR','WEIGHT','EVIDENCE USED'],[
         ['Exploitation','30%','KEV, ransomware flags and peak EPSS'],['Severity','20%','CVSS severity and exploitability characteristics'],['Patch availability','20%','Vendor fix, mitigation/workaround, unavailable or unknown remedy'],['Vendor practice','15%','Advisory completeness and published security-advisory practice'],['Certification','15%','Available certification evidence and product scope']],[112,57,330]),Spacer(1,13),
         p('Composite = sum(pillar score x weight) / sum(weights)','Code'),
@@ -136,7 +136,7 @@ def build():
         im=Image(str(shot)); im.drawHeight=im.imageHeight*499/im.imageWidth; im.drawWidth=499
         story += [im,Spacer(1,9),p('Actual local browser capture: ABB AC 800M and Moxa EDS-405A, with no firmware supplied. Source data and weights determine these results.','Small')]
     story += [p('1. Start with the requisition. Enter an order number or vendor/model and, where known, firmware. Verify that the resolved product is the intended variant.'),
-        p('2. Read the deciding evidence. A current comparison gives ABB AC 800M 82.2 (PREFER) and Moxa EDS-405A 56.1 (CONDITIONAL). Without firmware, uncertain ranges remain in scope.'),
+        p('2. Read the deciding evidence. A current comparison gives Moxa EDS-405A 87.6 (PREFER) and ABB AC 800M 78.0 (PREFER). Without firmware, uncertain ranges remain in scope.'),
         p('3. Challenge the result. The web samples 300 weightings: 93% and 77% support the respective most common verdicts in this example. The latter merits a closer discussion of priorities.'),
         p('4. Preserve and act. Export the assessment, use supplier questions to request exact fixed versions and support commitments, and re-score the saved query when evidence changes.'),PageBreak()]
 
