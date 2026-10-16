@@ -312,15 +312,15 @@ def test_report_shows_a_summary_table_only_when_comparing(workspace):
     connection = index.connect(str(workspace / "data" / "retrust.db"))
     one = report.render(_blocks(connection))
     two = report.render(_blocks(connection) * 2)
-    assert "Deciding factor" not in one       # a single product needs no ranking
-    assert "Deciding factor" in two
+    assert "Main reason" not in one       # a single product needs no ranking
+    assert "Main reason" in two
 
 
 def test_report_marks_unscored_pillars(workspace):
     connection = index.connect(str(workspace / "data" / "retrust.db"))
     markup = report.render(_blocks(connection))
     # Evidence quality is reported but must not read as part of the score.
-    assert "Evidence quality" in markup
+    assert "Evidence completeness" in markup
     assert "not scored" in markup
 
 
@@ -357,7 +357,7 @@ def test_gated_product_is_not_labelled_missing_data():
     assert "not enough data" not in markup
     assert "disqualified below" in markup
     assert "Not assessed." not in markup      # would contradict the gate
-    assert "Hard gate" in markup
+    assert "Purchase blocker" in markup
 
 
 def test_unassessable_product_still_says_so():

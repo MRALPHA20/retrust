@@ -151,13 +151,13 @@ def format_report(product, estimates, limit=20, corpus_share=None):
 
     if listed:
         lines.append(f"{'CVE':<18} {'LEV':>6} {'EPSS NOW':>9} {'PEAK':>6} "
-                     f"{'KEV':>4} {'DAYS':>5}  FIRST SCORED")
+                     f"{'KEV':>4} {'SAMPLES':>7}  FIRST SCORED")
         for estimate in listed[:limit]:
             current = "   --" if estimate.current_epss is None else f"{estimate.current_epss:>8.3f}"
             lines.append(
                 f"{estimate.cve:<18} {estimate.lev:>6.3f} {current:>9} "
                 f"{estimate.peak_epss:>6.3f} {'yes' if estimate.in_kev else '  -':>4} "
-                f"{estimate.observations:>5}  {estimate.first_seen}")
+                f"{estimate.observations:>7}  {estimate.first_seen}")
         if len(listed) > limit:
             lines.append(f"\n{len(listed) - limit} further CVE(s) not listed.")
 

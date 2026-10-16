@@ -22,7 +22,7 @@ import os
 import urllib.parse
 from datetime import date
 
-from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline
+from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline, webviews
 from .webui import page as _page
 from . import index as index_module
 from .index import normalize_name
@@ -170,13 +170,13 @@ def _demo_page():
     stages = (
         ('Identify the exact hardware', 'Search by the order number from a requisition. '
          'Check the matched model before assessing its firmware.', '/?q=6ES7518-4AX00-1AB0', 'Find a Siemens controller'),
-        ('Explain a verdict', 'Open an assessment and follow the score back to its five pillars. '
-         'Check evidence coverage and the network context as well as the headline number.', '/score?vendor=ABB&product=AC%20800M', 'Assess ABB AC 800M'),
+        ('Explain a verdict', 'See why the product received its recommendation. '
+         'Review the four parts of the score, missing information and assumptions about your network.', '/score?vendor=ABB&product=AC%20800M', 'Assess ABB AC 800M'),
         ('Compare a shortlist', 'Review three examples together. These are different equipment classes '
          'to demonstrate the workflow, not interchangeable engineering alternatives.',
          '/compare?c=ABB%7CAC%20800M&c=Moxa%7CEDS-405A&c=Siemens%7CSIMATIC%20S7-1500%7C3.1.6', 'Open example comparison'),
-        ('Ask better supplier questions', 'Turn the findings into an RFQ security annex. '
-         'Take the plain text back to your procurement team.', '/annex?vendor=Moxa&product=EDS-405A', 'Prepare supplier questions'),
+        ('Ask better supplier questions', 'Prepare security questions to copy into your quotation request. '
+         'Ask the supplier for written answers and evidence.', '/annex?vendor=Moxa&product=EDS-405A', 'Prepare supplier questions'),
     )
     cards = ''.join(
         f'<section class="panel"><span class="step-number">{i}</span><h2>{title}</h2><p>{description}</p>'
@@ -319,17 +319,17 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
                       helper='Buying it, or assessing one already installed.')
             + _choice('network_exposure', 'Network exposure',
                       score.NETWORK_EXPOSURES, network_exposure,
-                      blank='Choose if known',
-                      helper='Operator-reported, not verified. This describes deployment; it does not prove a specific CVE is unreachable.')
-            + _choice('consequence', 'If compromised, the process would suffer',
-                      score.CONSEQUENCES, consequence, blank='Choose if known',
-                      helper='Left blank, exposure is shown at full process impact.')
-            + _choice('interface', 'Vulnerable interface reachable?',
+                      blank='Unknown — ask your technical team',
+                      helper='Operator-reported, not verified. IT–OT means a connection to business IT; Internet–OT means internet access. These choices do not prove every weakness can be reached.')
+            + _choice('consequence', 'If the equipment were attacked, what could happen?',
+                      score.CONSEQUENCES, consequence, blank='Unknown — needs engineering review',
+                      helper='Ask your operations or safety team. Unknown consequences receive no reduction in impact.')
+            + _choice('interface', 'Can an attacker reach the affected service?',
                       score.INTERFACES, interface,
-                      helper='Only a verified block narrows the score. This summary applies to all in-scope findings; it is not CVE-specific proof.')
-            + _choice('remediation', 'Is the fix on the box?',
+                      helper='Choose “Not established” if unsure. A technical owner must verify a block for all in-scope findings before you select it.')
+            + _choice('remediation', 'Fix or protection status',
                       score.REMEDIATIONS, remediation,
-                      helper='Use only for all in-scope findings. Planned work does not reduce current risk.')
+                      helper='“Applied” or “verified” must cover all in-scope findings. A plan or an available download does not mean the equipment is fixed.')
             + '</div>')
 
 
@@ -345,10 +345,9 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
             + _field('f', 'version', 'Firmware version (or unknown)', version, 'e.g. 3.1.6')
             + '<p class="helper">Enter the exact version, or leave blank if unknown; unconfirmed advisory ranges stay pending review.</p>'
             + '</div>'
-            '<p class="form-divider">Deployment and operational context. Optional, and '
-            'all operator-reported: ReTrust supplies the vulnerability evidence, you '
-            'supply the facts about your plant. Anything left blank stays unresolved '
-            'rather than assumed.</p>'
+            '<p class="form-divider">About where the equipment will be used. If unsure, '
+            'leave these choices unknown and ask your technical or operations team. '
+            'ReTrust uses your answers; it does not inspect your network.</p>'
             + _owner_fields(network_exposure, consequence, interface,
                             assessment_type, remediation)
             + '<p class="helper">Unsure of the model name? <a href="/">Search the advisory index first.</a></p>'
@@ -522,12 +521,12 @@ def _timeline_page(connection, vendor, product):
         f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
         f'<label for="p" style="margin-top:.8rem">Product (optional: blank for the whole vendor)</label>'
         f'<input type="text" id="p" name="product" value="{_esc(product)}">'
-        '<button type="submit">Draw</button></form>')
+        '<button type="submit">Show advisory history</button></form>')
     if not vendor:
         return _page("Timeline", "<h1>Advisory timeline</h1>" + form +
-                     '<p class="empty">When advisories land, how the remediation '
-                     "mix has moved, and how long the record has been quiet. "
-                     "Cadence measures disclosure activity, not safety.</p>")
+                     '<p class="empty">See when security notices were published and whether they '
+                     'offered a fix. More notices can reflect better reporting. A quiet year does '
+                     'not prove that a product is secure.</p>')
 
     from . import match
     if product:
@@ -544,11 +543,9 @@ def _timeline_page(connection, vendor, product):
         if key is None:
             return _page("Timeline", "<h1>Advisory timeline</h1>" + form +
                          f'<p class="empty">vendor {_esc(vendor)} does not '
-                         "appear in the advisory corpus</p>")
+                         'appear in the available data. Check the spelling or search in Explore.</p>')
         subject, line = vendor, timeline.for_vendor(connection, key)
-    body = (f"<h1>Advisory timeline</h1>{form}"
-            '<pre class="tw" style="white-space:pre-wrap">'
-            f"{_esc(timeline.format_report(subject, line))}</pre>")
+    body = f"<h1>Advisory timeline</h1>{form}" + webviews.advisory_history(subject, line)
     return _page(f"Timeline: {subject}", body)
 
 
@@ -579,13 +576,11 @@ def _annex_page(connection, assess, dossier, context, vendor, product, version):
         f'<input type="text" id="p" name="product" value="{_esc(product)}">'
         f'<label for="f" style="margin-top:.8rem">Firmware version (optional)</label>'
         f'<input type="text" id="f" name="version" value="{_esc(version)}">'
-        '<button type="submit">Write the annex</button></form>')
+        '<button type="submit">Prepare supplier questions</button></form>')
     if not (vendor or product):
-        return _page("RFQ annex", "<h1>RFQ security annex</h1>" + form +
-                     '<p class="empty">The questions the evidence supports, '
-                     "written to be pasted into a request for quotation. A "
-                     "vendor asked which firmware version fixes a named CVE "
-                     "must answer with a fact or a visible refusal.</p>")
+        return _page("RFQ annex", "<h1>Questions to send your supplier</h1>" +
+                     '<p class="lead">Prepare security questions for your quotation request. '
+                     'Ask the supplier to confirm the delivered firmware, fixes and supporting evidence.</p>' + form)
 
     annex = _annex_text(connection, assess, dossier, context,
                         vendor, product, version)
@@ -593,11 +588,13 @@ def _annex_page(connection, assess, dossier, context, vendor, product, version):
                   f"&amp;product={urllib.parse.quote(product)}"
                   + (f"&amp;version={urllib.parse.quote(version)}" if version
                      else ""))
-    body = (f"<h1>RFQ security annex</h1>{form}"
+    body = (f"<h1>Questions to send your supplier</h1>{form}"
+            '<p>Copy these questions into your request for quotation (RFQ). '
+            'Ask the supplier for written answers and evidence; your technical team can review the responses.</p>'
             '<pre class="tw" style="white-space:pre-wrap">'
             f"{_esc(annex)}</pre>"
             f'<p class="empty"><a href="/annex.txt?{text_query}">Plain text,'
-            " for pasting into the request</a></p>")
+            " — copy into your quotation request</a></p>")
     subject = annex.splitlines()[0].replace("RFQ SECURITY ANNEX", "").strip()
     return _page(f"Annex: {subject or 'RFQ'}", body)
 
@@ -606,7 +603,8 @@ def _select(name, label, options, chosen):
     """One labelled dropdown, in the same legend style as the text inputs."""
     rendered = "".join(
         f'<option value="{_esc(option)}"'
-        + (" selected" if option == chosen else "") + f">{_esc(option)}</option>"
+        + (" selected" if option == chosen else "")
+        + f">{_esc(options[option] if isinstance(options, dict) else option)}</option>"
         for option in options)
     return (f'<label for="{name}" style="margin-top:.8rem">{_esc(label)}</label>'
             f'<select id="{name}" name="{name}">{rendered}</select>')
@@ -622,30 +620,31 @@ def _ssvc_page(connection, assess, vendor, product, version,
         f'<input type="text" id="p" name="product" value="{_esc(product)}">'
         f'<label for="f" style="margin-top:.8rem">Firmware version (optional)</label>'
         f'<input type="text" id="f" name="version" value="{_esc(version)}">'
-        + _select("exposure", "System exposure (describes your plant)",
-                  ssvc.EXPOSURE, exposure)
-        + _select("automatable", "Can an attacker automate it?",
-                  ("yes", "no"), automatable)
-        + _select("impact", "Human impact", ssvc.HUMAN_IMPACT, impact)
-        + '<button type="submit">Decide</button></form>')
+        + _select("exposure", "How accessible is the system? (describes your plant)",
+                  {"small": "Limited access", "controlled": "Controlled access", "open": "Open access"}, exposure)
+        + _select("automatable", "Could an attacker carry out the attack automatically?",
+                  {"yes": "Yes", "no": "No"}, automatable)
+        + _select("impact", "Potential effect on people and operations", ssvc.HUMAN_IMPACT, impact)
+        + '<p class="helper">Ask your technical and operations teams to confirm these settings. '
+          'The choices apply to every vulnerability in this assessment.</p>'
+        + '<button type="submit">Show response priorities</button></form>')
+    heading = ('<h1>What should be fixed first?</h1><p class="lead">Turn known security '
+               'issues into suggested response timings using the CERT/CC SSVC decision method.</p>')
+    if exposure not in ssvc.EXPOSURE or automatable not in ssvc.AUTOMATABLE or impact not in ssvc.HUMAN_IMPACT:
+        return _page("SSVC", heading + '<p class="notice" role="alert">Choose one of the listed '
+                     'access, automation and impact options, then try again.</p>' + form)
     if not (vendor and product):
-        return _page("SSVC", "<h1>SSVC decisions</h1>" + form +
-                     "<p class=\"empty\">Every finding placed on CERT/CC's "
-                     "deployer tree. Three of the four decision points describe "
-                     "your plant, not the product, so they are asked rather "
-                     "than assumed.</p>")
+        return _page("SSVC", heading + form)
     assessment, resolution, findings = assess(vendor, product, version or None)
     if not resolution.resolved:
-        return _page("SSVC", "<h1>SSVC decisions</h1>" + form +
+        return _page("SSVC", heading + form +
                      f'<p class="empty">{_esc(resolution.reason)}</p>')
     decisions = ssvc.assess(findings, exposure, automatable, impact)
-    text = ssvc.format_report(assessment.product, decisions, exposure,
-                              automatable, impact,
-                              undecided=sum(1 for f in findings if not f.decided))
     return _page(f"SSVC: {assessment.product}",
-                 "<h1>SSVC decisions</h1>" + form +
-                 '<pre class="tw" style="white-space:pre-wrap">'
-                 f"{_esc(text)}</pre>")
+                 heading + form + webviews.response_priority(
+                     assessment.product, decisions, exposure, automatable, impact,
+                     undecided=sum(1 for f in findings if not f.decided),
+                     kev_loaded=any(p['source'] == 'CISA KEV' for p in index_module.provenance(connection))))
 
 
 def _lev_page(connection, assess, vendor, product):
@@ -655,35 +654,32 @@ def _lev_page(connection, assess, vendor, product):
         f'<label for="v">Vendor</label><input type="text" id="v" name="vendor" value="{_esc(vendor)}">'
         f'<label for="p" style="margin-top:.8rem">Product</label>'
         f'<input type="text" id="p" name="product" value="{_esc(product)}">'
-        '<button type="submit">Estimate</button></form>')
+        '<button type="submit">Check exploitation history</button></form>')
+    heading = ('<h1>Past exploitation estimate</h1><p class="lead">Could these known security '
+               'weaknesses have been used in attacks already? Compare a historical model estimate '
+               'with confirmed public records.</p>')
     if not (vendor and product):
-        return _page("LEV", "<h1>Likely exploited</h1>" + form +
-                     '<p class="empty">NIST CSWP 41: from the EPSS history, '
-                     "how likely each finding has already been exploited. A "
-                     "lower bound from a model -- a prompt to go and look, "
-                     "never a finding that it happened.</p>")
+        return _page("LEV", heading + form)
     if not index_module.has_epss_history(connection):
-        return _page("LEV", "<h1>Likely exploited</h1>" + form +
-                     '<p class="empty">No EPSS history loaded, so LEV cannot '
-                     "be estimated. `retrust lev --update` fetches it "
-                     "(67 daily snapshots, about four minutes).</p>")
+        return _page("LEV", heading + form +
+                     '<p class="empty">Historical attack estimates are not available in this workspace. '
+                     'Ask the workspace owner to refresh the historical data. This is missing data, not a zero risk result.</p>')
     assessment, resolution, findings = assess(vendor, product)
     if not resolution.resolved:
-        return _page("LEV", "<h1>Likely exploited</h1>" + form +
-                     f'<p class="empty">{_esc(resolution.reason)}</p>')
+        return _page("LEV", heading + form +
+                     f'<p class="empty">{_esc(resolution.reason)}. Check the name or '
+                     '<a href="/">find the product in Explore</a>.</p>')
     cves = sorted({f.cve for f in findings})
     history = index_module.epss_history(connection, cves)
     signals = {f.cve: f for f in findings}
     cached = index_module.lev_estimates(connection)
     estimates = [lev.estimate(c, history.get(c, []), in_kev=signals[c].in_kev,
                               current_epss=signals[c].epss) for c in cves]
-    text = lev.format_report(
-        assessment.product, estimates,
-        corpus_share=lev.baseline(cached)["share"] if cached else None)
     return _page(f"LEV: {assessment.product}",
-                 "<h1>Likely exploited</h1>" + form +
-                 '<pre class="tw" style="white-space:pre-wrap">'
-                 f"{_esc(text)}</pre>")
+                 heading + form + webviews.exploitation(
+                     assessment.product, estimates,
+                     corpus_share=lev.baseline(cached)["share"] if cached else None,
+                     kev_loaded=any(p['source'] == 'CISA KEV' for p in index_module.provenance(connection))))
 
 
 def _vendor_page(connection, dossier, context, name):
@@ -694,10 +690,7 @@ def _vendor_page(connection, dossier, context, name):
         return _page("Vendor", "<h1>Vendor profile</h1>" + form)
     profile = dossier.build(connection, name, screening=context["screening"],
                             certificates=context["certificates"])
-    # The dossier is built for a terminal, so it is shown as preformatted text
-    # rather than restyled. One renderer, two surfaces, nothing to drift.
-    body = (f"<h1>Vendor profile</h1>{form}<pre class=\"tw\" style=\"white-space:pre-wrap\">"
-            f"{_esc(dossier.format_report(profile))}</pre>")
+    body = f"<h1>Vendor profile</h1>{form}" + webviews.vendor_profile(profile)
     if profile.known:
         body += (f'<p class="empty"><a href="/?q={urllib.parse.quote(name)}">'
                  "Search this vendor's products</a> &middot; "
@@ -712,32 +705,54 @@ def _about_page(stats, provenance, host, port):
                   'inputs, run ReTrust locally with <code>retrust serve</code>.'
                   if os.environ.get('RETRUST_HOSTED') == '1' else
                   f'Serving on {_esc(host)}:{port}. Stop it with Ctrl-C.')
-    rows = "".join(f"<tr><td>{_esc(k.replace('_', ' '))}</td>"
+    stat_names = {'advisories': 'Published security notices', 'products': 'Product entries in advisories',
+                  'vendors': 'Manufacturers', 'cves': 'Distinct vulnerability IDs',
+                  'order_numbers': 'Manufacturer part numbers', 'cves_in_kev': 'Vulnerabilities here with confirmed CISA exploitation records',
+                  'kev_catalogue': 'Entries in the full CISA exploitation catalogue', 'epss_scores': '30-day attack estimates available'}
+    rows = "".join(f"<tr><td>{_esc(stat_names.get(k, k.replace('_', ' ')))}</td>"
                    f"<td class=\"n\">{v:,}</td></tr>"
                    for k, v in stats.items())
     sources = "".join(
         f"<tr><td>{_esc(p['source'])}</td><td>{_esc(p['detail'])}</td>"
         f"<td class=\"n\">{_esc(p['captured'])}</td></tr>" for p in provenance)
     return _page("About", f"""<h1>Data &amp; methodology</h1>
-<p class="lead">Follow the decision back to its inputs. These are the sources
-loaded into this workspace and the rules that turn them into an assessment.</p>
+<p class="lead">Understand the recommendation, check the evidence, and see
+which information is still missing.</p>
 <section class="panel"><h2>How a verdict is reached</h2>
 <ol class="steps">
-<li><span class="step-number">1</span><div><b>Resolve the hardware</b>
-<p>Use the manufacturer order number or vendor and product name. Unresolved
-products receive NOT ASSESSED. Unknown version ranges stay in scope.</p></div></li>
-<li><span class="step-number">2</span><div><b>Apply disqualifying evidence</b>
-<p>Known exploitation and supplier screening can trigger an AVOID gate,
-regardless of the weighted score.</p></div></li>
-<li><span class="step-number">3</span><div><b>Weigh the evidence and network context</b>
-<p>Five evidence pillars contribute to the score. An optional, operator-reported
-network exposure adds 10%; evidence quality is reported separately.</p></div></li>
+<li><span class="step-number">1</span><div><b>Identify the exact product</b>
+<p>Use the order number from the supplier’s quotation and add the firmware version.
+If ReTrust cannot match the product, it reports NOT ASSESSED. Unconfirmed firmware
+ranges remain visible for review.</p></div></li>
+<li><span class="step-number">2</span><div><b>Check for purchase blockers</b>
+<p>Confirmed exploitation affecting the device firmware and supplier restrictions can
+trigger AVOID. A blocker overrides the numerical score. Issues reported only in
+bundled software are flagged separately for technical review.</p></div></li>
+<li><span class="step-number">3</span><div><b>Combine four kinds of evidence</b>
+<p>The default score weighs exposure safety (60%), available fixes (20%), vendor
+security practices (15%) and certification evidence (5%). Network access contributes
+to exposure safety; it does not add a separate score. Missing evidence and operator
+assumptions are shown with the result.</p></div></li>
 </ol></section>
-<h2>What the index contains</h2>
+<details class="vector"><summary>Scoring formula and its limits</summary>
+<p><code>S = E^0.60 × P^0.20 × V^0.15 × C^0.05</code>, using scores from 1 to 100.
+E is exposure safety, P is available fixes, V is vendor practices, and C is certification evidence.
+These are the default weights; individual reports show the weights actually used.</p>
+<p>A part with no measurable evidence is excluded and the remaining weights are adjusted.
+Certification can improve the result but cannot lower it. Purchase blockers still override the score.
+An 80/100 score does not mean the product is 80% secure or predict the chance of a compromise.</p></details>
+<h2>Common terms in plain language</h2>
+<dl class="term-list"><dt>Vulnerability / CVE</dt><dd>A known security weakness. A CVE number is its reference ID.</dd>
+<dt>Severity / CVSS</dt><dd>How serious the weakness could be, rated out of 10. It does not say how likely an attack is.</dd>
+<dt>EPSS</dt><dd>A model estimate of exploitation in the next 30 days, shown as a percentage.</dd>
+<dt>CISA KEV</dt><dd>A public list of vulnerabilities confirmed to have been exploited. A missing entry does not prove no attack happened.</dd>
+<dt>LEV</dt><dd>A model estimate of earlier exploitation, built from historical EPSS scores. It does not show whether your own equipment was attacked.</dd>
+<dt>Firmware</dt><dd>The software running inside the equipment. Its version helps determine which vulnerabilities apply.</dd></dl>
+<h2>Data available in this workspace</h2>
 <div class="tw"><table><thead><tr><th>Holds</th><th class="n">Count</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
 <h2>Where the data came from</h2>
-<div class="tw"><table><thead><tr><th>Source</th><th>Detail</th><th class="n">Captured</th>
+<div class="tw"><table><thead><tr><th>Source</th><th>What was loaded</th><th class="n">Recorded on</th>
 </tr></thead><tbody>{sources}</tbody></table></div>
 <p class="empty">Certification evidence comes from the ISASecure certified-component,
 -process and -system directories, the Common Criteria certified-products list, and a
@@ -747,7 +762,9 @@ Supplier screening uses the trade.gov Consolidated Screening List and the FCC
 Covered List. <a href="https://github.com/MRALPHA20/retrust">Source code on
 GitHub</a>.</p>
 <h2>What this server does and does not do</h2>
-<pre style="white-space:pre-wrap">{_esc(SAFETY)}</pre>
+<p>The website displays assessments and downloads. It does not scan devices,
+apply patches or change equipment.</p>
+<details><summary>Technical server safety details</summary><pre style="white-space:pre-wrap">{_esc(SAFETY)}</pre></details>
 <p class="empty">{deployment}</p>""")
 
 

@@ -84,6 +84,6 @@ def test_report_shows_the_declared_deployment_as_a_diagnostic():
         certificates=[{"scheme": "IEC 62443-4-1", "matches_product": False}],
         network_exposure="internet_ot")
     markup = report._pillar_table(assessment, score.DEFAULT_WEIGHTS)
-    assert "Network exposure" in markup
+    assert "Network access" in markup
     assert "Internet–OT" in markup
     assert "not scored" in markup

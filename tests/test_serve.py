@@ -214,13 +214,28 @@ def test_the_annex_page_is_pasteable_text(handler):
 def test_the_lev_page_abstains_without_history(handler):
     """The fixture index has no EPSS history; the page must say so, not zero."""
     _, _, body = _get(handler, "/lev?vendor=Testco&product=TestPLC")
-    assert "No EPSS history loaded" in body
+    assert "Historical attack estimates are not available" in body
 
 
 def test_the_ssvc_form_carries_the_plant_questions(handler):
     _, _, body = _get(handler, "/ssvc")
     assert "describes your plant" in body
     assert "<select" in body
+
+
+def test_invalid_response_setting_explains_how_to_recover(handler):
+    status, _, body = _get(handler, '/ssvc?vendor=Testco&product=TestPLC&exposure=unknown')
+    assert status == 200
+    assert 'role="alert"' in body
+    assert 'Choose one of the listed' in body
+
+
+def test_methodology_describes_current_network_and_scoring_rules(handler):
+    _, _, body = _get(handler, '/about')
+    assert 'exposure safety (60%)' in body
+    assert 'available fixes (20%)' in body
+    assert 'does not add a separate score' in body
+    assert 'Five evidence pillars' not in body
 
 
 def test_the_annex_text_endpoint_is_plain_text(handler):
@@ -505,7 +520,7 @@ def test_comparison_download_preserves_ranked_queries_and_stability(comparison_h
     assert 'retrust-comparison.json' in headers['Content-Disposition']
     _, _, page = _get(handler, '/compare' + query)
     assert '90%' in page and '60%' in page
-    assert page.count('PREFER under 90%') == 1
+    assert page.count('PREFER was the most common verdict, appearing in 90%') == 1
     _, _, report_html = _get(handler, '/compare.html' + query)
     assert 'Assessment inputs' in report_html and 'BEST' in report_html
     assert 'Some candidates have firmware specified' in report_html

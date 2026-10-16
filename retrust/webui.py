@@ -126,6 +126,12 @@ details{border:1px solid var(--rule);border-radius:7px;padding:16px 20px;backgro
 .block{border-left:3px solid var(--vc);padding:0 0 0 20px;margin-top:28px}.block h2{font-size:23px;overflow-wrap:anywhere}.verdict{border-radius:7px;padding:20px}.verdict .v{font-size:22px}.verdict .s{font-size:28px}.verdict .n{font-size:12px}.gate,.note,.stability{border-radius:5px;font-size:13px}.gate .src{color:var(--soft)}
 th,td{padding:12px;font-size:12px}th{font-size:10px;letter-spacing:.5px}table{border-radius:7px}.tw{border-radius:7px}.ev{font-size:12px}.meta{font-size:10px;letter-spacing:.5px}.bar{border:0;height:6px;border-radius:10px}.bar i{border-radius:10px}.note{line-height:1.7}.tnote{font-size:11px}.src,.sources{overflow-wrap:anywhere}
 pre{font-size:12px;line-height:1.8;overflow-wrap:anywhere;padding:20px;background:var(--panel);border:1px solid var(--rule);border-radius:8px}.notice{padding:14px 18px;border:1px solid #4e4531;border-radius:7px;background:#252219;color:#e1c68e;font-size:12px;margin:15px 0}
+.reading-summary{max-width:75ch;margin:26px 0}.reading-summary p{font-size:14px;line-height:1.75}.subject{overflow-wrap:anywhere;margin-top:28px}
+.reading-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 30px;margin:24px 0;padding:20px 0;border-block:1px solid var(--rule)}
+.reading-facts dt{font-size:12px;color:var(--soft)}.reading-facts dd{margin:4px 0 0;font-size:17px;font-weight:600;overflow-wrap:anywhere}
+.priority-list dt,.term-list dt{font-weight:600;margin-top:18px}.priority-list dd,.term-list dd{margin:5px 0 16px;max-width:75ch;color:var(--soft);line-height:1.75}
+caption{text-align:left;padding:12px;color:var(--soft);font-size:12px}.result-help{max-width:75ch;line-height:1.75}
+@media(max-width:700px){.reading-facts{grid-template-columns:1fr}.reading-summary p{font-size:14px}.reading-facts dd{font-size:16px}}
 .demo-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.demo-cards .panel{margin:0}.demo-cards .step-number{margin-bottom:18px;width:30px}.demo-cards p{font-size:13px;color:var(--soft)}
 footer{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap;border-top:1px solid var(--rule);margin-top:30px;padding-top:20px;font-size:10px;color:var(--faint)}.muted{color:var(--faint)}
 @media(min-width:1500px){.hero h1{font-size:48px}.app .wrap{padding-top:36px}}

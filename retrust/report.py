@@ -56,6 +56,9 @@ h2{font-size:1.2rem;font-weight:700;letter-spacing:-.01em;
 code,.id{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums}
 code{white-space:nowrap}
 .vector code{white-space:normal;overflow-wrap:anywhere}
+.evidence-details{border:0;padding:0;margin:0;background:transparent}
+.evidence-details summary{font-size:.86rem;color:var(--soft);cursor:pointer}
+.evidence-details[open]>summary{margin-bottom:.5rem}
 /* The state stripe. This is the panel indicator lamp, and it is how a reader
    skims a comparison of six candidates. --vc is set once per block, so the
    verdict word and every meter fill below it inherit the same state colour. */
@@ -155,14 +158,41 @@ def _footer_sources(provenance, weights, config_source):
         shown = ", ".join(f"{k} {v / total:.1%}" for k, v in weights.items())
         parts.append(f'<p>Weights ({_esc(config_source)}): {_esc(shown)}. '
                      'Change them in the config file and re-run; the sensitivity '
-                     'figures above show how much that would matter. Network exposure '
-                     'is optional; without it, the selected pillars are normalized to 100%.</p>')
+                     'figures above show how much that would matter. Network access '
+                     'contributes to exposure safety. Parts without measurable evidence '
+                     'are excluded and the remaining weights are adjusted.</p>')
     parts.append("</section>")
     return "".join(parts)
 
 
 VERDICT_COLOR = {"PREFER": "var(--prefer)", "CONDITIONAL": "var(--cond)",
                  "AVOID": "var(--avoid)", "NOT ASSESSED": "var(--faint)"}
+VERDICT_HELP = {
+    "PREFER": "Suitable for further consideration under these assumptions. Review any cautions and missing evidence before approval.",
+    "CONDITIONAL": "Consider this product only after your technical team reviews the listed risks and missing evidence.",
+    "AVOID": "This assessment advises against the purchase because of a purchase blocker or a low score. Review the reasons below.",
+    "NOT ASSESSED": "There is not enough usable information for a recommendation. Check the exact part number and ask the supplier for the firmware details.",
+}
+PILLAR_LABELS = {
+    "Exposure": "Exposure safety", "Patch availability": "Available fixes",
+    "Vendor practice": "Vendor security practices", "Certification": "Certification evidence",
+    "Exploitation": "Attack activity", "Severity": "Issue severity",
+    "Network exposure": "Network access", "Evidence quality": "Evidence completeness",
+}
+CAUTION_HELP = {
+    "KEV-listed CVE(s) in third-party component bundles": (
+        "Known exploited weaknesses in included software",
+        "CISA has confirmed attacks using weaknesses in software included with this product. "
+        "Ask the supplier whether those weaknesses can be reached on this equipment and which fixes apply."),
+    "Ransomware-linked CVE(s) in third-party component bundles": (
+        "Ransomware-related weaknesses in included software",
+        "Public records link weaknesses in included software to ransomware attacks. "
+        "Ask the supplier to confirm whether those attack paths exist on this equipment."),
+    "Critical unfixable CVE(s) in third-party component bundles": (
+        "Serious weaknesses in included software may have no fix",
+        "Included software has serious vulnerability records without an available remedy. "
+        "Ask the supplier whether this product is affected and what protection is possible."),
+}
 # A verdict this table does not know is an unknown state, and an unknown state
 # is inert -- not --soft, which is secondary text everywhere else in the sheet
 # and would light a stripe in a colour that means nothing.
@@ -171,6 +201,12 @@ INERT = VERDICT_COLOR["NOT ASSESSED"]
 
 def _esc(text):
     return html.escape(str(text))
+
+
+def _probability(value):
+    if value is None:
+        return 'Not available'
+    return 'Under 0.1%' if 0 < value < .001 else f'{value:.1%}'
 
 
 def _ids(escaped):
@@ -196,18 +232,23 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                   else "not enough data to assess")
         summary = f'<span class="s">no score</span><span class="n">{reason}</span>'
     else:
-        detail = f'{assessment.findings_count} CVE(s) in scope'
+        noun = 'vulnerability' if assessment.findings_count == 1 else 'vulnerabilities'
+        detail = f'{assessment.findings_count} known {noun} included'
         if assessment.undecided_count:
             detail += f' &middot; {assessment.undecided_count} need review'
-        detail += f' &middot; evidence confidence {assessment.confidence:.0%}'
+        detail += f' &middot; evidence completeness {assessment.confidence:.0%}'
         summary = (f'<span class="s">{assessment.score}/100</span>'
                    f'<span class="n">{detail}</span>')
 
     parts.append(f'<div class="verdict"><span class="v">'
                  f'{_esc(assessment.verdict)}</span>{summary}</div>')
+    parts.append(f'<p class="result-help">{_esc(VERDICT_HELP.get(assessment.verdict, "Review the evidence below."))}</p>')
+    if assessment.score is not None:
+        parts.append('<p class="tnote">Higher scores are more favourable under the chosen settings. '
+                     'The score and evidence completeness are not probabilities that the equipment is secure.</p>')
 
     if assessment.vector:
-        parts.append('<details class="vector"><summary>Reproduction vector</summary>'
+        parts.append('<details class="vector"><summary>Technical assessment settings</summary>'
                      f'<p><code>{_esc(assessment.vector)}</code></p>'
                      '<p class="tnote">Includes the scoring version, supplied firmware and '
                      'operator choices. The data token fingerprints recorded source '
@@ -217,28 +258,29 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     if stability is not None:
         klass = "robust" if (stability.gated or stability.robust) else "fragile"
         parts.append(
-            f'<p class="stability {klass}"><b>Weight robustness.</b> '
-            f'{_esc(stability.summary())}.'
-            + ('' if stability.gated else
-               f' Score ranged {stability.score_min}&ndash;{stability.score_max} '
-               f'across {stability.samples} random weightings.')
+            f'<p class="stability {klass}"><b>Verdict stability.</b> '
+            + ('A purchase blocker sets this verdict regardless of score weights.' if stability.gated else
+               'This check was not run for this result.' if not stability.samples else
+               f'{_esc(stability.dominant)} was the most common verdict, appearing in {stability.agreement:.0%} of '
+               f'{stability.samples} tested weight settings. Scores ranged '
+               f'{stability.score_min}&ndash;{stability.score_max}. '
+               'This tests the effect of changing weights, not the accuracy of the evidence.')
             + '</p>')
 
     if resolution is not None:
         if resolution.resolved:
             parts.append(
-                f'<p class="meta">matched by {_esc(resolution.method)} '
-                f'&middot; confidence {resolution.confidence:.2f} '
+                f'<p class="meta">Matched using {_esc(resolution.method.replace("_", " "))} '
                 f'&middot; {resolution.product_count} product(s) across '
                 f'{resolution.advisory_count} advisor'
-                f'{"y" if resolution.advisory_count == 1 else "ies"}</p>')
+                f'{"y" if resolution.advisory_count == 1 else "ies"} (security notices)</p>')
         elif not assessment.gates:
             parts.append(f'<div class="note"><b>Not assessed.</b> '
                          f'{_esc(resolution.reason)}</div>')
 
     for gate in assessment.gates:
         parts.append(
-            f'<div class="gate"><b>Hard gate &mdash; {_esc(gate["gate"])}</b><br>'
+            f'<div class="gate"><b>Purchase blocker &mdash; {_esc(gate["gate"])}</b><br>'
             f'{_ids(_esc(gate["detail"]))}'
             f'<span class="src">Source: {_esc(gate["source"])}</span></div>')
 
@@ -246,10 +288,19 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     # the warning colour, right where a gate would sit, so it cannot be missed
     # on a page whose headline verdict reads well.
     for caution in getattr(assessment, "cautions", ()):
+        title, explanation = CAUTION_HELP.get(caution['caution'], (caution['caution'], caution['detail']))
         parts.append(
-            f'<div class="caution"><b>Caution &mdash; {_esc(caution["caution"])}</b><br>'
-            f'{_ids(_esc(caution["detail"]))}'
-            f'<span class="src">Source: {_esc(caution["source"])}</span></div>')
+            f'<div class="caution"><b>Supplier review needed &mdash; {_esc(title)}</b>'
+            f'<p>{_esc(explanation)}</p><details><summary>Which vulnerabilities and sources?</summary>'
+            f'<p>{_ids(_esc(caution["detail"]))}</p>'
+            f'<span class="src">Source: {_esc(caution["source"])}</span></details></div>')
+
+    if assessment.first_party_count and assessment.third_party_count:
+        noun = 'vulnerability' if assessment.first_party_count == 1 else 'vulnerabilities'
+        parts.append(f'<p>The score uses {assessment.first_party_count} {noun} '
+                     f'from device-vendor advisories. Another {assessment.third_party_count} '
+                     'concern bundled software whose reachability on this equipment has not been confirmed. '
+                     'Ask the supplier to review those separately.</p>')
 
     if assessment.pillars:
         parts.append(_pillar_table(assessment, weights))
@@ -270,14 +321,14 @@ def _pillar_table(assessment, weights):
                       if p.name != "Evidence quality" and p.scored]
     parts = ['<div class="tw" tabindex="0" role="region" aria-label="Pillar evidence, scroll horizontally for more columns">'
              '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
-             '<table><thead><tr><th>Pillar</th><th class="n">Score</th>'
-             '<th style="width:18%">&nbsp;</th><th class="n">Weight</th><th class="n">Coverage</th>'
+             '<table><thead><tr><th>Assessment part</th><th class="n">Score / 100</th>'
+             '<th style="width:18%">&nbsp;</th><th class="n">Influence</th><th class="n">Evidence available</th>'
              '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
         evidence = "".join(f"<li>{_esc(e)}</li>" for e in pillar.evidence)
         share = (_weight_share(pillar.name, weights, active_pillars)
                  if pillar.scored else None)
-        weight = None if share is None else f"{share:.3f}"
+        weight = None if share is None else f"{share:.1%}"
         # Evidence quality is reported but not scored, and must look different
         # from the pillars that move the number.
         unscored = weight is None
@@ -285,14 +336,17 @@ def _pillar_table(assessment, weights):
         bar_width = max(0, min(100, pillar.score)) if pillar.scored else 0
         parts.append(
             f'<tr{" class=unscored" if unscored else ""}>'
-            f'<td><b>{_esc(pillar.name)}</b></td>'
+            f'<td><b>{_esc(PILLAR_LABELS.get(pillar.name, pillar.name))}</b></td>'
             f'<td class="n">{_esc(displayed_score)}</td>'
             f'<td><span class="bar"><i style="width:{bar_width:.0f}%"></i></span></td>'
             + (f'<td class="n">{weight}</td>' if weight
                else '<td class="n na">not scored</td>')
             + f'<td class="n">{pillar.coverage * 100:.0f}%</td>'
-            f'<td><ul class="ev">{evidence}</ul></td></tr>')
-    parts.append('</tbody></table></div>')
+            f'<td><details class="evidence-details"><summary>Show supporting evidence</summary>'
+            f'<ul class="ev">{evidence}</ul></details></td></tr>')
+    parts.append('</tbody></table></div><p class="tnote">Influence is the weight used in the '
+                 'formula. Evidence available describes usable inputs, including operator statements; '
+                 'it does not mean every fact has been independently verified. Supporting details are marked “not scored”.</p>')
     return "".join(parts)
 
 
@@ -303,18 +357,22 @@ def _cve_table(findings):
     hand on the rows marked "needs review": saying a range could not be parsed
     without saying which range leaves them nowhere to start.
     """
-    parts = ['<div class="tw" tabindex="0" role="region" aria-label="CVE evidence, scroll horizontally for more columns">'
+    parts = ['<h3>Vulnerabilities to review</h3><p class="tnote">A CVE is a reference number '
+             'for a known security weakness. Severity measures possible harm; EPSS estimates '
+             'exploitation in the next 30 days. Neither shows that your equipment was attacked.</p>'
+             '<div class="tw" tabindex="0" role="region" aria-label="CVE evidence, scroll horizontally for more columns">'
              '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
-             '<table><thead><tr><th>Most significant CVEs</th>'
-             '<th class="n">CVSS</th><th class="n">EPSS</th><th class="n">KEV</th><th>Advisory</th>'
-             '<th>Affected range</th></tr></thead><tbody>']
+             '<table><thead><tr><th>Vulnerability (CVE)</th>'
+             '<th class="n">Severity / 10 (CVSS)</th><th class="n">30-day estimate (EPSS)</th>'
+             '<th>Confirmed exploitation record</th><th>Security notice</th>'
+             '<th>Affected firmware range</th></tr></thead><tbody>']
     for f in findings:
         parts.append(
             f'<tr><td><code>{_esc(f.cve)}</code>'
             + ('' if f.decided else ' <span class="meta">needs review</span>')
-            + f'</td><td class="n">{"" if f.cvss is None else f"{f.cvss:.1f}"}</td>'
-            f'<td class="n">{"" if f.epss is None else f"{f.epss:.3f}"}</td>'
-            f'<td class="n">{"yes" if f.in_kev else ""}</td>'
+            + f'</td><td class="n">{"Not available" if f.cvss is None else f"{f.cvss:.1f}"}</td>'
+            f'<td class="n">{_probability(f.epss)}</td>'
+            f'<td>{"Listed in CISA KEV" if f.in_kev else "No record shown"}</td>'
             f'<td><code>{_esc(f.advisory_id)}</code></td>'
             f'<td class="id rng">{_esc(f.version_range)}</td></tr>')
     parts.append('</tbody></table></div>')
@@ -328,7 +386,7 @@ def _summary_table(blocks, stabilities):
         colour = VERDICT_COLOR.get(assessment.verdict, INERT)
         st = stabilities.get(id(assessment), stabilities.get(assessment.product))
         robust = "&mdash;" if st is None else (
-            "gated" if st.gated else f"{st.agreement:.0%}")
+            "Blocked" if st.gated else f"{st.agreement:.0%}")
         note = (assessment.gates[0]["gate"] if assessment.gates
                 else "" if resolution.resolved else resolution.reason)
         rows.append(
@@ -342,12 +400,12 @@ def _summary_table(blocks, stabilities):
     return ('<div class="tw" tabindex="0" role="region" aria-label="Candidate comparison, scroll horizontally for more columns">'
             '<p class="table-scroll-hint">Scroll sideways to see all candidates’ evidence →</p>'
             '<table><thead><tr><th>Candidate</th><th>Verdict</th>'
-            '<th class="n">Score</th><th class="n">CVEs</th><th class="n">Robust</th><th>Deciding factor</th>'
+            '<th class="n">Score</th><th class="n">Vulnerabilities</th><th class="n">Verdict stability</th><th>Main reason</th>'
             '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>'
-            '<p class="tnote">Robust is the share of random weightings that give the '
-            'most common verdict. Below 90%, that verdict is sensitive to the '
-            'pillar weights. This measures each verdict, not the stability of '
-            'the ranking. A dash means it was not sampled.</p>')
+            '<p class="tnote">Verdict stability shows how often the most common verdict '
+            'repeated when score weights were changed. Below 90%, the result depends more '
+            'strongly on the chosen weights. This does not measure evidence accuracy or '
+            'the stability of the ranking. A dash means this check was not run.</p>')
 
 
 def body(blocks, stabilities=None, weights=None):
