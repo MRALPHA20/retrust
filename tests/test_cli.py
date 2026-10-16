@@ -104,6 +104,81 @@ def test_score_json_to_file(workspace, capsys):
     assert json.loads((workspace / "out.json").read_text())["results"]
 
 
+@pytest.mark.parametrize("vendor,version,exit_code", [
+    ("Testco", "1.0", 0), ("Testco", "2.5", 0), ("Nobody", "1.0", 0),
+])
+def test_json_keeps_owner_choices_even_without_a_score(workspace, vendor, version, exit_code):
+    assert run(["score", "--vendor", vendor, "--product", "TestPLC 9000",
+                "--version", version, "--assessment-type", "installed",
+                "--network-exposure", "isolated", "--consequence", "minor",
+                "--interface", "blocked", "--remediation", "planned",
+                "--json", "context.json", "--no-sensitivity"]) == exit_code
+    result = json.loads((workspace / "context.json").read_text())["results"][0]
+    for key, value in dict(assessment_type="installed", network_exposure="isolated",
+                           consequence="minor", interface="blocked", remediation="planned").items():
+        assert result[key] == value
+    assert f"FW:{version}" in result["vector"]
+    assert "DS:unset" not in result["vector"]
+    if vendor == "Nobody" or version == "2.5":
+        assert result["score"] is None
+        assert result["verdict"] == "NOT ASSESSED"
+
+
+def test_diff_replays_the_saved_owner_choices(workspace):
+    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
+                "--consequence", "negligible", "--interface", "blocked",
+                "--assessment-type", "installed", "--remediation", "mitigated",
+                "--json", "before.json", "--no-sensitivity"]) == 0
+    assert run(["diff", "before.json", "--json", "after.json"]) == 0
+    result = json.loads((workspace / "after.json").read_text())["results"][0]
+    assert result["change"] == "same"
+    assert result["score_change"] == 0.0
+
+
+def test_firmware_comparison_holds_owner_choices_fixed(workspace, monkeypatch):
+    from retrust import cli, score
+    actual = score.assess
+    calls = []
+    declared = dict(network_exposure="isolated", consequence="minor",
+                    interface="blocked", assessment_type="installed", remediation="planned")
+
+    def observe(*args, **kwargs):
+        calls.append(kwargs)
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(score, "assess", observe)
+    connection = index.connect("data/retrust.db")
+    try:
+        cli._assess(connection, "Testco", "TestPLC 9000", "2.5", None,
+                    context=cli._context(), **declared)
+    finally:
+        connection.close()
+    assert len(calls) == 2   # selected firmware and the unrestricted baseline
+    for call in calls:
+        assert all(call[key] == value for key, value in declared.items())
+
+
+def test_score_robustness_holds_owner_choices_fixed(workspace, monkeypatch):
+    from retrust import sensitivity
+    actual = sensitivity.stability
+    calls = []
+
+    def observe(*args, **kwargs):
+        calls.append(kwargs)
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(sensitivity, "stability", observe)
+    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
+                "--consequence", "minor", "--interface", "blocked",
+                "--assessment-type", "installed", "--remediation", "planned",
+                "--json", "robust.json", "--samples", "10"]) == 0
+    assert len(calls) == 1
+    assert calls[0]["consequence"] == "minor"
+    assert calls[0]["interface"] == "blocked"
+    assert calls[0]["assessment_type"] == "installed"
+    assert calls[0]["remediation"] == "planned"
+
+
 def test_score_html_output(workspace):
     assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
                 "--html", "r.html"]) == 0

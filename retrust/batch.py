@@ -171,6 +171,11 @@ def to_record(assessment, resolution, stability=None, query=None):
         "undecided": assessment.undecided_count,
         "confidence": assessment.confidence,
         "network_exposure": assessment.network_exposure,
+        "assessment_type": assessment.assessment_type,
+        "consequence": assessment.consequence,
+        "interface": assessment.interface,
+        "remediation": assessment.remediation,
+        "vector": assessment.vector,
         "resolved_by": resolution.method if resolution.resolved else None,
         "match_confidence": resolution.confidence if resolution.resolved else None,
         "matched_products": len(resolution.matches),
@@ -288,7 +293,9 @@ def dumps_csv(records, include_queries=False):
     """Render spreadsheet-safe CSV in memory, optionally retaining input fields."""
     pillar_names = sorted({name for r in records for name in r.get("pillars", {})})
     columns = ["product", "verdict", "score", "cves", "undecided", "confidence",
-               "robust", "resolved_by", "match_confidence", "gates", "reason"]
+               "robust", "resolved_by", "match_confidence", "gates", "reason",
+               "assessment_type", "network_exposure", "consequence",
+               "interface", "remediation", "vector"]
     columns += [f"pillar_{n.lower().replace(' ', '_')}" for n in pillar_names]
     if include_queries:
         columns += [f"query_{field}" for field in QUERY_FIELDS]

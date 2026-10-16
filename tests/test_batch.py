@@ -247,6 +247,20 @@ def test_detail_is_a_superset_of_record():
         assert detail[key] == record[key]
 
 
+def test_csv_retains_the_environment_and_assessment_vector():
+    import csv
+    import io
+    from retrust import score
+    assessment = score.assess("PLC", _findings(), {"A"}, version="1.0",
+                              network_exposure="it_ot", assessment_type="installed",
+                              consequence="control", interface="blocked", remediation="planned")
+    record = batch.to_record(assessment, _resolution())
+    row = next(csv.DictReader(io.StringIO(batch.dumps_csv([record]))))
+    for key in ("assessment_type", "network_exposure", "consequence", "interface", "remediation", "vector"):
+        assert row[key] == record[key]
+    assert "FW:1.0" in row["vector"]
+
+
 def test_detail_carries_pillar_evidence():
     detail = batch.to_detail(_assessment(), _resolution(), _findings())
     pillars = {p["name"]: p for p in detail["pillars"]}

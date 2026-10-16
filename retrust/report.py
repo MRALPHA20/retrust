@@ -55,6 +55,7 @@ h2{font-size:1.2rem;font-weight:700;letter-spacing:-.01em;
    not wrap -- half a part number at the end of a line is not a part number. */
 code,.id{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums}
 code{white-space:nowrap}
+.vector code{white-space:normal;overflow-wrap:anywhere}
 /* The state stripe. This is the panel indicator lamp, and it is how a reader
    skims a comparison of six candidates. --vc is set once per block, so the
    verdict word and every meter fill below it inherit the same state colour. */
@@ -210,7 +211,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                      f'<p><code>{_esc(assessment.vector)}</code></p>'
                      '<p class="tnote">Includes the scoring version, supplied firmware and '
                      'operator choices. The data token fingerprints recorded source '
-                     'provenance metadata; the source dates and counts appear below.</p>'
+                     'provenance metadata; it does not checksum the full database.</p>'
                      '</details>')
 
     if stability is not None:

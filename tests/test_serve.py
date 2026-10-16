@@ -87,6 +87,31 @@ def _get(handler, path):
     return caught["ok"]
 
 
+def test_json_download_keeps_the_real_assessment_context(db, tmp_path):
+    from retrust import cli, dossier
+    context = cli._context(data_dir=str(tmp_path))
+
+    def assess(vendor, product, version=None, order_number=None, **owner):
+        return cli._assess(db, vendor, product, version, order_number,
+                           context=context, **owner)
+
+    handler = serve.build_handler(
+        db, assess, context, dossier, index.stats(db), index.provenance(db), "127.0.0.1", 0)
+    status, _, output = _get(
+        handler, '/export.json?order_number=TC-9000-A1&version=1.0'
+        '&assessment_type=installed&network_exposure=it_ot&consequence=minor'
+        '&interface=blocked&remediation=planned')
+    assert status == 200
+    result = json.loads(output)["results"][0]
+    assert result["assessment_type"] == "installed"
+    assert result["network_exposure"] == "it_ot"
+    assert result["consequence"] == "minor"
+    assert result["interface"] == "blocked"
+    assert result["remediation"] == "planned"
+    for part in ("FW:1.0", "AT:installed", "NX:it_ot", "OC:minor", "IF:blocked", "RS:planned"):
+        assert part in result["vector"]
+
+
 # --- routing ---------------------------------------------------------------
 
 def test_health_check_reads_index(handler):

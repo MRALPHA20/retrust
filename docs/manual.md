@@ -786,8 +786,8 @@ of them:
 ```json
 {
   "generated_by": "retrust",
-  "schema": 1,
-  "weights":    { "exploitation": 0.3, "severity": 0.2, ... },
+  "schema": 2,
+  "weights":    { "exposure": 0.6, "patchability": 0.2, "vendor_practice": 0.15, "certification": 0.05 },
   "provenance": [ { "source": "CISA KEV", "detail": "1,726 entries",
                     "captured": "2026-09-27" } ],
   "results": [ { "product": "Moxa EDS-405A", "verdict": "CONDITIONAL",
@@ -800,6 +800,11 @@ every pillar, the citation behind every gate, and the most significant CVEs with
 their EPSS, KEV and remediation status. Anything trimmed is counted, never
 silently dropped (`findings_truncated`). The envelope carries the weights and
 the data provenance, so a stored result stays interpretable months later.
+
+JSON and CSV records include the assessment type, network exposure, consequence,
+interface, remediation and reproduction vector. `retrust diff` keeps these
+owner choices fixed when it re-scores a saved assessment. Firmware comparison
+notes and weight-robustness calculations also hold the owner choices fixed.
 
 `score` and `compare` also take `--fail-on`, defaulting to `never` because they
 are interactive; `batch` defaults to `avoid` because it is a gate.

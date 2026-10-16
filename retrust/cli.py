@@ -45,12 +45,13 @@ DEFAULT_DB = "data/retrust.db"
 
 def _owner_inputs(args):
     """The asset-owner facts a command was given, defaulted to unresolved."""
+    get = args.get if isinstance(args, dict) else lambda key, default=None: getattr(args, key, default)
     return dict(
-        network_exposure=getattr(args, "network_exposure", None),
-        consequence=getattr(args, "consequence", None),
-        interface=getattr(args, "interface", "unknown") or "unknown",
-        assessment_type=getattr(args, "assessment_type", "purchase") or "purchase",
-        remediation=getattr(args, "remediation", "unknown") or "unknown",
+        network_exposure=get("network_exposure"),
+        consequence=get("consequence"),
+        interface=get("interface", "unknown") or "unknown",
+        assessment_type=get("assessment_type", "purchase") or "purchase",
+        remediation=get("remediation", "unknown") or "unknown",
     )
 
 
@@ -79,6 +80,10 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
             assessment_type="purchase", remediation="unknown"):
     """Resolve, collect findings, and score. Shared by `score` and `compare`."""
     context = context or _context()
+    declared = dict(network_exposure=network_exposure, consequence=consequence,
+                    interface=interface, assessment_type=assessment_type,
+                    remediation=remediation)
+    snapshot = score.provenance_token(index.provenance(connection))
     resolution = match.resolve(
         connection, vendor=vendor, product=product, order_number=order_number)
     findings = match.findings(connection, resolution, version=version)
@@ -105,25 +110,23 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
         if version:
             label += f" (firmware {version})"
 
-    if screening_gates:
-        return (score.blocked(label, screening_gates, resolution.reason
-                              if not resolution.resolved else ""),
-                resolution, findings)
-
-    if not resolution.resolved:
-        return score.not_assessed(label, resolution.reason), resolution, findings
+    if screening_gates or not resolution.resolved:
+        assessment = (score.blocked(label, screening_gates, resolution.reason
+                                   if not resolution.resolved else "")
+                      if screening_gates else
+                      score.not_assessed(label, resolution.reason))
+        for name, value in declared.items():
+            setattr(assessment, name, value)
+        assessment.vector = score.vector(version=version, snapshot=snapshot,
+                                         **declared)
+        return assessment, resolution, findings
 
     assessment = score.assess(label, findings, advisories,
                               weights=context.get("weights"),
                               bands=context.get("bands"),
                               certificates=certificates, screening_gates=screening_gates,
                               vendor_key=normalize_vendor(effective_vendor or ""),
-                              network_exposure=network_exposure,
-                              consequence=consequence, interface=interface,
-                              assessment_type=assessment_type,
-                              remediation=remediation, version=version,
-                              snapshot=score.provenance_token(
-                                  index.provenance(connection)))
+                              **declared, version=version, snapshot=snapshot)
     assessment.notes.extend(screening_notes)
 
     # A firmware version narrowing the scope can lower the score -- the CVEs
@@ -138,7 +141,7 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                 weights=context.get("weights"), bands=context.get("bands"),
                 certificates=certificates, screening_gates=screening_gates,
                 vendor_key=normalize_vendor(effective_vendor or ""),
-                network_exposure=network_exposure)
+                **declared)
             moved = ("unchanged" if baseline.score == assessment.score
                      else f"moved {baseline.score} -> {assessment.score}")
             note = (f"Firmware {version} narrowed the scope from "
@@ -314,7 +317,7 @@ def cmd_score(args):
     if args.json and not args.no_sensitivity and getattr(assessment, "inputs", None):
         stability = sensitivity.stability(*assessment.inputs, samples=args.samples,
                                           bands=context["bands"],
-                                          network_exposure=assessment.network_exposure)
+                                          **_owner_inputs(args))
 
     if args.json:
         detail = batch.to_detail(assessment, resolution, findings, stability,
@@ -1519,7 +1522,7 @@ def cmd_diff(args):
         assessment, resolution, _ = _assess(
             connection, query.get("vendor"), query.get("product"),
             query.get("version"), query.get("order_number"), context=context,
-            network_exposure=record.get("network_exposure"))
+            **_owner_inputs(record))
         current.append(batch.to_record(assessment, resolution, query=query))
 
     changes = diff.compare(previous, current)
@@ -1861,7 +1864,7 @@ def build_parser():
         parser.add_argument("--remediation",
                             choices=list(exposure.REMEDIATIONS), default="unknown",
                             help="is the fix actually on the box? applied, "
-                                 "mitigated, available or unknown")
+                                 "mitigated, available, planned or unknown")
 
     p = sub.add_parser("score", help="assess one product")
     _product_args(p)

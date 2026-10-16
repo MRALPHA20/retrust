@@ -107,6 +107,8 @@ class Assessment:
     vector: str = ""
     assessment_type: str = "purchase"
     consequence: str | None = None
+    interface: str = "unknown"
+    remediation: str = "unknown"
 
 
 def _exploitation(findings):
@@ -626,6 +628,11 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     question stays unresolved rather than quietly becoming a best or worst case.
     """
     weights = weights or DEFAULT_WEIGHTS
+    declared = dict(
+        network_exposure=network_exposure, assessment_type=assessment_type,
+        consequence=consequence, interface=interface, remediation=remediation,
+        vector=vector(assessment_type, version, network_exposure, interface,
+                      consequence, remediation, snapshot))
 
     # Findings from the vendor's own advisories against those arriving in
     # third-party component bundles. The bundles establish that a component
@@ -699,7 +706,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             findings_count=len({f.cve for f in findings}),
             first_party_count=len({f.cve for f in first}),
             third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
-            notes=notes)
+            notes=notes, **declared)
 
     composite = _composite(usable, weights)
 
@@ -798,9 +805,5 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
         undecided_count=len({f.cve for f in undecided}),
         confidence=round(confidence.coverage, 2),
-        network_exposure=network_exposure,
-        assessment_type=assessment_type, consequence=consequence,
-        vector=vector(assessment_type, version, network_exposure, interface,
-                      consequence, remediation, snapshot),
-        notes=notes,
+        notes=notes, **declared,
     )
