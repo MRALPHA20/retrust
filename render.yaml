@@ -7,6 +7,12 @@ services:
     buildCommand: bash scripts/render-build.sh
     startCommand: python -u -m retrust.cli serve --host 0.0.0.0 --port "$PORT"
     healthCheckPath: /healthz
+    # Deploy main, not the branch this service happened to be created from.
+    # The service was first wired to codex/render-deployment, so three commits
+    # of fixes pushed to main never went live and two manual deploys rebuilt
+    # the same old commit with fresh data -- a failure that is completely
+    # silent, because the index hash moves while the code does not.
+    branch: main
     # Every push to the tracked branch rebuilds and redeploys. The build
     # refetches the corpus and the EPSS history, so a deploy is tens of
     # minutes on the free plan -- expected, not a hang.

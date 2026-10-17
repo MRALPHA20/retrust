@@ -50,8 +50,12 @@ code changed. The raw equivalent, if you prefer it:
 git push origin main:refs/heads/codex/render-deployment
 ```
 
-Better, point the service at `main` in **Settings > Build & Deploy > Branch**
-and keep one branch. To check what is actually live rather than what you
+`render.yaml` now declares `branch: main`, so the intent is config-as-code
+rather than a dashboard setting somebody has to remember. A Blueprint property
+change is only picked up when Render re-reads the file, so confirm once in
+**Settings > Build & Deploy > Branch** that the service shows `main`; the
+dashboard value wins over the YAML if the two ever disagree. Once it does,
+`make deploy` is a single push and the deploy branch can be retired. To check what is actually live rather than what you
 pushed, compare a string you changed, not the data counts:
 
 ```bash

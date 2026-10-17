@@ -66,11 +66,16 @@ ci: test
 # so the live site cannot drift behind again.
 DEPLOY_BRANCH ?= codex/render-deployment
 
+# render.yaml declares branch: main, but the deploy branch is still pushed
+# until the dashboard confirms the switch -- a belt-and-braces push costs
+# nothing and a silently-stale live site costs an afternoon.
 deploy: test
 	git push origin main
 	git push origin main:refs/heads/$(DEPLOY_BRANCH)
 	@echo
 	@echo "Pushed main and $(DEPLOY_BRANCH). Render builds in a few minutes."
+	@echo "Once Settings > Build & Deploy > Branch reads 'main', the second"
+	@echo "push is redundant and DEPLOY_BRANCH can be dropped from this target."
 	@echo "Check what is actually LIVE with:  make live"
 
 # Verify the deployed code, not the data. Index counts move on every build
