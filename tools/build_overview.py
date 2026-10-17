@@ -136,7 +136,7 @@ def build():
         im=Image(str(shot)); im.drawHeight=im.imageHeight*499/im.imageWidth; im.drawWidth=499
         story += [im,Spacer(1,9),p('Actual local browser capture: ABB AC 800M and Moxa EDS-405A, with no firmware supplied. Source data and weights determine these results.','Small')]
     story += [p('1. Start with the requisition. Enter an order number or vendor/model and, where known, firmware. Verify that the resolved product is the intended variant.'),
-        p('2. Read the deciding evidence. A current comparison gives Moxa EDS-405A 87.6 (PREFER) and ABB AC 800M 78.0 (PREFER). Without firmware, uncertain ranges remain in scope.'),
+        p('2. Read the deciding evidence. A current comparison gives ABB AC 800M 77.9 (PREFER) and Moxa EDS-405A 64.6 (CONDITIONAL). Without firmware, uncertain ranges remain in scope.'),
         p('3. Challenge the result. The web samples 300 weightings: 93% and 77% support the respective most common verdicts in this example. The latter merits a closer discussion of priorities.'),
         p('4. Preserve and act. Export the assessment, use supplier questions to request exact fixed versions and support commitments, and re-score the saved query when evidence changes.'),PageBreak()]
 
@@ -146,7 +146,7 @@ def build():
         p('Setup needs network access to obtain sources. Once populated, assessments run locally. The browser workspace defaults to 127.0.0.1:8765. The core package requires Python 3.10+ and no third-party Python runtime packages; some setup, signature and screenshot commands use external tools.'),
         p('Reproduce the measurements','H2'),
         p('python3 -m retrust.cli eval --sample 4000 --json eval.json<br/>python3 -m retrust.cli backtest --permutations 1000<br/>python3 -m pytest -q<br/>bash smoke.sh','Code'),
-        p('Local verification: 831 automated tests passed; 94 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases, including guards against injection, SSRF and decompression-bomb inputs. They do not constitute an independent security audit.'),
+        p('Local verification: 868 automated tests passed; 94 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases, including guards against injection, SSRF and decompression-bomb inputs. They do not constitute an independent security audit.'),
         p('Know the remaining gaps','H2'),
         p('<b>Evidence coverage:</b> absent advisories, missing certification or uncertain ranges are not proof of safety. Family-level queries can collect several variants; prefer precise identifiers.'),
         p('<b>Scoring:</b> weights and gates encode a review policy. Certification may be vendor-level, screening requires scope confirmation, and raw disclosure volume is not a risk ground truth.'),

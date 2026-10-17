@@ -17,16 +17,16 @@ $ retrust compare \
 
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-  Moxa EDS-405A
-  PREFER  ·  87.6/100
-  CVEs 10  ·  ROBUST 100%
-
   ABB AC 800M
-  PREFER  ·  78.0/100
+  PREFER  ·  77.9/100
   CVEs 10  ·  ROBUST 85%
 
+  Moxa EDS-405A
+  CONDITIONAL  ·  64.6/100
+  CVEs 10  ·  ROBUST 67%
+
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  51.3/100
+  AVOID  ·  50.9/100
   CVEs 942  ·  ROBUST gated
   Known exploited vulnerability
 
@@ -35,7 +35,7 @@ $ retrust compare \
   ROBUST not sampled
   Named on a covered list
 
-  AVOID: 2  ·  PREFER: 2
+  AVOID: 2  ·  CONDITIONAL: 1  ·  PREFER: 1
 ```
 
 ## How it works
@@ -174,7 +174,7 @@ not count every extra match. Version coverage measures whether a range can be
 parsed, not accuracy against independently labelled firmware cases.
 
 The current historical backtest gives score versus later CVE disclosure rho
-+0.431, falling to +0.269 within vendors and +0.044 when Siemens is excluded.
++0.342, falling to +0.212 within vendors and to -0.108 when Siemens is excluded.
 These diagnostics do not validate prediction of compromise. See the
 [benchmark report](docs/benchmark-report.md) for methods and limitations and the
 [tool comparison](docs/tool-comparison.md) for official-source capability summaries.

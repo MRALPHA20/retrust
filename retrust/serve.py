@@ -35,6 +35,11 @@ DEFAULT_PORT = 8765
 
 # Caps on what one request may ask for, so a hand-written URL cannot turn into a
 # scoring run over the whole corpus.
+# The editable-inputs panel is named in prose as well as on the control, and a
+# notice that quotes a label the page does not carry sends the reader looking
+# for something that is not there. One constant, so they cannot drift.
+EDIT_PANEL = "Edit product, firmware, or network exposure"
+
 MAX_CANDIDATES = 12
 MAX_QUERY = 200
 MAX_RESULTS = 25
@@ -118,7 +123,7 @@ def _search_page(connection, stats, query):
             '<ol class="steps"><li><span class="step-number">1</span><div><b>Identify the hardware</b>'
             '<p>Match a product name or manufacturer order number.</p></div></li>'
             '<li><span class="step-number">2</span><div><b>Understand the verdict</b>'
-            '<p>Review exploitation, severity, available fixes, and the quality of the evidence.</p></div></li>'
+            '<p>Review how exposed it is, what fixes exist, and how complete the evidence is.</p></div></li>'
             '<li><span class="step-number">3</span><div><b>Bring evidence to the purchase order</b>'
             '<p>Compare candidates and prepare questions for the supplier.</p></div></li></ol></section>'
             '<section class="panel"><div class="panel-heading"><h2>Explore an example</h2>'
@@ -248,14 +253,15 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         **{key: value or "" for key, value in owner.items()}))
     body = ('<h1>Product assessment</h1><p class="lead">A procurement verdict, '
             'with the evidence behind every number.</p>'
-            '<details><summary>Edit product, firmware, or network exposure</summary>' + form + '</details>'
+            f'<details><summary>{EDIT_PANEL}</summary>' + form + '</details>'
             '<div class="actions">'
             f'<a class="button secondary" href="/export.html?{_esc(parameters)}">Download report ↓</a>'
             f'<a class="button secondary" href="/export.json?{_esc(parameters)}">Download JSON ↓</a>'
             '<a class="button secondary" href="/">Find another product</a></div>')
     if not version and resolution.resolved:
         body += ('<p class="notice"><b>Firmware not specified.</b> All known affected versions '
-                 'are in scope. Add the firmware you plan to buy using “Edit product details” above.</p>')
+                 'are in scope. Add the firmware you plan to buy using '
+                 f'\u201c{EDIT_PANEL}\u201d above.</p>')
     body += report.body([(assessment, resolution, findings)], weights=context['weights'])
     if resolution.resolved:
         named = resolution.matches[0]

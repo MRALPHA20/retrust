@@ -23,24 +23,24 @@ $ retrust compare \
 
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-  Moxa EDS-405A
-  PREFER  ·  87.6/100
-  CVEs 10  ·  ROBUST 100%
-
   ABB AC 800M
-  PREFER  ·  78.0/100
+  PREFER  ·  77.9/100
   CVEs 10  ·  ROBUST 85%
 
+  Moxa EDS-405A
+  CONDITIONAL  ·  64.6/100
+  CVEs 10  ·  ROBUST 67%
+
   Schneider Electric Modicon M340
-  CONDITIONAL  ·  69.9/100
+  CONDITIONAL  ·  64.5/100
   CVEs 48  ·  ROBUST 100%
 
   Rockwell ControlLogix
-  CONDITIONAL  ·  67.0/100
-  CVEs 35  ·  ROBUST 87%
+  CONDITIONAL  ·  42.0/100
+  CVEs 35  ·  ROBUST 49%
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  51.3/100
+  AVOID  ·  50.9/100
   CVEs 942  ·  ROBUST gated
   Known exploited vulnerability
 
@@ -522,7 +522,7 @@ better advisory record.
 $ retrust alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 
 ALTERNATIVES TO  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  51.3   Known exploited vulnerability
+  AVOID  50.9   Known exploited vulnerability
 
 ReTrust does not know whether any of these will do the same job. It holds
 advisory history, not specifications: no I/O counts, no form factors, no
@@ -700,29 +700,25 @@ retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 ```
 CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
+ABB AC 800M
+PREFER  ·  77.9/100
+CVEs 10  ·  ROBUST 85%
+
+Moxa EDS-405A
+CONDITIONAL  ·  64.6/100
+CVEs 10  ·  ROBUST 67%
+
+Schneider Electric Modicon M340
+CONDITIONAL  ·  64.5/100
+CVEs 48  ·  ROBUST 100%
+
 Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
-PREFER  ·  89.3/100
+CONDITIONAL  ·  55.5/100
 CVEs 1034  ·  ROBUST 100%
 Caution — KEV-listed CVE(s) in third-party component bundles
 
-Moxa EDS-405A
-PREFER  ·  87.6/100
-CVEs 10  ·  ROBUST 100%
-
-ABB AC 800M
-PREFER  ·  78.0/100
-CVEs 10  ·  ROBUST 85%
-
-Schneider Electric Modicon M340
-CONDITIONAL  ·  69.9/100
-CVEs 48  ·  ROBUST 100%
-
-Rockwell ControlLogix
-CONDITIONAL  ·  67.0/100
-CVEs 35  ·  ROBUST 87%
-
 Siemens SIMATIC S7-1500 (firmware 3.1.6)
-AVOID  ·  51.3/100
+AVOID  ·  50.9/100
 CVEs 942
 Known exploited vulnerability
 
@@ -738,8 +734,8 @@ AVOID: 2  ·  CONDITIONAL: 1  ·  NOT ASSESSED: 1  ·  PREFER: 4
   exit 1: a candidate is disqualified
 ```
 
-**Read the caution on the top row.** The MFP carries 1,034 CVEs and still leads
-this ranking, which looks wrong until you see why: all but a handful arrive in
+**Read the caution, wherever the MFP lands.** It carries 1,034 CVEs and still
+scores mid-table rather than bottom, which looks wrong until you see why: all but a handful arrive in
 third-party component-bundle advisories — the Linux and OpenSSL stack the device
 ships — and a bundle establishes that a component is present, not that each of
 its CVEs is reachable on the controller. Exposure therefore measures the
@@ -964,7 +960,7 @@ simplex and reports how often the verdict survives:
 $ retrust sensitivity --vendor "Schneider Electric" --product "Modicon M340"
 
 CONDITIONAL under 100% of weightings -- the verdict does not hinge on the weights
-  score across 500 random weightings: 65.0 to 70.0 (median 69.9)
+  score across 500 random weightings: 56.1 to 70.0 (median 69.9)
 ```
 
 A verdict that holds under 96% of weightings is not a matter of opinion. One
@@ -1163,9 +1159,9 @@ permutations. It does not validate prediction of real-world compromise.
 
 | Diagnostic | Products | Spearman rho |
 |---|---:|---:|
-| Score versus later CVE disclosure | 5,848 | +0.431 |
-| Within vendor | 3,822 | +0.269 |
-| Within vendor, excluding Siemens | See raw results | +0.044 |
+| Score versus later CVE disclosure | 5,848 | +0.342 |
+| Within vendor | 3,822 | +0.212 |
+| Within vendor, excluding Siemens | See raw results | -0.108 |
 
 Pooled and within-vendor permutation p-values are 0.001. The weakening positive
 association is consistent with disclosure/exposure effects, but does not prove

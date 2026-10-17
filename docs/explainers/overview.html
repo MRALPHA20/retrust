@@ -323,15 +323,15 @@
       <table>
         <thead><tr><th>Pillar</th><th class="n">Exponent</th><th class="n">Score</th><th class="n">Factor</th></tr></thead>
         <tbody>
-          <tr><td>E — Exposure</td><td class="n">0.60</td><td class="n">82.2</td><td class="n">14.10</td></tr>
+          <tr><td>E — Exposure</td><td class="n">0.60</td><td class="n">82.1</td><td class="n">14.08</td></tr>
           <tr><td>P — Patch availability</td><td class="n">0.20</td><td class="n">52.0</td><td class="n">2.20</td></tr>
           <tr><td>V — Vendor practice</td><td class="n">0.15</td><td class="n">100.0</td><td class="n">2.00</td></tr>
           <tr><td>C — Certification</td><td class="n">0.05</td><td class="n">100.0</td><td class="n">1.26</td></tr>
-          <tr class="tot"><td class="tot">multiplied together</td><td class="n tot"></td><td class="n tot"></td><td class="n tot">78.0</td></tr>
+          <tr class="tot"><td class="tot">multiplied together</td><td class="n tot"></td><td class="n tot"></td><td class="n tot">77.9</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="section-note" style="margin-top:.9rem"><b>14.10 × 2.20 × 2.00 × 1.26 = 78.0.</b> The factors
+    <p class="section-note" style="margin-top:.9rem"><b>14.08 × 2.20 × 2.00 × 1.26 = 77.9.</b> The factors
       multiply — each pillar contributes <code>score<sup>exponent</sup></code>. Pillars enter as 1–100, never 0,
       so one unmeasured term cannot annihilate the result; and a pillar with no evidence at all is
       <b>dropped and the remaining exponents renormalised</b>, never scored as a neutral 50. Two rules override
@@ -388,10 +388,10 @@
       <table>
         <thead><tr><th>Network exposure you declare</th><th class="n">Score</th></tr></thead>
         <tbody>
-          <tr><td>not supplied <span class="sub" style="display:inline">(the conservative reading)</span></td><td class="n">78.0</td></tr>
+          <tr><td>not supplied <span class="sub" style="display:inline">(the conservative reading)</span></td><td class="n">77.9</td></tr>
           <tr><td>isolated</td><td class="n">84.9</td></tr>
           <tr><td>IT–OT</td><td class="n">81.0</td></tr>
-          <tr><td>internet–OT</td><td class="n">78.0</td></tr>
+          <tr><td>internet–OT</td><td class="n">77.9</td></tr>
         </tbody>
       </table>
     </div>
@@ -399,8 +399,8 @@
       <p style="font-size:1.05rem">Isolation only <em>nudges</em> the number. It can never rescue a gate or a cap.</p>
     </div>
     <ul class="honest" style="margin-top:1.1rem">
-      <li><span class="dot"></span><div><b>A gated part stays AVOID, however isolated.</b> The exploited Siemens S7-1500 rises 51.3 → 79.3 when you declare “isolated” — well into PREFER territory on the number alone — but the known-exploited gate still forces AVOID — a CVE being attacked in the wild isn’t un-attacked by your topology, and an air-gap erodes over a 20-year asset life.</div></li>
-      <li><span class="dot"></span><div><b>A capped part stays capped.</b> The Modicon M340 sits at 69.9 with or without isolation: a hardcoded credential with no fix can’t be isolated into being preferable.</div></li>
+      <li><span class="dot"></span><div><b>A gated part stays AVOID, however isolated.</b> The exploited Siemens S7-1500 rises 50.9 → 79.2 when you declare “isolated” — well into PREFER territory on the number alone — but the known-exploited gate still forces AVOID — a CVE being attacked in the wild isn’t un-attacked by your topology, and an air-gap erodes over a 20-year asset life.</div></li>
+      <li><span class="dot"></span><div><b>A capped part stays capped.</b> The Modicon M340 scores 64.5 on its own. Declare it isolated and it climbs to exactly 69.9 — the cap’s value — and stops: without the cap it would have crossed into PREFER. You cannot isolate a baked-in credential into being preferable.</div></li>
     </ul>
   </section>
 
@@ -411,9 +411,9 @@
       <table>
         <thead><tr><th>Candidate</th><th>Verdict</th><th class="n">Score</th><th>Why</th></tr></thead>
         <tbody>
-          <tr><td class="prod">Moxa EDS-405A</td><td><span class="tag prefer">PREFER</span></td><td class="n">87.6</td><td>shipped fixes count</td></tr>
-          <tr><td class="prod">ABB AC 800M</td><td><span class="tag prefer">PREFER</span></td><td class="n">78.0</td><td>clean evidence</td></tr>
-          <tr><td class="prod">Siemens S7-1500<span class="sub">firmware 3.1.6</span></td><td><span class="tag avoid">AVOID</span></td><td class="n">51.3</td><td>known-exploited gate</td></tr>
+          <tr><td class="prod">ABB AC 800M</td><td><span class="tag prefer">PREFER</span></td><td class="n">77.9</td><td>clean evidence</td></tr>
+          <tr><td class="prod">Moxa EDS-405A</td><td><span class="tag cond">CONDITIONAL</span></td><td class="n">64.6</td><td>fixes exist, not pinned</td></tr>
+          <tr><td class="prod">Siemens S7-1500<span class="sub">firmware 3.1.6</span></td><td><span class="tag avoid">AVOID</span></td><td class="n">50.9</td><td>known-exploited gate</td></tr>
           <tr><td class="prod">Hikvision IP Camera</td><td><span class="tag avoid">AVOID</span></td><td class="n">—</td><td>on a covered list</td></tr>
         </tbody>
       </table>

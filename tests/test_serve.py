@@ -582,3 +582,16 @@ def test_comparison_report_escapes_original_inputs(comparison_handler):
     assert '<script>' not in body
     assert '&lt;script&gt;evil&lt;/script&gt;' in body
     assert 'Assessment inputs' in body
+
+
+def test_the_notice_names_the_control_the_page_actually_carries():
+    """A notice that quotes a label the page does not have sends the reader
+    hunting for a control that is not there. The live site said "Edit product
+    details" while the control read "Edit product, firmware, or network
+    exposure"; both now come from one constant."""
+    from retrust import serve
+    source = (serve.__file__)
+    text = open(source, encoding="utf-8").read()
+    # The old, drifted wording must not come back as a literal.
+    assert "Edit product details" not in text
+    assert serve.EDIT_PANEL in text

@@ -307,7 +307,8 @@ S = max( S_with_C , S_without_C )      it may lift, never lower</div>
   </div>
   <div class="pillar">
     <h3>Unmitigable cap</h3>
-    <div class="eq">if a hardcoded-credential-class flaw has no fix →  composite = 69.9  (just below PREFER)</div>
+    <div class="eq">if a hardcoded-credential-class flaw has no fix
+  and the composite would reach PREFER →  composite = PREFER threshold − 0.1  (69.9 by default)</div>
     <p class="why">A credential baked into firmware with no shipped fix isn’t a weighting question: whatever the other pillars say, the operator can’t engineer around it for the life of the asset, so the product cannot be <em>preferred</em> while that stands.</p>
   </div>
 
@@ -322,36 +323,38 @@ S = max( S_with_C , S_without_C )      it may lift, never lower</div>
 
   <h2 id="examples">8 · Worked examples</h2>
 
-  <h3 style="margin-top:1.4rem">① A clean product — ABB AC 800M → PREFER 78.0</h3>
+  <h3 style="margin-top:1.4rem">① A clean product — ABB AC 800M → PREFER 77.9</h3>
   <div class="tablewrap">
     <table>
       <thead><tr><th>Pillar</th><th class="n">Exponent</th><th class="n">Score</th><th class="n">Factor</th></tr></thead>
       <tbody>
-        <tr><td>E — Exposure</td><td class="n">0.60</td><td class="n">82.2</td><td class="n">14.10</td></tr>
+        <tr><td>E — Exposure</td><td class="n">0.60</td><td class="n">82.1</td><td class="n">14.08</td></tr>
         <tr><td>P — Patch availability</td><td class="n">0.20</td><td class="n">52.0</td><td class="n">2.20</td></tr>
         <tr><td>V — Vendor practice</td><td class="n">0.15</td><td class="n">100.0</td><td class="n">2.00</td></tr>
         <tr><td>C — Certification</td><td class="n">0.05</td><td class="n">100.0</td><td class="n">1.26</td></tr>
-        <tr class="tot"><td>multiplied together</td><td class="n"></td><td class="n"></td><td class="n">78.0</td></tr>
+        <tr class="tot"><td>multiplied together</td><td class="n"></td><td class="n"></td><td class="n">77.9</td></tr>
       </tbody>
     </table>
   </div>
-  <p class="note-txt" style="margin-top:.8rem"><code>14.10 × 2.20 × 2.00 × 1.26 = 78.0</code> → ≥ 70 →
+  <p class="note-txt" style="margin-top:.8rem"><code>14.08 × 2.20 × 2.00 × 1.26 = 77.9</code> → ≥ 70 →
     <span class="tag prefer">PREFER</span>. Note the factors <em>multiply</em>, they do not add: each pillar
     contributes <code>score<sup>exponent</sup></code>. Patch availability at 52 is what holds this back — fixing
     it alone would gain about 11 points, which is exactly what <code>retrust sensitivity</code> prints.</p>
 
-  <h3 style="margin-top:1.8rem">② A gated product — Siemens S7-1500 (fw 3.1.6) → AVOID 51.3</h3>
-  <p class="note-txt">Its weighted score is 51.3 — CONDITIONAL territory. But a <b>known-exploited gate</b>
+  <h3 style="margin-top:1.8rem">② A gated product — Siemens S7-1500 (fw 3.1.6) → AVOID 50.9</h3>
+  <p class="note-txt">Its weighted score is 50.9 — CONDITIONAL territory. But a <b>known-exploited gate</b>
     fired, so the verdict is <span class="tag avoid">AVOID</span> regardless. <em>This is the whole point:</em>
     the gate cannot be out-voted by a decent score.</p>
 
-  <h3 style="margin-top:1.8rem">③ A capped product — Modicon M340 → CONDITIONAL 69.9</h3>
-  <p class="note-txt">Its pillars would put it above 70, but a hardcoded-credential CVE with no fix triggers the
-    <b>unmitigable cap</b>, pinning it to 69.9 — just under PREFER → <span class="tag cond">CONDITIONAL</span>.
+  <h3 style="margin-top:1.8rem">③ An unmitigable weakness — Modicon M340 → CONDITIONAL 64.5</h3>
+  <p class="note-txt">It carries a hardcoded-credential CVE with no fix — a credential the operator cannot change for the
+    life of the asset. Exposure already scores it below PREFER, so the <b>unmitigable cap</b> has nothing to
+    do here; were the other pillars strong enough to reach 70, the cap would pin it just below. Either way the
+    invariant holds, and across the corpus <b>none</b> of the 497 products carrying such a flaw reads PREFER.
     Isolation does not move it: you cannot isolate a baked-in credential into being preferable.</p>
 
-  <h3 style="margin-top:1.8rem">④ The one that looks wrong — S7-1500 MFP, 1,034 CVEs → PREFER 89.3</h3>
-  <p class="note-txt">A box with 1,034 CVEs leading the ranking looks like a failure until you see why: all but
+  <h3 style="margin-top:1.8rem">④ The one that looks wrong — S7-1500 MFP, 1,034 CVEs → CONDITIONAL 55.5</h3>
+  <p class="note-txt">A box with 1,034 CVEs scoring mid-table rather than bottom looks like a failure until you see why: all but
     a handful arrive in <b>third-party component-bundle advisories</b> — the Linux and OpenSSL stack the device
     ships — and a bundle establishes that a component is <em>present</em>, not that each of its CVEs is reachable
     on the controller. So exposure measures the vendor’s own firmware, and the bundled KEV is raised as a
