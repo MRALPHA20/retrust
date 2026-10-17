@@ -242,6 +242,9 @@ after installing the optional documentation dependencies: `pip install -e '.[doc
 | `demo` | run everything end to end |
 | `completion bash\|zsh` | print a shell completion script |
 
+`make deploy` runs the tests and pushes both the main and the Render deploy
+branch; `make live` checks which build is actually serving.
+
 ## Learn more
 
 - **[The manual](docs/manual.md)** — the scoring maths, the resolution ladder,

@@ -38,7 +38,16 @@ with fresh data -- the index hash moved while the code did not. If the two
 branches drift again, fast-forward the deploy branch:
 
 ```bash
-git push origin origin/main:refs/heads/codex/render-deployment
+make deploy      # runs the tests, then pushes main AND the deploy branch
+make live        # prints the live scoring version against the local one
+```
+
+`make live` compares the deployed code rather than the data, which is the check
+that actually catches this: index counts move on every build whether or not the
+code changed. The raw equivalent, if you prefer it:
+
+```bash
+git push origin main:refs/heads/codex/render-deployment
 ```
 
 Better, point the service at `main` in **Settings > Build & Deploy > Branch**
