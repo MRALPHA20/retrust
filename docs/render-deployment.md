@@ -30,7 +30,26 @@ can take several minutes. Set `RETRUST_BUILD_LEV_HISTORY=0` to skip the history;
 that page will then explain that its required data is missing.
 
 Data is part of the deployment artifact. Runtime requests read it and generate
-downloads in memory, so a restart requires no persistent disk. Each new build
+downloads in memory, so a restart requires no persistent disk. **Which branch Render tracks is the thing to get right.** This service was
+created against `codex/render-deployment`, not `main`, and a Blueprint deploys
+the branch it was created from. Pushing to `main` therefore changed nothing
+live, and pressing **Manual Deploy** twice simply rebuilt the same old commit
+with fresh data -- the index hash moved while the code did not. If the two
+branches drift again, fast-forward the deploy branch:
+
+```bash
+git push origin origin/main:refs/heads/codex/render-deployment
+```
+
+Better, point the service at `main` in **Settings > Build & Deploy > Branch**
+and keep one branch. To check what is actually live rather than what you
+pushed, compare a string you changed, not the data counts:
+
+```bash
+curl -s https://<your-app>.onrender.com/score?vendor=ABB\&product=AC%20800M | grep -c "a phrase you just changed"
+```
+
+Each new build
 refreshes the main sources. Automatic deployment is enabled
 (`autoDeployTrigger: commit`), so every push to the tracked branch rebuilds and
 redeploys; **Manual Deploy > Deploy latest commit** still forces one on demand.
@@ -85,7 +104,7 @@ References: [Render web services](https://render.com/docs/web-services),
 - Public app: **https://retrust-q2tr.onrender.com/**
 - Service: `srv-dattpanavr4c73eu5kp0`, free Python instance in Singapore.
 - Blueprint: `exs-dattp3g93c1s73c021ug`.
-- Source branch: `codex/render-deployment`; deployed application commit: `3162308`.
+- Source branch: `codex/render-deployment` (fast-forwarded to `main` on 2026-10-17); deployed application commit: `3162308` at the time of that check.
 - Initial deployment completed successfully in 4 minutes 18 seconds.
 - All 67 EPSS history snapshots loaded, with 12,003 exploitation estimates.
 - Twenty-two public HTTPS checks passed: main workflows, HTML/JSON/CSV downloads, health GET/HEAD, missing routes and invalid comparison inputs.
