@@ -595,3 +595,17 @@ def test_the_notice_names_the_control_the_page_actually_carries():
     # The old, drifted wording must not come back as a literal.
     assert "Edit product details" not in text
     assert serve.EDIT_PANEL in text
+
+
+def test_inline_links_meet_the_touch_target_floor_on_small_screens():
+    """Measured on the live site: the "Vendor profile", "Advisory timeline" and
+    footer links rendered 12-15px tall on a 375px viewport, under the 24px WCAG
+    2.5.8 floor and awkward for anyone holding a tablet in a plant. Buttons and
+    form controls already carry their own 44px, so only the inline prose and
+    footer links needed raising."""
+    from retrust import webui
+    rule = ".helper a,footer a,.empty a,.tnote a"
+    assert rule in webui.CSS
+    # and it must live inside the small-screen query, not change the desktop line
+    small = webui.CSS.split("@media(max-width:700px){")
+    assert any(rule in part and "min-height:24px" in part for part in small[1:])
