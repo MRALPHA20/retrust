@@ -38,10 +38,12 @@ A conflicting product name is refused rather than silently ignored.
 
 ### 3. Explain the evidence (one minute)
 
-Open the ABB AC 800M example. Walk through exploitation, severity, patch
-availability, vendor practice, and certification. Select a network exposure to
-include its optional 10% pillar: isolated, IT–OT, or Internet–OT. Evidence
-quality is separate from the weighted score. Higher scores are better; low
+Open the ABB AC 800M example. Walk through the four scored parts -- exposure
+safety, available fixes, vendor security practices and certification evidence --
+and point out that attack activity and issue severity are shown beside them but
+feed exposure rather than scoring twice. Declare a deployment context to narrow
+reachability: isolated, IT–OT or Internet–OT. Evidence completeness is reported
+separately and never scored. Higher scores are better; low
 coverage still needs review. A missing firmware version leaves all known
 affected versions in scope.
 

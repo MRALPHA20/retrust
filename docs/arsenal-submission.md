@@ -1,6 +1,6 @@
 # ReTrust: Arsenal submission draft
 
-Updated 28 September 2026. Target: Black Hat Arsenal. Confirm the chosen event's current submission deadline, eligibility, required fields and demonstration rules before submitting. This document does not indicate acceptance or submission.
+Updated 17 October 2026. Target: Black Hat Arsenal. Confirm the chosen event's current submission deadline, eligibility, required fields and demonstration rules before submitting. This document does not indicate acceptance or submission.
 
 ## Title
 
@@ -16,6 +16,8 @@ An OT purchase requisition commonly contains a manufacturer, model, order number
 
 ReTrust brings those inputs into a local procurement workflow. It indexes CISA OT CSAF advisories, resolves a candidate by order number or normalized product name, filters affected ranges where firmware is known, and produces an evidence-backed verdict. A concentrated exposure term -- threat, reachability, process impact and applicability per finding, weighted onto the worst few -- combines multiplicatively with patch availability, vendor practice and certification, so dangerous exposure cannot be averaged away by good scores elsewhere. Hard gates surface disqualifying evidence even when the composite score would otherwise look favorable. Unresolved queries receive no numeric score, and uncertain version ranges remain visible and in scope.
 
+A deliberate division of labour runs through the inputs: ReTrust supplies the vulnerability intelligence, and the operator supplies the facts only they have -- what a compromise would cost the process, whether a vulnerable interface has been verified unreachable, and whether a fix is actually on the device rather than merely published. Each is optional, each can only narrow the assessed risk, and an unanswered question stays unresolved rather than silently becoming a best or worst case. The tool never asks a buyer to score a vendor or estimate a percentage. Every assessment carries a reproducible vector recording the scoring version, the declared context and the data snapshot, so a result can be re-run and disputed by somebody who was not in the room.
+
 The demonstration uses the browser workspace and interactive terminal to compare candidates, explain a known-exploitation gate, inspect uncertainty, generate supplier questions and export a record. The core assessment runs offline after data acquisition, with no third-party Python runtime dependencies. Acquisition verifies the advisory base against CISA's signing key before it is indexed: verification fails closed, pins the expected fingerprint, and `retrust verify --strict` refuses to proceed unless each advisory's origin and content were positively established.
 
 ReTrust includes reproducible evaluation commands and publishes the limits of its measurements. On the current local corpus, a 4,000-query internal round-trip benchmark recovers the source advisory with 99.85% precision and 99.70% recall. It does not penalize extra matches, so this is not general matching-accuracy validation. A historical backtest does not establish prediction of compromise. The tool organizes current public evidence for a buyer's review; it complements operational scanners, inventory tools and firmware analysis.
@@ -24,22 +26,24 @@ Relative to prior art: CISA's advisory pages answer one advisory at a time with 
 
 ## Demonstration, approximately five minutes
 
-1. Explain the requisition: vendor, model, order number and firmware.
-2. Compare ABB AC 800M and Moxa EDS-405A; inspect pillars and missing evidence.
-3. Assess Siemens order `6ES7518-4AX00-1AB0`, firmware `3.1.6`, and explain the known-exploitation gate.
-4. Show an unresolved query and a firmware range uncertainty.
-5. Export evidence and supplier questions; show evaluation and provenance.
+1. Explain the requisition: vendor, model, order number and firmware. Resolve Siemens order `6ES7518-4AX00-1AB0` to show order-number identification off a requisition.
+2. Compare ABB AC 800M and Moxa EDS-405A: both carry ten CVEs, and they split PREFER against CONDITIONAL. The instructive part is that Moxa scores *lower* while having shipped every fix -- patch availability 100 against ABB's 52 -- because the flaws themselves are worse: three CVSS 9.8s with measurable exploitation probability against ABB's 8.4 and 7.8 at near-zero EPSS. Concentrated exposure carries 60% of the result, so a complete patch record cannot buy back a dangerous one. This is the clearest demonstration that the tool is not counting CVEs or counting fixes.
+3. Assess `Siemens` / `SIMATIC S7-1500` at firmware `3.1.6` and explain the known-exploitation gate: the composite is mid-table, and the gate overrides it anyway.
+4. Declare a deployment context on the same product -- isolated, consequence negligible -- and show the score rise while the gate still holds. A declared fact narrows risk; it cannot un-disqualify a part.
+5. Show an unresolved query, a firmware-range uncertainty, and the third-party bundle caution on the 1,034-CVE MFP.
+6. Export evidence and supplier questions; show the assessment vector, evaluation and provenance.
 
-Use [the demo runbook](demo-runbook.md) for operational checks. Scores depend on the snapshot and weights; never describe them as probabilities of compromise.
+Verify every step against the loaded snapshot on the day: scores move with the data and the scoring version, and step 3 in particular depends on which variant the query resolves to. Use [the demo runbook](demo-runbook.md) for operational checks. Scores depend on the snapshot and weights; never describe them as probabilities of compromise.
 
 ## Evidence available for reviewers
 
 - 3,937 advisories, 28,951 product entries, 12,061 distinct CVEs in the measured local index.
 - Version-range coverage: 94.91%; eligible-range coverage: 96.80%.
 - Authored buyer queries: 20/21. This is a small internal set.
-- Latest functionality verification: 831 automated tests and 94 real-data smoke checks passed.
-- Median local assessment time: approximately 505 ms for ABB AC 800M; shared-machine conditions apply.
+- Latest functionality verification: 874 automated tests and 94 real-data smoke checks passed, including property scans over all 11,322 scorable products and regression guards against injection, SSRF and decompression-bomb inputs.
+- Median assessment time: approximately 505 ms end-to-end per CLI invocation for ABB AC 800M, of which about 2 ms is the assessment itself; the remainder is interpreter start-up and opening the index. Shared-machine conditions apply.
 - [Methods and raw measurements](benchmark-report.md), [official-source tool comparison](tool-comparison.md), [PDF overview](ReTrust-Guide.pdf), [QA review](qa-review.md).
+- Three self-contained explainer pages for reviewers who want the model without the code: [what it is](explainers/overview.html), [every command](explainers/commands.html), [the scoring methodology](explainers/scoring.html) with the formula worked through on a real result.
 
 ## Boundaries
 
