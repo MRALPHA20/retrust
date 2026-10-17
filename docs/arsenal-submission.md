@@ -51,4 +51,11 @@ No live network scanning, traffic monitoring, identity attack-path collection or
 
 ## Information to complete before submission
 
-Presenter names, affiliations, biographies and contact details; selected event; current public repository/release URL; demo video if required; booth/network requirements; acknowledgment of the event's current terms. Verify the release can be installed from a fresh checkout and that the demo snapshot is legally distributable.
+Presenter names, affiliations, biographies and contact details; selected event; demo video if required; booth/network requirements; acknowledgment of the event's current terms. Verify the release can be installed from a fresh checkout and that the demo snapshot is legally distributable.
+
+**The repository is deliberately private and must stay that way until the owner
+says otherwise.** Arsenal asks for a public repository or release URL, so
+publishing is a decision to take consciously and at the owner's direction --
+not a checklist item for anyone, human or agent, to tick off on their behalf.
+Until then, leave the URL blank in the submission draft rather than opening the
+repository to fill it in.
