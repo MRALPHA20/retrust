@@ -198,6 +198,16 @@ cannot drift into showing one assessment two ways. A scored product links
 onward -- its vendor's profile, its family's alternatives, a comparison started
 with it -- so the next question is a click rather than a form refilled.
 
+**Start with what you know.** The assessment form asks for product identity
+and optional firmware first. Expand **Use vendor and model instead** if you
+do not have an order number. **Site details and fixes (optional)** holds the
+questions for your technical team; leaving them unknown keeps a conservative
+first assessment. Results show the verdict and any supplier-verification
+requirement before editing or download controls. **What this score covers**
+separates scored device-vendor findings from bundled-software issues that still
+need supplier review. Evidence completeness is explained under **What evidence
+was checked?**; it is not a percentage chance that the equipment is secure.
+
 **Compare and retain a shortlist.** Each browser candidate accepts an order
 number, or a vendor and model, plus optional firmware. Exact order-number
 searches retain that identifier through assessment and comparison. Download
@@ -207,6 +217,10 @@ The JSON can be kept for a later `retrust diff`. Downloads assess against the
 current local index, so retain the downloaded file as the decision record.
 If only some candidates have firmware specified, a warning prompts you to
 make their scope comparable.
+Each candidate also keeps its own assessment type, network exposure,
+operational consequence, verified reachability and fix status through the
+assessment-to-comparison link, editing and all three downloads. Expand that
+candidate's **Site details and fixes** to review or change these answers.
 
 **It is deliberately small and deliberately local.** One standard-library HTTP
 server, no dependencies, and the security posture is the point rather than an

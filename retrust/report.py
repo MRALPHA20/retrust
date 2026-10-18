@@ -68,6 +68,10 @@ code{white-space:nowrap}
 .verdict .v{font:700 1.55rem/1 var(--sans);color:var(--vc)}
 .verdict .s{font:600 1.2rem/1 var(--mono);font-variant-numeric:tabular-nums}
 .verdict .n{color:var(--soft);font-size:.95rem}
+.verdict .review-required{flex-basis:100%;font:600 .95rem/1.5 var(--sans);color:var(--cond)}
+.score-scope{max-width:75ch;margin:.8rem 0 1.2rem}
+.coverage{margin:1rem 0}.coverage summary{cursor:pointer;font-weight:600}
+.coverage p{max-width:75ch}
 .gate{border:1px solid var(--rule);border-left:3px solid var(--avoid);
  background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
 .gate b{color:var(--avoid)}
@@ -168,7 +172,7 @@ def _footer_sources(provenance, weights, config_source):
 VERDICT_COLOR = {"PREFER": "var(--prefer)", "CONDITIONAL": "var(--cond)",
                  "AVOID": "var(--avoid)", "NOT ASSESSED": "var(--faint)"}
 VERDICT_HELP = {
-    "PREFER": "Suitable for further consideration under these assumptions. Review any cautions and missing evidence before approval.",
+    "PREFER": "A candidate for your shortlist. Complete the checks below before approving the purchase.",
     "CONDITIONAL": "Consider this product only after your technical team reviews the listed risks and missing evidence.",
     "AVOID": "This assessment advises against the purchase because of a purchase blocker or a low score. Review the reasons below.",
     "NOT ASSESSED": "There is not enough usable information for a recommendation. Check the exact part number and ask the supplier for the firmware details.",
@@ -206,7 +210,9 @@ def _esc(text):
 def _probability(value):
     if value is None:
         return 'Not available'
-    return 'Under 0.1%' if 0 < value < .001 else f'{value:.1%}'
+    if 0 < value < .001:
+        return 'Under 0.1%'
+    return 'Over 99.9%' if .999 < value < 1 else f'{value:.1%}'
 
 
 def _ids(escaped):
@@ -215,7 +221,7 @@ def _ids(escaped):
 
 
 def _assessment_block(assessment, resolution=None, findings=(), stability=None,
-                      weights=None):
+                      weights=None, tools=''):
     colour = VERDICT_COLOR.get(assessment.verdict, INERT)
     # Declared once on the block. The stripe, the verdict word and every meter
     # fill below all read --vc, so a product cannot end up half one state and
@@ -236,16 +242,29 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         detail = f'{assessment.findings_count} known {noun} included'
         if assessment.undecided_count:
             detail += f' &middot; {assessment.undecided_count} need review'
-        detail += f' &middot; evidence completeness {assessment.confidence:.0%}'
         summary = (f'<span class="s">{assessment.score}/100</span>'
                    f'<span class="n">{detail}</span>')
 
+    supplier_review = bool(assessment.cautions or assessment.third_party_count)
+    if supplier_review:
+        summary += '<span class="review-required">Supplier verification required before purchase</span>'
     parts.append(f'<div class="verdict"><span class="v">'
                  f'{_esc(assessment.verdict)}</span>{summary}</div>')
     parts.append(f'<p class="result-help">{_esc(VERDICT_HELP.get(assessment.verdict, "Review the evidence below."))}</p>')
     if assessment.score is not None:
         parts.append('<p class="tnote">Higher scores are more favourable under the chosen settings. '
-                     'The score and evidence completeness are not probabilities that the equipment is secure.</p>')
+                     'The score is not a percentage chance that the equipment is secure.</p>')
+
+    if assessment.first_party_count and assessment.third_party_count:
+        noun = 'vulnerability' if assessment.first_party_count == 1 else 'vulnerabilities'
+        parts.append(f'<p class="score-scope"><b>What this score covers:</b> '
+                     f'{assessment.first_party_count} {noun} from device-vendor advisories. '
+                     f'<b>{assessment.third_party_count} additional vulnerabilities in bundled software '
+                     'need separate supplier review.</b> Their reachability on this equipment '
+                     'has not been confirmed.</p>')
+
+    # Keep the verdict and its limits ahead of editing and download controls.
+    parts.append(tools)
 
     if assessment.vector:
         parts.append('<details class="vector"><summary>Technical assessment settings</summary>'
@@ -295,12 +314,14 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             f'<p>{_ids(_esc(caution["detail"]))}</p>'
             f'<span class="src">Source: {_esc(caution["source"])}</span></details></div>')
 
-    if assessment.first_party_count and assessment.third_party_count:
-        noun = 'vulnerability' if assessment.first_party_count == 1 else 'vulnerabilities'
-        parts.append(f'<p>The score uses {assessment.first_party_count} {noun} '
-                     f'from device-vendor advisories. Another {assessment.third_party_count} '
-                     'concern bundled software whose reachability on this equipment has not been confirmed. '
-                     'Ask the supplier to review those separately.</p>')
+    if assessment.score is not None:
+        scope = (' This percentage covers the scored device-vendor findings; '
+                 'it does not confirm the applicability or safety of bundled software.'
+                 if assessment.first_party_count and assessment.third_party_count else '')
+        parts.append('<details class="coverage"><summary>What evidence was checked?</summary>'
+                     f'<p>Evidence completeness for scored findings: <b>{assessment.confidence:.0%}</b>. '
+                     'This describes available scoring inputs, not independent verification of every fact '
+                     'or a guarantee that the equipment is secure.' + scope + '</p></details>')
 
     if assessment.pillars:
         parts.append(_pillar_table(assessment, weights))
@@ -388,6 +409,7 @@ def _summary_table(blocks, stabilities):
         robust = "&mdash;" if st is None else (
             "Blocked" if st.gated else f"{st.agreement:.0%}")
         note = (assessment.gates[0]["gate"] if assessment.gates
+                else 'Supplier verification required' if assessment.cautions or assessment.third_party_count
                 else "" if resolution.resolved else resolution.reason)
         rows.append(
             f'<tr class="cand" style="--vc:{colour}">'
@@ -408,7 +430,7 @@ def _summary_table(blocks, stabilities):
             'the stability of the ranking. A dash means this check was not run.</p>')
 
 
-def body(blocks, stabilities=None, weights=None):
+def body(blocks, stabilities=None, weights=None, tools=''):
     """The summary table and assessment blocks, without the page around them.
 
     Split out so the local web server can put the same markup inside its own
@@ -418,7 +440,7 @@ def body(blocks, stabilities=None, weights=None):
     stabilities = stabilities or {}
     summary = _summary_table(blocks, stabilities) if len(blocks) > 1 else ""
     return summary + "".join(
-        _assessment_block(a, r, f, stabilities.get(id(a), stabilities.get(a.product)), weights)
+        _assessment_block(a, r, f, stabilities.get(id(a), stabilities.get(a.product)), weights, tools)
         for a, r, f in blocks)
 
 

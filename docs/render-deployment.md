@@ -75,6 +75,11 @@ from the ones in these docs. Inspect source dates on **Data & methodology**
 after deploying. Before a presentation, prefer a local snapshot: same numbers,
 no cold start.
 
+New deployments return the deployed Git commit in the `X-ReTrust-Revision`
+HTTP response header (from Render's `RENDER_GIT_COMMIT`). Compare that header
+on `/healthz` with `git rev-parse HEAD` to verify the exact code revision;
+the scoring-version string alone cannot distinguish interface fixes within RT2.
+
 The app has no accounts or saved procurement projects. Hosted assessments are
 processed on Render, and requests pass through Render's infrastructure. Run
 the local version for confidential procurement inputs. The hosted UI labels

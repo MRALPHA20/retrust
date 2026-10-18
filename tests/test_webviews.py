@@ -93,3 +93,24 @@ def test_small_positive_probabilities_are_not_rounded_to_zero():
     assert report._probability(.00003) == 'Under 0.1%'
     assert webviews._percent(0) == '0.0%'
     assert report._probability(None) == 'Not available'
+
+
+def test_estimates_do_not_round_high_probabilities_to_certainty():
+    for display in (report._probability, webviews._percent):
+        assert display(.99999) == 'Over 99.9%'
+        assert display(1) == '100.0%'
+
+
+def test_verdict_keeps_supplier_verification_and_score_scope_visible():
+    assessment = score.Assessment('PLC', 'PREFER', 81.9, confidence=1,
+                                  first_party_count=1, third_party_count=476,
+                                  cautions=[{'caution': 'Bundle review', 'detail': 'Check reachability',
+                                             'source': 'Vendor'}])
+    result = report._assessment_block(assessment, tools='<details>Save this assessment</details>')
+    verdict = result.partition('</div>')[0]
+    assert 'Supplier verification required before purchase' in verdict
+    assert '100%' not in verdict
+    assert '476 additional vulnerabilities in bundled software' in result
+    assert result.index('What this score covers') < result.index('Save this assessment')
+    assert 'Evidence completeness for scored findings: <b>100%</b>' in result
+    assert 'it does not confirm the applicability or safety of bundled software' in result

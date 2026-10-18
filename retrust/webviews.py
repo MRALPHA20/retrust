@@ -13,7 +13,9 @@ def _esc(value):
 def _percent(value):
     if value is None:
         return "Not available"
-    return 'Under 0.1%' if 0 < value < .001 else f"{value:.1%}"
+    if 0 < value < .001:
+        return 'Under 0.1%'
+    return 'Over 99.9%' if .999 < value < 1 else f"{value:.1%}"
 
 
 def _count(number, singular, plural=None):

@@ -112,6 +112,82 @@ def test_json_download_keeps_the_real_assessment_context(db, tmp_path):
         assert part in result["vector"]
 
 
+def test_comparison_round_trip_retains_each_candidates_site_context(db, tmp_path):
+    import csv
+    import html
+    import io
+    import re
+    from retrust import cli, dossier
+    context = cli._context(data_dir=str(tmp_path))
+
+    def assess(vendor, product, version=None, order_number=None, **owner):
+        return cli._assess(db, vendor, product, version, order_number,
+                           context=context, **owner)
+
+    handler = serve.build_handler(db, assess, context, dossier, index.stats(db),
+                                  index.provenance(db), '127.0.0.1', 0)
+    query = ('order_number=TC-9000-A1&version=1.0&assessment_type=installed'
+             '&network_exposure=isolated&consequence=minor&interface=blocked&remediation=planned')
+    _, _, original_json = _get(handler, '/export.json?' + query)
+    original = json.loads(original_json)['results'][0]
+    _, _, page = _get(handler, '/score?' + query)
+    handoff = html.unescape(re.search(r'href="(/compare\?[^\"]+)"', page).group(1))
+    # A second candidate must retain its own defaults, rather than inherit
+    # assertions about the first candidate's installation.
+    comparison_query = handoff.partition('?')[2] + '&order_number_1=TC-9000-A1&version_1=1.0'
+    _, _, result = _get(handler, '/compare.json?' + comparison_query)
+    results = json.loads(result)['results']
+    saved = next(r for r in results if r['assessment_type'] == 'installed')
+    other = next(r for r in results if r['assessment_type'] == 'purchase')
+    assert saved['score'] == original['score'] and saved['vector'] == original['vector']
+    for field in serve.CONTEXT_FIELDS:
+        assert saved[field] == original[field]
+    assert other['network_exposure'] is None and other['interface'] == 'unknown'
+    _, _, html_report = _get(handler, '/compare.html?' + comparison_query)
+    assert original['vector'] in html_report
+    _, _, csv_report = _get(handler, '/compare.csv?' + comparison_query)
+    rows = list(csv.DictReader(io.StringIO(csv_report)))
+    assert next(r for r in rows if r['assessment_type'] == 'installed')['network_exposure'] == 'isolated'
+    # Read the browser form as a browser would and submit it unchanged.
+    from html.parser import HTMLParser
+
+    class FormValues(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.values = {}
+            self.select = None
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == 'input' and attrs.get('name'):
+                self.values[attrs['name']] = attrs.get('value', '')
+            elif tag == 'select':
+                self.select = attrs['name']
+            elif tag == 'option' and self.select:
+                if self.select not in self.values or 'selected' in attrs:
+                    self.values[self.select] = attrs.get('value', '')
+
+        def handle_endtag(self, tag):
+            if tag == 'select':
+                self.select = None
+
+    _, _, comparison_page = _get(handler, '/compare?' + comparison_query)
+    form = FormValues()
+    form.feed(comparison_page)
+    assert form.values['network_exposure_0'] == 'isolated'
+    _, _, resubmitted = _get(handler, '/compare.json?' + urllib.parse.urlencode(form.values))
+    repeated = json.loads(resubmitted)['results']
+    assert len(repeated) == 2  # blank candidate rows carry default selects
+    assert sorted(r['vector'] for r in repeated) == sorted(r['vector'] for r in results)
+
+
+def test_comparison_rejects_invalid_context_values_without_trusting_them():
+    rows = serve._comparison_rows([['V', 'P', '', '', 'private', 'invalid', '<script>', 'invalid', 'invalid']])
+    network, owner = serve._candidate_context(rows[0])
+    assert network is None
+    assert owner == serve.UNDECLARED
+
+
 # --- routing ---------------------------------------------------------------
 
 def test_health_check_reads_index(handler):
@@ -120,6 +196,16 @@ def test_health_check_reads_index(handler):
     assert headers["Content-Type"] == "text/plain; charset=utf-8"
     assert headers["Cache-Control"] == "no-store"
     assert body == "ok\n"
+
+
+def test_deployed_revision_is_identifiable_without_changing_health_response(handler, monkeypatch):
+    monkeypatch.setenv('RENDER_GIT_COMMIT', 'a' * 40)
+    _, headers, body = _get(handler, '/healthz')
+    assert headers['X-ReTrust-Revision'] == 'a' * 40
+    assert body == 'ok\n'
+    monkeypatch.setenv('RENDER_GIT_COMMIT', 'bad\r\nInjected: true')
+    _, headers, _ = _get(handler, '/healthz')
+    assert 'X-ReTrust-Revision' not in headers
 
 
 def test_health_check_fails_for_unusable_index(handler, db):

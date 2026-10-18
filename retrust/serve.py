@@ -39,6 +39,8 @@ DEFAULT_PORT = 8765
 # notice that quotes a label the page does not carry sends the reader looking
 # for something that is not there. One constant, so they cannot drift.
 EDIT_PANEL = "Edit product, firmware, or network exposure"
+CONTEXT_FIELDS = ('network_exposure', 'assessment_type', 'consequence', 'interface', 'remediation')
+COMPARISON_FIELDS = batch.QUERY_FIELDS + CONTEXT_FIELDS
 
 MAX_CANDIDATES = 12
 MAX_QUERY = 200
@@ -242,8 +244,8 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
                   'or a vendor and product, before assessing.</p>' if submitted else '')
         return _page('Score', '<h1>Assess a product</h1><p class="lead">'
-                     'Start with a manufacturer order number, or enter the vendor and model. '
-                     'Add the firmware version to narrow the affected vulnerabilities.</p>'
+                     'Check the equipment before you buy it. Start with its order number '
+                     'or model; leave technical details unknown if you are unsure.</p>'
                      + notice + form)
     assessment, resolution, findings = _run_assessment(
         assess, vendor, product, version, order_number, network_exposure, owner)
@@ -251,25 +253,30 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         vendor=vendor, product=product, version=version,
         order_number=order_number, network_exposure=network_exposure or "",
         **{key: value or "" for key, value in owner.items()}))
-    body = ('<h1>Product assessment</h1><p class="lead">A procurement verdict, '
-            'with the evidence behind every number.</p>'
-            f'<details><summary>{EDIT_PANEL}</summary>' + form + '</details>'
-            '<div class="actions">'
-            f'<a class="button secondary" href="/export.html?{_esc(parameters)}">Download report ↓</a>'
-            f'<a class="button secondary" href="/export.json?{_esc(parameters)}">Download JSON ↓</a>'
-            '<a class="button secondary" href="/">Find another product</a></div>')
+    body = '<h1>Product assessment</h1>'
+    tools = (f'<details class="assessment-edit"><summary>{EDIT_PANEL}</summary>' + form + '</details>'
+             '<details class="assessment-downloads"><summary>Save or share this assessment</summary>'
+             '<p class="helper">Download a report to discuss with your supplier or purchasing team.</p>'
+             '<div class="actions">'
+             f'<a class="button secondary" href="/export.html?{_esc(parameters)}">Download report ↓</a>'
+             f'<a class="button secondary" href="/export.json?{_esc(parameters)}">Technical data (JSON) ↓</a>'
+             '<a class="button secondary" href="/">Find another product</a></div></details>')
     if not version and resolution.resolved:
-        body += ('<p class="notice"><b>Firmware not specified.</b> All known affected versions '
+        tools = ('<p class="notice"><b>Firmware not specified.</b> All known affected versions '
                  'are in scope. Add the firmware you plan to buy using '
-                 f'\u201c{EDIT_PANEL}\u201d above.</p>')
-    body += report.body([(assessment, resolution, findings)], weights=context['weights'])
+                 f'\u201c{EDIT_PANEL}\u201d below.</p>') + tools
+    body += report.body([(assessment, resolution, findings)], weights=context['weights'], tools=tools)
     if resolution.resolved:
         named = resolution.matches[0]
         query = urllib.parse.urlencode(dict(vendor=named.vendor, product=named.name, version=version))
-        candidate_query = urllib.parse.urlencode(dict(
+        candidate_fields = dict(
             vendor_0=vendor or ('' if order_number else named.vendor),
             product_0=product or ('' if order_number else named.name),
-            version_0=version or '', order_number_0=order_number or ''))
+            version_0=version or '', order_number_0=order_number or '',
+            network_exposure_0=network_exposure or '')
+        candidate_fields.update({f'{key}_0': owner.get(key) or default or ''
+                                 for key, default in UNDECLARED.items()})
+        candidate_query = urllib.parse.urlencode(candidate_fields)
         body += ('<section class="panel" style="margin-top:24px"><h2>Take the next step</h2><div class="actions">'
                  f'<a class="button secondary" href="/compare?{_esc(candidate_query)}">Compare this product →</a>'
                  f'<a class="button secondary" href="/annex?{_esc(query)}">Prepare supplier questions →</a>'
@@ -312,7 +319,7 @@ def _choice(name, label, table, chosen, blank=None, helper=''):
 
 
 def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
-                  assessment_type='purchase', remediation='unknown'):
+                  assessment_type='purchase', remediation='unknown', suffix=''):
     """The facts only the asset owner has, each optional and each explained.
 
     ReTrust supplies the vulnerability intelligence; these describe the plant.
@@ -320,20 +327,20 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
     leaving one unanswered keeps it unresolved rather than guessing either way.
     """
     return ('<div class="form-grid">'
-            + _choice('assessment_type', 'Assessment type',
+            + _choice('assessment_type' + suffix, 'Are you buying or reviewing installed equipment?',
                       score.ASSESSMENT_TYPES, assessment_type,
                       helper='Buying it, or assessing one already installed.')
-            + _choice('network_exposure', 'Network exposure',
+            + _choice('network_exposure' + suffix, 'What is the equipment connected to?',
                       score.NETWORK_EXPOSURES, network_exposure,
                       blank='Unknown — ask your technical team',
                       helper='Operator-reported, not verified. IT–OT means a connection to business IT; Internet–OT means internet access. These choices do not prove every weakness can be reached.')
-            + _choice('consequence', 'If the equipment were attacked, what could happen?',
+            + _choice('consequence' + suffix, 'If the equipment were attacked, what could happen?',
                       score.CONSEQUENCES, consequence, blank='Unknown — needs engineering review',
                       helper='Ask your operations or safety team. Unknown consequences receive no reduction in impact.')
-            + _choice('interface', 'Can an attacker reach the affected service?',
+            + _choice('interface' + suffix, 'Can an attacker reach the affected service?',
                       score.INTERFACES, interface,
                       helper='Choose “Not established” if unsure. A technical owner must verify a block for all in-scope findings before you select it.')
-            + _choice('remediation', 'Fix or protection status',
+            + _choice('remediation' + suffix, 'Have the fixes or protective measures been verified?',
                       score.REMEDIATIONS, remediation,
                       helper='“Applied” or “verified” must cover all in-scope findings. A plan or an available download does not mean the equipment is fixed.')
             + '</div>')
@@ -342,32 +349,35 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
 def _score_form(vendor, product, version, order_number='', network_exposure=None,
                 consequence=None, interface='unknown',
                 assessment_type='purchase', remediation='unknown'):
+    using_model = ' open' if (vendor or product) and not order_number else ''
     return ('<form class="form-panel" method="get" action="/score">'
             '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number', order_number,
                                                  'e.g. 6ES7518-4AX00-1AB0') + '</div>'
-            '<p class="form-divider">Or identify it by vendor and product. If you enter both, they must agree.</p>'
-            '<div class="form-grid">' + _field('v', 'vendor', 'Vendor', vendor, 'e.g. Siemens')
+            f'<details class="form-options"{using_model}><summary>Use vendor and model instead</summary>'
+            '<p class="helper">Use these if you do not have an order number. If both are entered, they must agree.</p>'
+            '<div class="candidate-grid">' + _field('v', 'vendor', 'Vendor', vendor, 'e.g. Siemens')
             + _field('p', 'product', 'Product / model', product, 'e.g. SIMATIC S7-1500')
-            + _field('f', 'version', 'Firmware version (or unknown)', version, 'e.g. 3.1.6')
-            + '<p class="helper">Enter the exact version, or leave blank if unknown; unconfirmed advisory ranges stay pending review.</p>'
-            + '</div>'
-            '<p class="form-divider">About where the equipment will be used. If unsure, '
-            'leave these choices unknown and ask your technical or operations team. '
+            + '</div></details>'
+            + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
+            + '<p class="helper">Firmware is the software running on the equipment. Leave blank if unknown; the result will show what still needs checking.</p>'
+            '<details class="form-options"><summary>Site details and fixes (optional)</summary>'
+            '<p class="helper">You can get a first assessment without these answers. '
+            'Leave them unknown if unsure, then ask your technical team. '
             'ReTrust uses your answers; it does not inspect your network.</p>'
             + _owner_fields(network_exposure, consequence, interface,
                             assessment_type, remediation)
-            + '<p class="helper">Unsure of the model name? <a href="/">Search the advisory index first.</a></p>'
-            '<button type="submit">Assess product →</button></form>')
+            + '</details>'
+            + '<button type="submit">Assess product →</button></form>')
 
 
 def _candidate_rows(params):
     """Accept structured form fields and retain existing shareable ?c= links."""
-    if any(key.startswith(tuple(f'{field}_' for field in batch.QUERY_FIELDS)) for key in params):
+    if any(key.startswith(tuple(f'{field}_' for field in COMPARISON_FIELDS)) for key in params):
         rows = []
         for i in range(MAX_CANDIDATES):
             parts = [(params.get(f'{field}_{i}') or [''])[0][:MAX_QUERY].strip()
-                     for field in batch.QUERY_FIELDS]
-            if any(parts):
+                     for field in COMPARISON_FIELDS]
+            if any(parts[:4]):
                 rows.append(parts)
         return rows
     return [[p[:MAX_QUERY].strip() for p in value[:MAX_QUERY * 4 + 3].split('|', 3)]
@@ -375,24 +385,35 @@ def _candidate_rows(params):
 
 
 def _comparison_rows(candidates):
-    return [(list(c) + ['', '', '', ''])[:4] for c in candidates][:MAX_CANDIDATES]
+    return [(list(c) + [''] * len(COMPARISON_FIELDS))[:len(COMPARISON_FIELDS)]
+            for c in candidates][:MAX_CANDIDATES]
+
+
+def _candidate_context(row):
+    fields = dict(zip(COMPARISON_FIELDS, row))
+    network = fields.get('network_exposure')
+    network = network if network in score.NETWORK_EXPOSURES else None
+    owner = _owner_from(lambda key: fields.get(key))
+    return network, owner
 
 
 def _valid_comparison(rows):
-    return bool(rows) and all(v or p or o for v, p, _, o in rows)
+    return bool(rows) and all(row[0] or row[1] or row[3] for row in rows)
 
 
 def _comparison_parameters(rows):
     return urllib.parse.urlencode({f'{field}_{i}': value
                                    for i, row in enumerate(rows)
-                                   for field, value in zip(batch.QUERY_FIELDS, row)})
+                                   for field, value in zip(COMPARISON_FIELDS, row)})
 
 
 def _comparison_results(assess, context, rows):
     """Keep the exact input and robustness attached to each ranked assessment."""
     entries = []
-    for vendor, product, version, order_number in rows:
-        block = _run_assessment(assess, vendor, product, version, order_number)
+    for row in rows:
+        vendor, product, version, order_number = row[:4]
+        network, owner = _candidate_context(row)
+        block = _run_assessment(assess, vendor, product, version, order_number, network, owner)
         query = dict(zip(batch.QUERY_FIELDS, (vendor, product, version, order_number)))
         assessment = block[0]
         stability = (sensitivity.stability(*assessment.inputs, samples=300,
@@ -407,7 +428,7 @@ def _comparison_results(assess, context, rows):
 def _comparison_warning(rows):
     return ('<p class="notice">Some candidates have firmware specified and others do not. '
             'Add a version for each to compare on equal terms.</p>'
-            if any(f for _, _, f, _ in rows) and not all(f for _, _, f, _ in rows) else '')
+            if any(row[2] for row in rows) and not all(row[2] for row in rows) else '')
 
 
 def _compare_page(assess, context, candidates, submitted=False):
@@ -415,18 +436,24 @@ def _compare_page(assess, context, candidates, submitted=False):
     filled = _comparison_rows(candidates)
     boxes = ''
     for i in range(min(MAX_CANDIDATES, max(3, len(filled) + 1))):
-        vendor, product, version, order_number = filled[i] if i < len(filled) else ('', '', '', '')
+        row = filled[i] if i < len(filled) else [''] * len(COMPARISON_FIELDS)
+        vendor, product, version, order_number = row[:4]
+        network, owner = _candidate_context(row)
+        saved = network or any(owner[key] != default for key, default in UNDECLARED.items())
         boxes += (f'<fieldset><legend>Candidate {i + 1}</legend><div class="candidate-grid">'
                   + _field(f'co{i}', f'order_number_{i}', 'Manufacturer order number', order_number,
                            'e.g. 6ES7518-4AX00-1AB0')
                   + _field(f'cv{i}', f'vendor_{i}', 'Vendor', vendor, 'e.g. Moxa')
                   + _field(f'cp{i}', f'product_{i}', 'Product / model', product, 'e.g. EDS-405A')
                   + _field(f'cf{i}', f'version_{i}', 'Firmware (optional)', version, 'e.g. 3.0')
-                  + '</div></fieldset>')
+                  + '</div><details class="form-options"><summary>Site details and fixes'
+                  + (' (saved)' if saved else ' (optional)') + '</summary>'
+                  + _owner_fields(network, suffix=f'_{i}', **owner) + '</details></fieldset>')
     form = ('<form method="get" action="/compare">' + boxes
             + '<p class="helper">Use an order number, or a vendor and model. If you enter both, '
             'they must agree. Leave unused candidates blank. Another row appears after comparing, '
-            'up to 12 candidates.</p><button type="submit">Compare candidates →</button></form>')
+            'up to 12 candidates. Each candidate keeps its own site details and fixes.</p>'
+            '<button type="submit">Compare candidates →</button></form>')
     heading = ('<h1>Compare your candidates</h1><p class="lead">Put the shortlist on equal terms. '
                'Scores compare the evidence; an engineer still needs to confirm functional suitability.</p>')
     if not _valid_comparison(filled):
@@ -438,10 +465,10 @@ def _compare_page(assess, context, candidates, submitted=False):
     blocks = [block for block, _, _ in entries]
     stabilities = {id(block[0]): stability for block, _, stability in entries if stability}
     parameters = _comparison_parameters(filled)
-    downloads = '<div class="actions">' + ''.join(
+    downloads = '<details><summary>Save or share this comparison</summary><div class="actions">' + ''.join(
         f'<a class="button secondary" href="/compare.{extension}?{_esc(parameters)}">'
         f'Download {label} ↓</a>' for extension, label in
-        (('html', 'comparison report'), ('json', 'comparison JSON'), ('csv', 'comparison CSV'))) + '</div>'
+        (('html', 'comparison report'), ('json', 'comparison JSON'), ('csv', 'comparison CSV'))) + '</div></details>'
     warning = _comparison_warning(filled)
     return _page('Procurement comparison', heading + warning
                  + '<details><summary>Edit candidates or add another</summary>' + form + '</details>'
@@ -966,6 +993,9 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             self.send_response(status)
             self.send_header("Content-Type", f"{kind}; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
+            revision = os.environ.get('RENDER_GIT_COMMIT', '')
+            if 7 <= len(revision) <= 40 and all(char in '0123456789abcdef' for char in revision):
+                self.send_header('X-ReTrust-Revision', revision)
             if isinstance(markup, Download):
                 self.send_header("Content-Disposition", f'attachment; filename="{markup.filename}"')
             # The pages are self-contained, so the strictest policy that still
