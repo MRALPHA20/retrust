@@ -222,6 +222,21 @@ operational consequence, verified reachability and fix status through the
 assessment-to-comparison link, editing and all three downloads. Expand that
 candidate's **Site details and fixes** to review or change these answers.
 
+**Use the supporting pages without learning the terminal.** Vendor profiles,
+advisory history, alternatives, supplier questions, response priority and past
+exploitation estimates explain their purpose and offer example lookups. Enter
+the manufacturer and model shown on your quotation, or use Explore to find the
+exact name. On a result page, expand **Change product** to revise the lookup.
+The timeline accepts a manufacturer alone for its full history.
+
+Supplier questions appear as numbered requests. Expand **Why ask this?** for
+the evidence, or use **Open text to copy** to paste the complete text into an
+email or quotation request. ReTrust does not send messages. Response priorities
+display their assumed access, automation and impact settings; agree those with
+your technical and operations teams before using the suggested timing. Related
+products require an engineer's suitability check. **Data & methodology** includes
+**Which page should I use?**, verdict definitions and a glossary.
+
 **It is deliberately small and deliberately local.** One standard-library HTTP
 server, no dependencies, and the security posture is the point rather than an
 afterthought: a tool that screens sanctions lists has no business opening an

@@ -124,6 +124,14 @@ button:hover,.button:hover{background:#a0efd1;color:#10251e;border-color:#a0efd1
 .form-options{padding:14px 0;border-width:1px 0 0;border-radius:0;background:transparent;margin:18px 0}
 .form-options .helper{margin-bottom:16px}.form-options .candidate-grid{margin-top:16px}
 .form-options summary{font-weight:600}.form-options .form-grid{margin-top:18px}
+.lookup-form{max-width:58rem}.lookup-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.lookup-grid input{max-width:none}.lookup-edit{margin:18px 0}.lookup-edit form{margin-bottom:0}
+.supplier-questions{max-width:75ch;padding-left:24px}.supplier-questions>li{padding:16px 0;border-bottom:1px solid var(--rule)}
+.supplier-questions>li>p{margin:0 0 12px;line-height:1.75}.supplier-questions details{background:transparent;border:0;padding:0;margin:10px 0}
+.supplier-questions details p,.supplier-questions details li{font-size:13px;color:var(--soft)}
+.assumption-summary{max-width:75ch;font-size:13px;line-height:1.75;margin:18px 0;color:var(--soft)}
+.assumption-summary b{color:var(--ink);font-weight:600}
+@media(max-width:700px){.lookup-grid{grid-template-columns:1fr}.lookup-form button{width:100%}}
 .assessment-edit,.assessment-downloads{margin:12px 0}.assessment-edit .form-panel{border:0;padding:0}
 .block .verdict .review-required{font-size:14px}.score-scope{font-size:14px;line-height:1.7}
 .score-scope b{font-weight:600}.block .coverage{border:0;border-block:1px solid var(--rule);border-radius:0;background:transparent}

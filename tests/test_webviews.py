@@ -50,6 +50,20 @@ def test_response_priority_keeps_urgent_outcomes_visible():
     assert 'Act now' in overview and 'Plan a routine fix' in overview
     assert 'Confirmed by CISA' in overview and 'Not listed by CISA' in overview
     assert 'Public exploit code is not checked' in overview
+    assert 'Access assumed' in overview and 'Open access' in overview
+    assert 'Operational impact assumed' in overview and 'High impact' in overview
+
+
+def test_supplier_questions_keep_asks_visible_and_sources_escaped():
+    from retrust import questions
+    result = webviews.supplier_questions('<PLC>', [questions.Question(
+        text='Confirm <firmware>', why='Because <evidence> is missing', evidence=['<CVE>'])])
+    overview = result.partition('<details>')[0]
+    assert 'Confirm &lt;firmware&gt;' in overview
+    assert 'Because' not in overview
+    assert 'Because &lt;evidence&gt; is missing' in result
+    assert '&lt;CVE&gt;' in result and '<CVE>' not in result
+    assert 'PSIRT' in result and 'manufacturer’s team' in result
 
 
 def test_vendor_missing_checks_stay_incomplete_and_matches_stay_visible():

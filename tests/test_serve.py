@@ -297,6 +297,32 @@ def test_the_annex_page_is_pasteable_text(handler):
     assert "<pre" in body                    # the annex is a document, not a widget
 
 
+@pytest.mark.parametrize('path', ['/annex', '/lev', '/ssvc', '/alternatives'])
+def test_incomplete_evidence_lookup_explains_required_identity(handler, path):
+    _, _, page = _get(handler, path + '?vendor=Testco')
+    assert 'role="alert"' in page
+    assert 'Enter both the manufacturer and product/model' in page
+    assert 'find the product in Explore' in page
+
+
+def test_timeline_names_the_combined_query_not_the_first_matched_variant(handler):
+    _, _, page = _get(handler, '/timeline?vendor=Testco&product=TestPLC')
+    assert '<h2 class="subject">Testco TestPLC</h2>' in page
+    assert 'matched product name(s)' in page
+
+
+def test_alternatives_do_not_search_from_an_unresolved_product(handler, monkeypatch):
+    from retrust import alternatives
+
+    def unexpected_search(*args, **kwargs):
+        raise AssertionError('must identify the subject before searching its family')
+
+    monkeypatch.setattr(alternatives, 'find', unexpected_search)
+    _, _, page = _get(handler, '/alternatives?vendor=UnknownVendor&product=UnknownModel')
+    assert 'Search for the exact model' in page
+    assert 'No product in this family scored better' not in page
+
+
 def test_the_lev_page_abstains_without_history(handler):
     """The fixture index has no EPSS history; the page must say so, not zero."""
     _, _, body = _get(handler, "/lev?vendor=Testco&product=TestPLC")

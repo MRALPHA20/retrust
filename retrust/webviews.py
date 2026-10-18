@@ -123,6 +123,31 @@ def exploitation(product, estimates, corpus_share=None, kev_loaded=True):
     return ''.join(parts)
 
 
+def supplier_questions(product, items):
+    parts = [f'<h2 class="subject">{_esc(product)}</h2><ol class="supplier-questions">']
+    for question in items:
+        parts.append(f'<li><p>{_esc(question.text)}</p><details>'
+                     '<summary>Why ask this? View supporting evidence</summary>'
+                     f'<p>{_esc(question.why)}</p>')
+        if question.evidence:
+            parts.append('<ul>' + ''.join(f'<li>{_esc(item)}</li>' for item in question.evidence) + '</ul>')
+        parts.append('</details></li>')
+    parts.append('</ol><details><summary>Terms your supplier may use</summary><dl class="term-list">'
+                 '<dt>Firmware</dt><dd>The software running inside the equipment.</dd>'
+                 '<dt>Mitigation or workaround</dt><dd>A protective measure used when a permanent fix is not yet in place.</dd>'
+                 '<dt>PSIRT</dt><dd>The manufacturer’s team that handles product security issues.</dd>'
+                 '<dt>CSAF</dt><dd>A structured format for publishing security notices so tools can read them.</dd>'
+                 '<dt>SBOM</dt><dd>A list of the software components included with the product. CycloneDX is one format for this list.</dd>'
+                 '<dt>CVE</dt><dd>A reference number for a known security weakness.</dd></dl></details>'
+                 '<p class="helper">A long question list does not make a manufacturer less trustworthy. '
+                 'Judge the written answers and supporting evidence.</p>')
+    return ''.join(parts)
+
+
+ACCESS_LABELS = {'small': 'Limited access', 'controlled': 'Controlled access', 'open': 'Open access'}
+IMPACT_LABELS = {'low': 'Low impact', 'medium': 'Medium impact', 'high': 'High impact', 'very high': 'Very high impact'}
+
+
 PRIORITIES = {
     'immediate': ('Act now', 'Ask the security and operations teams to review immediately and follow approved response procedures.'),
     'out-of-cycle': ('Fix sooner', 'Plan action before the next regular maintenance window.'),
@@ -133,8 +158,13 @@ PRIORITIES = {
 
 def response_priority(product, decisions, exposure, automatable, impact, undecided=0, kev_loaded=True):
     parts = [f'<h2 class="subject">{_esc(product)}</h2>',
-             '<p>These are suggested response timings for the settings shown above. '
-             'ReTrust has not inspected your network; confirm the settings with your technical team.</p>']
+             '<p class="helper">These timings use assumptions, not a network inspection. '
+             'Confirm them with your technical team.</p>',
+             '<p class="assumption-summary"><b>Access assumed:</b> '
+             f'{_esc(ACCESS_LABELS.get(exposure, exposure))}. '
+             '<b>Automated attack assumed possible:</b> '
+             + ('Yes' if automatable == 'yes' else 'No') + '. '
+             f'<b>Operational impact assumed:</b> {_esc(IMPACT_LABELS.get(impact, impact))}.</p>']
     if not decisions:
         return ''.join(parts) + '<p>No vulnerabilities are available to prioritise for this selection.</p>'
     if not kev_loaded:
@@ -166,9 +196,7 @@ def response_priority(product, decisions, exposure, automatable, impact, undecid
 
 
 def advisory_history(subject, history):
-    parts = [f'<h2 class="subject">{_esc(subject)}</h2>',
-             '<p>This shows when security notices were published. More notices can reflect '
-             'more open reporting; a quiet year is not proof that a product is secure.</p>']
+    parts = [f'<h2 class="subject">{_esc(subject)}</h2>']
     if not history.advisories:
         return ''.join(parts) + '<p>No security notices are available for this selection. Check the product name and ask the supplier for its advisory history.</p>'
     parts.append(_facts([
@@ -194,9 +222,7 @@ def advisory_history(subject, history):
 
 
 def vendor_profile(profile):
-    parts = [f'<h2 class="subject">{_esc(profile.vendor)}</h2>',
-             '<p>This is a summary of published evidence, not a vendor safety grade. '
-             'A manufacturer that reports issues openly may have more security notices.</p>']
+    parts = [f'<h2 class="subject">{_esc(profile.vendor)}</h2>']
     if profile.known:
         parts.append(_facts([
             ('Security notices', f'{profile.advisories:,}'),
