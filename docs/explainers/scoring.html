@@ -138,6 +138,7 @@
     <a href="#formula">The formula</a>
     <a href="#weights">The weights</a>
     <a href="#pillars">Each pillar</a>
+    <a href="#names">Buyer names</a>
     <a href="#gates">The gates</a>
     <a href="#overrides">Two overrides</a>
     <a href="#bands">Bands &amp; verdict</a>
@@ -285,6 +286,29 @@ S = max( S_with_C , S_without_C )      it may lift, never lower</div>
   <div class="eq" style="margin-bottom:1.5rem">RT2/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:4f3a9c2d6b18</div>
   <p class="note-txt">The firmware and operator choices are recorded with each result. <code>DS</code> fingerprints the
     recorded source, count and capture-date metadata; it is not a checksum of the full advisory database.</p>
+
+  <h2 id="names">4c · The same pillars, named for a buyer</h2>
+  <p class="note-txt">The web interface uses plain-language labels while this page and the
+    configuration file use the model's own names. Same measurements, two audiences — here is the map,
+    so a reader moving between the two is never left wondering whether they are looking at a
+    different number.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>In the model, config and this page</th><th>On screen and in reports</th></tr></thead>
+      <tbody>
+        <tr><td><code>exposure</code> — Exposure</td><td>Exposure safety</td></tr>
+        <tr><td><code>patchability</code> — Patch availability</td><td>Available fixes</td></tr>
+        <tr><td><code>vendor_practice</code> — Vendor practice</td><td>Vendor security practices</td></tr>
+        <tr><td><code>certification</code> — Certification</td><td>Certification evidence</td></tr>
+        <tr><td>Exploitation <span class="sub" style="display:inline">(diagnostic)</span></td><td>Attack activity</td></tr>
+        <tr><td>Severity <span class="sub" style="display:inline">(diagnostic)</span></td><td>Issue severity</td></tr>
+        <tr><td>Network exposure <span class="sub" style="display:inline">(input)</span></td><td>Network access</td></tr>
+        <tr><td>Evidence quality <span class="sub" style="display:inline">(never scored)</span></td><td>Evidence completeness</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note-txt" style="margin-top:.9rem">The left column is what you write in
+    <code>retrust config</code> if you change a weight.</p>
 
   <h2 id="gates">5 · The gates (outside the maths — any one → AVOID)</h2>
   <p class="note-txt">These are facts that <em>end</em> the assessment. They’re checked on the product’s own
