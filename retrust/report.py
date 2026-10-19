@@ -337,6 +337,14 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     return "".join(parts)
 
 
+# The three rows that carry no weight of their own because they are inputs to
+# Exposure: threat, severity and deployment reachability. Saying only "not
+# scored" against a network exposure the operator deliberately declared reads
+# as "we ignored you" -- and it is wrong, because declaring it can move the
+# score by twenty points. Name the destination instead.
+FEEDS_EXPOSURE = {"Exploitation", "Severity", "Network exposure"}
+
+
 def _pillar_table(assessment, weights):
     active_pillars = [p for p in assessment.pillars
                       if p.name != "Evidence quality" and p.scored]
@@ -361,13 +369,18 @@ def _pillar_table(assessment, weights):
             f'<td class="n">{_esc(displayed_score)}</td>'
             f'<td><span class="bar"><i style="width:{bar_width:.0f}%"></i></span></td>'
             + (f'<td class="n">{weight}</td>' if weight
+               else '<td class="n na">within exposure</td>'
+               if pillar.name in FEEDS_EXPOSURE
                else '<td class="n na">not scored</td>')
             + f'<td class="n">{pillar.coverage * 100:.0f}%</td>'
             f'<td><details class="evidence-details"><summary>Show supporting evidence</summary>'
             f'<ul class="ev">{evidence}</ul></details></td></tr>')
     parts.append('</tbody></table></div><p class="tnote">Influence is the weight used in the '
                  'formula. Evidence available describes usable inputs, including operator statements; '
-                 'it does not mean every fact has been independently verified. Supporting details are marked “not scored”.</p>')
+                 'it does not mean every fact has been independently verified. Rows marked '
+                 '“within exposure” carry no weight of their own because they are inputs to '
+                 'the exposure score rather than separate terms -- a declared network exposure '
+                 'still changes the result. Evidence completeness is reported and never scored.</p>')
     return "".join(parts)
 
 

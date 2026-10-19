@@ -87,3 +87,20 @@ def test_report_shows_the_declared_deployment_as_a_diagnostic():
     assert "Network access" in markup
     assert "Internet–OT" in markup
     assert "not scored" in markup
+
+
+def test_a_declared_network_is_shown_as_used_not_discarded():
+    """A reviewer reading "not scored" against a network exposure they had just
+    declared reasonably concluded it was ignored. It is not: declaring it moved
+    this product 21.6 points. The row now names where the input is used instead
+    of only saying it carries no weight of its own."""
+    from retrust import report
+    declared = score.assess("Example", _findings(), {"A"},
+                            network_exposure="isolated")
+    markup = report._pillar_table(declared, score.DEFAULT_WEIGHTS)
+    assert "within exposure" in markup
+    # The three inputs to exposure say so; evidence quality still does not.
+    assert report.FEEDS_EXPOSURE == {"Exploitation", "Severity", "Network exposure"}
+    # And the declaration must actually change the number, not just the label.
+    plain = score.assess("Example", _findings(), {"A"})
+    assert declared.score > plain.score
