@@ -45,6 +45,7 @@ demo:
 # Build the illustrated overview from retained measurements. Install .[docs].
 guide:
 	python3 tools/build_overview.py
+	python3 tools/build_scoring_sheet.py
 
 # Regenerate the screenshots used in the documentation, so they cannot drift.
 docs: demo

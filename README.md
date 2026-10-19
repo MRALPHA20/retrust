@@ -252,6 +252,9 @@ branch; `make live` checks which build is actually serving.
   design decision with the measurement that justified it.
 - **[ReTrust-Guide.pdf](docs/ReTrust-Guide.pdf)** — an 11-page printable user
   guide that opens on a three-step quick start.
+- **[ReTrust-Scoring-Explained.pdf](docs/ReTrust-Scoring-Explained.pdf)** — a
+  three-page sheet deriving the score: the formula, a worked example taken from
+  a live assessment, and the four places it departs from the reference model.
 - **[docs/explainers/](docs/explainers/)** — three self-contained pages for
   explaining the tool to somebody else: [what it is and how it
   works](docs/explainers/overview.html), [every command by the job it
