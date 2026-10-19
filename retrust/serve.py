@@ -16,9 +16,11 @@ that screens sanctions lists has no business opening an unauthenticated port on
 a plant network by accident. See SAFETY below for what is enforced.
 """
 
+import hashlib
 import html
 import http.server
 import os
+import pathlib
 import urllib.parse
 from datetime import date
 
@@ -39,6 +41,30 @@ DEFAULT_PORT = 8765
 # notice that quotes a label the page does not carry sends the reader looking
 # for something that is not there. One constant, so they cannot drift.
 EDIT_PANEL = "Edit product, firmware, or network exposure"
+
+
+def build_fingerprint():
+    """A short hash of the package's own source, served as a header.
+
+    "Is the deployed code the code I have?" turned out to be the hardest
+    question to answer about this service, and the expensive way to learn that
+    was a silent deploy: the build ran, the data refreshed, and the index hash
+    moved while three commits of fixes stayed behind. Nothing user-visible had
+    to change for the site to be stale, so nothing user-visible could prove it
+    current. Comparing the scoring version did not help either -- it is the same
+    string across every one of those builds.
+
+    This hashes the source instead, so any code difference shows up, and it is
+    computed once per process rather than per request.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(pathlib.Path(__file__).parent.glob("*.py")):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+BUILD = build_fingerprint()
 CONTEXT_FIELDS = ('network_exposure', 'assessment_type', 'consequence', 'interface', 'remediation')
 COMPARISON_FIELDS = batch.QUERY_FIELDS + CONTEXT_FIELDS
 
@@ -1075,6 +1101,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             # Verdicts and sanctions screening have no business sitting in a
             # browser cache after the tab closes.
             self.send_header("Cache-Control", "no-store")
+            # Which code is serving this, independent of the data it serves.
+            self.send_header("X-ReTrust-Build", BUILD)
             self.end_headers()
             if not getattr(self, "_head_only", False):
                 self.wfile.write(payload)

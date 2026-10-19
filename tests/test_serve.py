@@ -721,3 +721,15 @@ def test_inline_links_meet_the_touch_target_floor_on_small_screens():
     # and it must live inside the small-screen query, not change the desktop line
     small = webui.CSS.split("@media(max-width:700px){")
     assert any(rule in part and "min-height:24px" in part for part in small[1:])
+
+
+def test_the_build_header_identifies_the_deployed_code():
+    """The question that cost the most time on this project was "is the deployed
+    code the code I have?". Neither the data snapshot nor the scoring version
+    could answer it -- both were identical across builds three commits apart --
+    so a stale deploy looked healthy from the outside. The fingerprint hashes
+    the package source, so any code difference is visible."""
+    from retrust import serve
+    assert len(serve.BUILD) == 12 and serve.BUILD.isalnum()
+    # Stable for identical source, and actually derived from it.
+    assert serve.build_fingerprint() == serve.BUILD

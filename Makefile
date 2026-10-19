@@ -82,14 +82,18 @@ deploy: test
 # whether or not the code did, so they prove nothing -- grep a string instead.
 LIVE_URL ?= https://retrust-q2tr.onrender.com
 
+# Compares the SOURCE of the deployed code, not the data and not the scoring
+# version. Both of those stayed identical across builds that were three commits
+# apart, so neither could detect a stale deploy -- this can.
 live:
-	@printf 'live scoring version: '
-	@curl -s -m 90 "$(LIVE_URL)/export.json?vendor=ABB&product=AC%%20800M" \
-	  | python3 -c "import json,sys; print(json.load(sys.stdin)['results'][0].get('vector','?').split('/')[0])" \
-	  || echo "(could not reach $(LIVE_URL))"
-	@printf 'local scoring version:  '
-	@python3 -c "from retrust import score; print(score.SCORING_VERSION)"
-	@echo "A mismatch means the deploy branch is behind; run make deploy."
+	@printf 'live  build: '
+	@curl -s -m 90 -D - -o /dev/null "$(LIVE_URL)/healthz" \
+	  | awk 'tolower($$1)=="x-retrust-build:"{print $$2}' \
+	  | tr -d '\r' | grep . || echo "(no build header -- the deployed code predates it)"
+	@printf 'local build: '
+	@python3 -c "from retrust import serve; print(serve.BUILD)"
+	@echo "Equal means the deployed code is exactly what you have."
+	@echo "Different means the live site is stale: run make deploy, or Manual Deploy."
 
 clean:
 	rm -rf $(DATA)/retrust.db $(DATA)/screening.json $(DATA)/certifications.json \
