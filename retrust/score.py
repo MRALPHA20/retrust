@@ -415,14 +415,16 @@ def _certification(certificates):
 # A user's view of the product's deployment. This is deliberately recorded as
 # an assumption: ReTrust does not scan or verify a buyer's plant network.
 NETWORK_EXPOSURES = {
-    "isolated": ("Isolated", 100.0,
-                 "No routed path from enterprise IT or the internet into OT."),
-    "ot_only": ("OT network only", 50.0, "Connected to other industrial equipment."),
-    "remote_vendor": ("Remote vendor access", 50.0, "A supplier can connect remotely."),
-    "it_ot": ("IT–OT", 60.0,
-              "OT is connected to enterprise IT through a network boundary."),
-    "internet_ot": ("Internet–OT", 20.0,
-                    "A routed path from the internet can reach the OT environment."),
+    "isolated": ("On its own, not connected to anything else", 100.0,
+                 "No route in from the office network or the internet."),
+    "ot_only": ("On the plant network only", 50.0,
+                "Connected to other industrial equipment."),
+    "remote_vendor": ("Plant network, and the supplier can dial in", 50.0,
+                      "A supplier can connect remotely."),
+    "it_ot": ("Connected to the office network", 60.0,
+              "The plant network reaches enterprise IT through a boundary."),
+    "internet_ot": ("Reachable from the internet", 20.0,
+                    "A route from the internet can reach the plant network."),
 }
 
 

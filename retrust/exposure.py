@@ -10,33 +10,38 @@ repeated evidence from manufacturing independent attack paths.
 from dataclasses import dataclass, field
 from . import cvss
 
+# Plain answers a buyer can give without a glossary. The wording is the only
+# thing that changed here: the rubric values are the specification's.
 CONSEQUENCES = {
-    'safety': ('Safety or environmental harm', 1.0),
-    'control': ('Major loss of process control', .8),
-    'recoverable': ('Significant but recoverable disruption', .5),
-    'minor': ('Minor operational disruption', .2),
-    'negligible': ('No material operational consequence', 0.0),
+    'safety': ('Someone could be hurt, or the environment harmed', 1.0),
+    'control': ('We would lose control of the process', .8),
+    'recoverable': ('Production stops, but we can recover', .5),
+    'minor': ('Minor disruption we can work around', .2),
+    'negligible': ('No real effect on the process', 0.0),
 }
+# The specification groups "Yes" with "No additional requirements" as one
+# answer, because both mean the same thing for A: nothing stands in the way.
+# Splitting them left a buyer with no way to say a weakness needs nothing.
 PREREQUISITES = {
-    'satisfiable': ('An attacker can satisfy them', 1.0),
-    'unsatisfiable': ('Verified impossible in this threat model', 0.0),
-    'unknown': ('Not established', None),
+    'satisfiable': ('Yes, or it needs nothing extra', 1.0),
+    'unsatisfiable': ('No, we checked and they could not', 0.0),
+    'unknown': ('Not sure', None),
 }
 INTERFACES = {
-    'exposed': ('Reachable', 1.0),
-    'blocked': ('Verified blocked across all relevant paths', 0.0),
-    'unknown': ('Not established', None),
+    'exposed': ('Yes, something could reach it', 1.0),
+    'blocked': ('No, we checked every route and blocked them', 0.0),
+    'unknown': ('Not sure', None),
 }
 REMEDIATIONS = {
-    'affected': ('Confirmed affected, not fixed', 1.0),
-    'applied': ('Fix verified present on this firmware', 0.0),
-    'not_affected': ('Selected product and firmware verified not affected', 0.0),
-    'mitigated': ('Protective control present; applicability still needs checking', None),
-    'available': ('Fix exists but is not applied', 1.0),
-    'planned': ('Remediation planned, not implemented', None),
-    'unknown': ('Not established or under investigation', None),
+    'affected': ('Affected, and not fixed', 1.0),
+    'applied': ('We installed the fix and checked it', 0.0),
+    'not_affected': ('The maker says this version is not affected', 0.0),
+    'mitigated': ('We added a protection, but have not checked it covers this', None),
+    'available': ('A fix exists, but we have not installed it', 1.0),
+    'planned': ('We plan to fix it, but have not yet', None),
+    'unknown': ('Not sure, or still checking', None),
 }
-ASSESSMENT_TYPES = {'purchase': 'New equipment purchase', 'installed': 'Installed asset'}
+ASSESSMENT_TYPES = {'purchase': 'Buying it', 'installed': 'Already installed'}
 CONCENTRATION = (1.0, .20, .10)
 
 
@@ -261,11 +266,19 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
                                 'firmware_range': finding.version_range, 'version_checked': finding.decided,
                                 'review': dict(getattr(finding, 'review', {}) or {}),
                                 'source_dates': dict(getattr(finding, 'source_dates', {}) or {})})
+    # Each item names the question that closes it, in the words the form uses,
+    # so a buyer reading the checklist knows exactly where to go. The T item is
+    # the exception and says so: no answer from the owner can supply missing
+    # exploitation data, only a feed refresh can.
     labels = {
-        'T': 'Exploitation data is incomplete; refresh or review the threat sources',
-        'A': 'Ask the network owner whether an attacker can reach the weakness and meet its requirements',
-        'H': 'Ask an operations engineer what exploiting each weakness could do to the process',
-        'U': 'Confirm the exact firmware and whether the published fixes are installed',
+        'T': 'Exploitation data is missing for these. Refresh the data sources'
+             ' -- this is not something you can answer',
+        'A': 'Answer "Could anything reach it to attack it?" and "Would an'
+             ' attacker need anything else first?" -- ask whoever runs the network',
+        'H': 'Answer "If it were attacked, what is the worst that could happen?"'
+             ' -- ask operations or safety',
+        'U': 'Answer "Is the firmware you are getting already fixed?" -- and give'
+             ' the exact firmware version',
     }
     if remediation in ('applied', 'not_affected'):
         disputed = sorted({f.cve for f in findings
@@ -283,7 +296,8 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
             more = f' and {len(cves)-3} more' if len(cves) > 3 else ''
             missing.add(f'{labels[name]} ({sample}{more})')
     if network is None:
-        missing.add('Network context has not been supplied')
+        missing.add('Answer "Where will it sit?" -- recorded as context, and'
+                    ' needed before a verdict is given')
     paths = []
     for group in groups.values():
         group['cves'] = sorted(group['cves'])

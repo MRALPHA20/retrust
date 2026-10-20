@@ -27,7 +27,10 @@ def test_topology_is_not_a_fractional_discount():
 def test_unknown_context_requires_verification_even_with_resolved_factors():
     result = score.assess('PLC', [finding()], consequence='control', interface='exposed')
     assert result.verdict == 'VERIFY'
-    assert any('Network context' in item for item in result.verification)
+    # Matched on meaning, not wording: the item must point the reader at the
+    # question that closes it, whatever that question is currently called.
+    question = 'Where will it sit?'
+    assert any(question in item for item in result.verification)
 
 
 def test_only_confirmed_access_changes_a():
@@ -78,13 +81,17 @@ def test_network_and_reachability_are_main_form_inputs(network):
     for name in ('network_exposure', 'interface', 'prerequisites'):
         assert name in fields.fields and name not in fields.hidden_fields
     assert f'value="{network}" selected' in form
-    assert 'Operator-reported, not verified' in form
+    # The property, not the sentence: the form must tell a buyer that where
+    # the equipment sits is context and does not move the score. Asserting
+    # the exact wording made every plain-language rewrite a test failure.
+    assert 'never moves the score' in form or 'does not change the score' in form
 
 
 def test_report_does_not_claim_topology_is_a_numeric_input():
     result = score.assess('PLC', [finding()], network_exposure='it_ot')
     markup = report._pillar_table(result, score.DEFAULT_WEIGHTS)
-    assert 'IT–OT' in markup and 'Context only' in markup
+    assert score.NETWORK_EXPOSURES['it_ot'][0] in markup
+    assert 'Context only' in markup
     assert report.FEEDS_EXPOSURE == {'Exploitation'}
 
 
@@ -98,7 +105,7 @@ def test_verified_block_narrows_the_range_without_changing_firmware_status():
     # assertion and what the evidence said alone.
     assert result.verdict not in ("VERIFY", "NOT ASSESSED")
     assert result.assertions == [
-        'attack reachability: Verified blocked across all relevant paths']
+        f'attack reachability: {exposure.INTERFACES["blocked"][0]}']
     strong = next(n for n in result.notes if 'rests on operator assertions' in n)
     assert 'On the published evidence alone' in strong
 

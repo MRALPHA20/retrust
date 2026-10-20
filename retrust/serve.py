@@ -401,25 +401,34 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
     leaving one unanswered keeps it unresolved rather than guessing either way.
     """
     return ('<div class="form-grid">'
-            + _choice('network_exposure' + suffix, 'What is the equipment connected to?',
-                      score.NETWORK_EXPOSURES, network_exposure,
-                      blank='Unknown — ask your technical team',
-                      helper='Operator-reported, not verified. An isolated device may still be reached from another industrial computer. Confirm actual access alongside this choice.')
-            + _choice('interface' + suffix, 'Can an attacker reach the affected service?',
-                      score.INTERFACES, interface,
-                      helper='Include network, local and physical access where relevant. Select “blocked” only after a technical owner has checked every relevant path.')
-            + _choice('prerequisites' + suffix, 'Can an attacker meet what the weakness requires?',
-                      score.PREREQUISITES, prerequisites,
-                      helper='An attack may need an account, someone clicking a link, a particular device state, or physical access to the equipment. Ask a technical owner to check these conditions for every weakness, including any local or physical access the weakness needs. Unknown is a valid answer.')
-            + _choice('assessment_type' + suffix, 'Are you buying or reviewing installed equipment?',
+            + _choice('assessment_type' + suffix, 'Are you buying this, or do you have it?',
                       score.ASSESSMENT_TYPES, assessment_type,
-                      helper='Buying it, or assessing one already installed.')
-            + _choice('consequence' + suffix, 'What could exploiting these weaknesses do to the process?',
-                      score.CONSEQUENCES, consequence, blank='Unknown — needs engineering review',
-                      helper='Ask your operations or safety team. Unknown consequences produce a range and need verification. Use a consequence credible for every finding, not just the importance of the equipment.')
-            + _choice('remediation' + suffix, 'Is the selected firmware affected or already fixed?',
+                      helper='Recorded with the result. It does not change the score.')
+            + _choice('network_exposure' + suffix, 'Where will it sit?',
+                      score.NETWORK_EXPOSURES, network_exposure,
+                      blank='Not sure — ask your technical team',
+                      helper='Recorded as context. Where it sits does not decide whether '
+                             'a weakness can be reached, so it never moves the score — '
+                             'the next two questions are the ones that do.')
+            + _choice('interface' + suffix, 'Could anything reach it to attack it?',
+                      score.INTERFACES, interface,
+                      helper='Another computer, a laptop plugged in, or someone standing '
+                             'at the panel. Answer “no” only if someone has checked every '
+                             'route in. “Not sure” is a fine answer.')
+            + _choice('prerequisites' + suffix, 'Would an attacker need anything else first?',
+                      score.PREREQUISITES, prerequisites,
+                      helper='Some weaknesses need a login, someone clicking a link, or '
+                             'hands on the equipment. Others need nothing at all — both '
+                             'count as “yes”. Answer “no” only if someone has ruled it out.')
+            + _choice('consequence' + suffix, 'If it were attacked, what is the worst that could happen?',
+                      score.CONSEQUENCES, consequence, blank='Not sure — ask an engineer',
+                      helper='Ask operations or safety. Pick what is believable for these '
+                             'specific weaknesses, not how important the equipment is. '
+                             '“Not sure” gives you a range instead of a single number.')
+            + _choice('remediation' + suffix, 'Is the firmware you are getting already fixed?',
                       score.REMEDIATIONS, remediation,
-                      helper='“Applied” or “verified” must cover all in-scope findings. A plan or an available download does not mean the equipment is fixed.')
+                      helper='A fix being available is not the same as a fix being '
+                             'installed. Answer for every weakness listed, not just one.')
             + '</div>')
 
 
