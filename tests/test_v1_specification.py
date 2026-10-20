@@ -262,3 +262,50 @@ def test_a_reachable_service_settles_only_a_remote_flaw(vector, resolves):
         f, 'exposed', prerequisites='satisfiable').values() == [1, 1]
     # And a verified block is a block whatever the vector says.
     assert exposure.reach_bounds(f, 'blocked').values() == [0, 0]
+
+
+# --- a declared answer that cannot apply --------------------------------------
+
+_NEEDS_NOTHING = 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H'
+_NEEDS_A_LOGIN = 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H'
+_ANSWERED = dict(network_exposure='it_ot', interface='exposed',
+                 prerequisites='unsatisfiable', consequence='control',
+                 remediation='affected')
+
+
+def test_ruling_out_conditions_cannot_rule_out_a_weakness_that_has_none():
+    """A weakness needing nothing has no condition to be verified impossible.
+
+    The arithmetic was always right -- such a flaw stays reachable -- but the
+    report then listed "exploitation prerequisites: verified impossible" among
+    the answers the verdict RESTED ON, which reads as though ruling the
+    conditions out had supported a high-exposure result.
+    """
+    nothing = flaw(vector=_NEEDS_NOTHING)
+    assert exposure.reach_bounds(
+        nothing, interface='exposed', prerequisites='unsatisfiable').values() == [1, 1]
+    a = score.assess('X', [nothing], {'A'}, **_ANSWERED)
+    assert not any('prerequisite' in x for x in a.assertions), \
+        'a vacuous answer must not be cited as a reason the verdict holds'
+    assert any('need nothing extra' in n and 'changed nothing' in n for n in a.notes), \
+        'and the buyer must be told their answer did not apply'
+
+
+def test_the_same_answer_is_cited_when_it_really_did_apply():
+    """Suppressing it everywhere would understate what the verdict rests on."""
+    login = flaw(vector=_NEEDS_A_LOGIN)
+    assert exposure.reach_bounds(
+        login, interface='exposed', prerequisites='unsatisfiable').values() == [0, 0]
+    a = score.assess('X', [login], {'A'}, **_ANSWERED)
+    assert any('prerequisite' in x for x in a.assertions)
+    assert not any('need nothing extra' in n for n in a.notes)
+
+
+def test_a_partly_applicable_answer_is_cited_and_qualified():
+    """Two findings, one conditioned: cite the answer, and say what it missed."""
+    findings = [flaw(cve='CVE-2026-1000', vector=_NEEDS_NOTHING),
+                flaw(cve='CVE-2026-1001', vector=_NEEDS_A_LOGIN)]
+    a = score.assess('X', findings, {'A'}, **_ANSWERED)
+    assert any('prerequisite' in x for x in a.assertions)
+    note = next(n for n in a.notes if 'need nothing extra' in n)
+    assert 'CVE-2026-1000' in note and 'changed nothing' not in note

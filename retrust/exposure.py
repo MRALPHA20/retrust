@@ -66,6 +66,13 @@ class Exposure:
     paths: list = field(default_factory=list)
     missing: list = field(default_factory=list)
     evidence: list = field(default_factory=list)
+    # Declared answers that could not apply to every finding. An answer the
+    # tool quietly ignores is worse than one it refuses: the operator believes
+    # they have ruled something out when they have not.
+    inapplicable: list = field(default_factory=list)
+    # False when a declared answer bore on nothing at all, so a caller can
+    # decline to cite it as a reason the verdict holds.
+    prerequisites_applied: bool = True
 
     @property
     def provisional(self):
@@ -306,15 +313,41 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     paths.sort(key=lambda p: (-p['z_max'], p['path_id']))
     r_min = concentrate([p['z_min'] for p in paths])
     r_max = concentrate([p['z_max'] for p in paths])
+    # "An attacker could not meet what this weakness requires" is a claim about
+    # conditions. A weakness that demands none -- no privileges, no user
+    # interaction, no attack requirement -- has nothing for that answer to rule
+    # out, so it stays reachable and the answer is vacuous. Saying so matters:
+    # the alternative is a report citing "verified impossible" among the
+    # assertions SUPPORTING a high-exposure verdict, which reads backwards.
+    inapplicable, prerequisites_applied = [], True
+    if prerequisites == 'unsatisfiable':
+        unconditioned = sorted({f.cve for f in findings
+                                if demands_conditions(cvss.parse(f.vector)
+                                                      if f.vector else None) is not True})
+        conditioned = {f.cve for f in findings} - set(unconditioned)
+        prerequisites_applied = bool(conditioned)
+        if unconditioned:
+            sample = ', '.join(unconditioned[:3])
+            more = f' and {len(unconditioned)-3} more' if len(unconditioned) > 3 else ''
+            inapplicable.append(
+                f'{len(unconditioned)} of {len(groups)} weakness(es) need nothing'
+                f' extra to exploit ({sample}{more}), so "an attacker could not'
+                ' meet what it requires" does not apply to them and did not'
+                ' reduce their reachability'
+                + ('' if conditioned else
+                   '. That answer changed nothing in this assessment'))
+
     evidence = ['R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)',
                 f'{len(paths)} review unit(s) across {len(findings)} advisory finding(s); duplicate advisories count once per unit',
                 'Default units are CVEs; independence of different CVEs is not established by this grouping',
                 f'Exposure safety range: {100*(1-r_max):.1f}–{100*(1-r_min):.1f}/100',
                 f'Network context: {network or "Unknown"}; topology alone does not prove reachability',
                 'T = max(KEV, LEV, EPSS); A is verified reachability; H is declared credible OT consequence; U is unremediated applicability']
+    evidence.extend(inapplicable)
     if missing:
         evidence.append('Verify unresolved inputs before using the result as a purchase recommendation')
-    return Exposure(100*(1-r_max), 100*(1-r_min), measured/total, paths, sorted(missing), evidence)
+    return Exposure(100*(1-r_max), 100*(1-r_min), measured/total, paths, sorted(missing),
+                    evidence, inapplicable, prerequisites_applied)
 
 
 def measure(findings, consequence=None, interface='unknown', assessment_type='purchase',

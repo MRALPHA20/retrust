@@ -838,7 +838,11 @@ def assess(product_label, findings, advisories=(), weights=None,
     assertions = []
     if interface != "unknown":
         assertions.append(f"attack reachability: {INTERFACES[interface][0]}")
-    if prerequisites != "unknown":
+    if prerequisites != "unknown" and exposure.prerequisites_applied:
+        # Cited only where it actually bore on a finding. "Verified impossible"
+        # against a weakness that demands nothing is vacuous, and listing it
+        # among the answers a verdict RESTS ON read backwards -- as though
+        # ruling the conditions out had supported a high-exposure result.
         assertions.append(
             f"exploitation prerequisites: {PREREQUISITES[prerequisites][0]}")
     if consequence is not None:
@@ -863,6 +867,10 @@ def assess(product_label, findings, advisories=(), weights=None,
     notes = []
     if cap_note:
         notes.append(cap_note)
+    # Say it where the buyer reads the verdict, not only in the evidence panel:
+    # an answer that could not apply is one they may believe has protected them.
+    for unusable in exposure.inapplicable:
+        notes.append(unusable[0].upper() + unusable[1:] + ".")
     if exposure.provisional:
         notes.append("This is a provisional score range, not a purchase recommendation. "
                      "Ask a technical owner to resolve the checks listed below. "
