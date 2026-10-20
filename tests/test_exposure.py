@@ -15,11 +15,39 @@ from retrust.match import Finding
 
 def _finding(cve="CVE-2026-0001", cvss=9.8, epss=0.01, in_kev=False,
              ransomware=False, remediation="none_available", vector=None,
-             fix_text=False):
+             fix_text=False, lev=None):
     return Finding(cve=cve, advisory_id="A", cvss=cvss, cwe="CWE-787",
                    epss=epss, in_kev=in_kev, ransomware=ransomware,
                    version_range="", decided=True, remediation=remediation,
-                   vector=vector, fix_text=fix_text)
+                   vector=vector, fix_text=fix_text, lev=lev)
+
+
+# --- T: four signals, the strongest wins -------------------------------------
+
+def test_lev_reaches_the_score():
+    """The gap this closes: 12,003 LEV estimates sat unread by the score.
+
+    `lev.Estimate.composite` had computed max(KEV, LEV, EPSS) for the LEV
+    report since before the score existed, but `threat` read only KEV and
+    EPSS -- so the one exploitation signal with a non-trivial corpus median
+    (0.167, against EPSS's 0.007) was published on its own page and ignored
+    where it mattered.
+    """
+    assert exposure.threat(_finding(epss=0.008, lev=None)) == pytest.approx(0.008)
+    assert exposure.threat(_finding(epss=0.008, lev=0.24)) == pytest.approx(0.24)
+
+
+def test_an_observation_outranks_any_model():
+    """KEV is a sighting; LEV and EPSS are estimates. No estimate may beat one."""
+    assert exposure.threat(_finding(in_kev=True, lev=0.99, epss=0.99)) == \
+        pytest.approx(exposure.KEV_THREAT)
+    assert exposure.threat(_finding(lev=0.99, epss=0.99)) == \
+        pytest.approx(exposure.MODEL_CEILING)
+    assert exposure.MODEL_CEILING < exposure.KEV_THREAT
+
+
+def test_no_signal_at_all_is_not_zero_threat():
+    assert exposure.threat(_finding(epss=None, lev=None)) == exposure.UNRATED_THREAT
 
 
 # --- T: threat amplifies, it never zeroes the rest ---------------------------
@@ -97,18 +125,40 @@ def test_planned_remediation_is_not_current_evidence_or_risk_reduction():
 
 # --- concentration, and the breadth it must not lose ------------------------
 
-def test_the_worst_three_dominate():
-    assert exposure.concentrate([1.0]) == pytest.approx(0.70)
-    assert exposure.concentrate([1.0, 1.0, 1.0]) == pytest.approx(1.0)
+def test_the_worst_path_counts_in_full():
+    """A single maximal flaw has to be able to reach maximal risk.
+
+    At the previous 0.70 leading weight this returned 0.70 -- E = 30 -- because
+    30% of the score was reserved for flaws the product did not happen to have.
+    One reachable, unfixed, confirmed-exploited, process-ending vulnerability is
+    the case a buyer most needs the number to get right.
+    """
+    assert exposure.concentrate([1.0]) == pytest.approx(1.0)
+    assert exposure.concentrate([0.48]) == pytest.approx(0.48)
 
 
-def test_a_long_tail_of_equally_bad_findings_still_counts():
-    """Top-three alone cannot tell three severe flaws from three hundred."""
-    three = exposure.concentrate([0.8] * 3)
-    many = exposure.concentrate([0.8] * 300)
-    assert many > three
-    # but breadth can never outvote the worst case
-    assert many - three <= exposure.TAIL_WEIGHT + 1e-9
+def test_further_paths_add_to_the_worst_one():
+    """A real device has several routes in, so paths two and three add on top.
+
+    The two figures are the specification's own worked example: one path at
+    0.48 gives E = 52, and adding 0.20 and 0.10 gives E = 47.
+    """
+    assert exposure.concentrate([0.48]) == pytest.approx(0.48)
+    assert exposure.concentrate([0.48, 0.20, 0.10]) == pytest.approx(0.53)
+    assert exposure.concentrate([0.4, 0.4, 0.4]) > exposure.concentrate([0.4])
+
+
+def test_breadth_beyond_three_paths_is_not_counted():
+    """Pins what the specified R gives up, so nobody rediscovers it as a bug.
+
+    R = min(1, z1 + 0.20 z2 + 0.10 z3) counts three paths and clips at 1, so
+    three severe flaws and three hundred score alike, and 5.7% of a 582-product
+    sample lands at exactly E = 0 where ranking stops. This is a consequence of
+    the chosen formula, not an oversight: restoring breadth is one term,
+    `+ TAIL_WEIGHT * mean(ordered[3:])` inside the min.
+    """
+    assert exposure.concentrate([0.8] * 3) == exposure.concentrate([0.8] * 300)
+    assert exposure.concentrate([0.8] * 3) == pytest.approx(1.0)
 
 
 def test_concentration_is_bounded():

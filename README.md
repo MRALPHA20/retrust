@@ -18,24 +18,24 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  PREFER  ·  77.9/100
-  CVEs 10  ·  ROBUST 85%
-
-  Moxa EDS-405A
-  CONDITIONAL  ·  64.6/100
-  CVEs 10  ·  ROBUST 67%
+  PREFER  ·  70.1/100
+  CVEs 10  ·  ROBUST 76%
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  50.9/100
+  AVOID  ·  28.6/100
   CVEs 942  ·  ROBUST gated
   Known exploited vulnerability
+
+  Moxa EDS-405A
+  AVOID  ·  5.9/100
+  CVEs 10  ·  ROBUST 56%
 
   Hikvision IP Camera
   AVOID  ·  no score
   ROBUST not sampled
   Named on a covered list
 
-  AVOID: 2  ·  CONDITIONAL: 1  ·  PREFER: 1
+  AVOID: 3  ·  PREFER: 1
 ```
 
 ## How it works

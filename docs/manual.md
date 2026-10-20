@@ -24,32 +24,32 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  PREFER  ·  77.9/100
-  CVEs 10  ·  ROBUST 85%
-
-  Moxa EDS-405A
-  CONDITIONAL  ·  64.6/100
-  CVEs 10  ·  ROBUST 67%
-
-  Schneider Electric Modicon M340
-  CONDITIONAL  ·  64.5/100
-  CVEs 48  ·  ROBUST 100%
-
-  Rockwell ControlLogix
-  CONDITIONAL  ·  42.0/100
-  CVEs 35  ·  ROBUST 49%
+  PREFER  ·  70.1/100
+  CVEs 10  ·  ROBUST 76%
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  50.9/100
+  AVOID  ·  28.6/100
   CVEs 942  ·  ROBUST gated
   Known exploited vulnerability
+
+  Schneider Electric Modicon M340
+  AVOID  ·  6.0/100
+  CVEs 48  ·  ROBUST 51%
+
+  Moxa EDS-405A
+  AVOID  ·  5.9/100
+  CVEs 10  ·  ROBUST 56%
+
+  Rockwell ControlLogix
+  AVOID  ·  5.9/100
+  CVEs 35  ·  ROBUST 51%
 
   Hikvision IP Camera
   AVOID  ·  no score
   ROBUST not sampled
   Named on a covered list
 
-  AVOID: 2  ·  CONDITIONAL: 1  ·  PREFER: 3
+  AVOID: 5  ·  PREFER: 1
 ```
 
 ---
@@ -514,10 +514,10 @@ NEWLY GATED   a disqualifying fact has appeared
   Hikvision IP Camera                           CONDITIONAL -> AVOID  Named on a covered list
 
 WORSE         the verdict fell
-  Rockwell Automation ControlLogix              PREFER -> CONDITIONAL  (-14.6)
+  Rockwell Automation ControlLogix              CONDITIONAL -> AVOID  (-14.6)
 
 SCORE MOVED   same verdict, different score
-  Moxa EDS-405A                                 CONDITIONAL  -5.5
+  Moxa EDS-405A                                 AVOID  -5.5
 
 8 product(s) compared, 4 unchanged.
 ```
@@ -551,7 +551,7 @@ better advisory record.
 $ retrust alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 
 ALTERNATIVES TO  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  50.9   Known exploited vulnerability
+  AVOID  28.6   Known exploited vulnerability
 
 ReTrust does not know whether any of these will do the same job. It holds
 advisory history, not specifications: no I/O counts, no form factors, no
@@ -730,36 +730,38 @@ retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
 ABB AC 800M
-PREFER  ·  77.9/100
-CVEs 10  ·  ROBUST 85%
-
-Moxa EDS-405A
-CONDITIONAL  ·  64.6/100
-CVEs 10  ·  ROBUST 67%
-
-Schneider Electric Modicon M340
-CONDITIONAL  ·  64.5/100
-CVEs 48  ·  ROBUST 100%
-
-Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
-CONDITIONAL  ·  55.5/100
-CVEs 1034  ·  ROBUST 100%
-Caution — KEV-listed CVE(s) in third-party component bundles
+PREFER  ·  70.1/100
+CVEs 10  ·  ROBUST 76%
 
 Siemens SIMATIC S7-1500 (firmware 3.1.6)
-AVOID  ·  50.9/100
-CVEs 942
+AVOID  ·  28.6/100
+CVEs 942  ·  ROBUST gated
 Known exploited vulnerability
+
+Schneider Electric Modicon M340
+AVOID  ·  6.0/100
+CVEs 48  ·  ROBUST 51%
+
+Moxa EDS-405A
+AVOID  ·  5.9/100
+CVEs 10  ·  ROBUST 56%
 
 Hikvision IP Camera
 AVOID  ·  no score
+ROBUST not sampled
 Named on a covered list
+
+product (firmware 6ES7518-4AX00-1AB0)
+NOT ASSESSED  ·  no score
+ROBUST not sampled
+need either an order number or vendor and product
 
 Acme Widgets Nonexistent 9000
 NOT ASSESSED  ·  no score
+ROBUST not sampled
 vendor 'Acme Widgets' does not appear in the advisory corpus
 
-AVOID: 2  ·  CONDITIONAL: 1  ·  NOT ASSESSED: 1  ·  PREFER: 4
+AVOID: 4  ·  NOT ASSESSED: 2  ·  PREFER: 1
   exit 1: a candidate is disqualified
 ```
 
@@ -815,8 +817,8 @@ of them:
   "weights":    { "exposure": 0.6, "patchability": 0.2, "vendor_practice": 0.15, "certification": 0.05 },
   "provenance": [ { "source": "CISA KEV", "detail": "1,726 entries",
                     "captured": "2026-09-27" } ],
-  "results": [ { "product": "Moxa EDS-405A", "verdict": "CONDITIONAL",
-                 "score": 55.9, "robust": 0.897, "gates": [], ... } ]
+  "results": [ { "product": "Moxa EDS-405A", "verdict": "AVOID",
+                 "score": 5.9, "robust": 0.56, "gates": [], ... } ]
 }
 ```
 
@@ -879,23 +881,50 @@ forty minor ones should not average out like forty-one middling ones.
 ```
 z  = T' × A × H × U          one number per vulnerability, 0–1, higher is worse
 T' = 0.40 + 0.60 T           threat amplifies; it never zeroes the rest
-R  = 0.70 z₁ + 0.20 z₂ + 0.10 z₃ + 0.10 mean(the rest)
+R  = min(1, z₁ + 0.20 z₂ + 0.10 z₃)
 E  = 100 (1 − R)
 ```
 
 | Term | Reads | From |
 |---|---|---|
-| `T` threat | KEV, ransomware linkage, EPSS | evidence; never asked |
+| `T` threat | ransomware linkage, KEV, LEV, EPSS — the strongest of them | evidence; never asked |
 | `A` reachability | the CVSS attack vector, narrowed by deployment and by a *verified* interface block | evidence + operator |
 | `H` impact | the finding's own CVSS severity, scaled by the declared process consequence | evidence + operator |
 | `U` applicability | does it still apply to the firmware being bought or run | CSAF + operator |
 
-Two decisions worth stating. `T` is mapped onto `[0.40, 1]` rather than used
-raw: the OT median EPSS is 0.007, so multiplying by it directly scored a
-critical, reachable, unfixed vulnerability as harmless purely because nobody had
-attacked it yet. And the tail term exists because the worst three alone cannot
-tell three severe flaws from three hundred — bounded at a tenth, so breadth can
-never outvote the worst case.
+Four decisions worth stating.
+
+`T` is mapped onto `[0.40, 1]` rather than used raw: the OT median EPSS is
+0.007, so multiplying by it directly scored a critical, reachable, unfixed
+vulnerability as harmless purely because nobody had attacked it yet.
+
+`T` takes the strongest of four signals rather than blending them. KEV and
+ransomware linkage are observations, LEV estimates whether exploitation has
+already happened, and EPSS forecasts the next thirty days; they share no
+horizon, so an average is meaningless and would let a model talk down something
+somebody watched happen. LEV matters most here — its corpus median is 0.167
+against EPSS's 0.007, so for most OT findings it is the only non-trivial
+exploitation evidence that exists.
+
+The worst path carries a coefficient of `1.00`, not the `0.70` an earlier
+revision used. At 0.70 a single maximal flaw — reachable, unfixed, confirmed
+exploited, process-ending — produced `E = 30` rather than 0, because 30% of the
+score was reserved for flaws the product did not have. Two costs come with
+fixing it, and both follow from the formula rather than from an oversight: `R`
+clips at 1, so a product with three severe paths reaches exactly `E = 0` and
+stops being rankable against a worse one (5.7% of a 582-product sample lands
+there); and only three paths are counted, so three severe flaws and three
+hundred score alike.
+
+**No operator declaration may promote a verdict.** Network exposure and
+interface reachability are the strongest inputs in the model and the only ones
+nobody can check. Measured with the clamp disabled, declarations produced 1,657
+band promotions across 489 products — 552 of them AVOID straight to PREFER —
+and, because the discount scales each product's own vector mix, reordered 118
+of 119 products in a comparison. So the undeclared score sets the best band a
+product can reach; declarations still move the number inside it, still rank
+candidates, and are still shown. A verdict that an unverified dropdown can
+improve is not a procurement control.
 
 **3. A weighted product**, reported as a band:
 
@@ -986,16 +1015,31 @@ That is fair, and the honest answer is to measure it instead of arguing about it
 simplex and reports how often the verdict survives:
 
 ```
+$ retrust sensitivity --vendor Omron --product CJ2M
+
+CONDITIONAL  Omron CJ2M
+
+  CONDITIONAL under 90% of weightings -- the verdict does not hinge on the weights
+  score across 500 random weightings: 31.5 to 69.4 (median 53.7)
+
 $ retrust sensitivity --vendor "Schneider Electric" --product "Modicon M340"
 
-CONDITIONAL under 100% of weightings -- the verdict does not hinge on the weights
-  score across 500 random weightings: 56.1 to 70.0 (median 69.9)
+AVOID  Schneider Electric Modicon M340
+
+  AVOID under only 52% of weightings (also CONDITIONAL 48%) -- this is a judgement call, not a clear result
+  score across 500 random weightings: 1.9 to 69.9 (median 38.1)
 ```
 
-A verdict that holds under 96% of weightings is not a matter of opinion. One
-that holds under 72% is a judgement call, and the tool says so instead of
-handing you a false precision. `compare` prints this as a **ROBUST** column and
-flags anything below 90%.
+The first verdict is not a matter of opinion; the second is, and the tool says
+so rather than handing you a false precision. `compare` prints this as a
+**ROBUST** column and flags anything below 90%.
+
+Expect to see the flag often. Across a 192-product sample, 67% of ungated
+products score below 90% agreement under the current model, because exposure
+usually sits well below the other three pillars -- so how much weight exposure
+carries genuinely changes the answer. That is the measurement being honest
+about a real disagreement, not noise: a low ROBUST means read the pillars
+rather than the headline.
 
 Reported alongside, but deliberately **not** part of the score: **evidence
 confidence**, the share of findings whose version range parsed cleanly and which

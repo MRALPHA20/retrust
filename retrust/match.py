@@ -287,6 +287,15 @@ class Finding:
     # The finding arrives via a third-party/component bundle advisory, where
     # per-CVE reachability on the device is exactly what was not established.
     third_party: bool = False
+    # NIST CSWP 41's retrospective estimate that this CVE has been exploited.
+    # Distinct from epss, which forecasts the next thirty days, and from
+    # in_kev, which records a sighting. `exposure.threat` takes the strongest.
+    #
+    # Appended, not inserted next to the other exploitation signals where it
+    # belongs by meaning: callers build Findings positionally, so a field added
+    # mid-list silently feeds the wrong argument to the wrong name. New fields
+    # go at the end.
+    lev: float | None = None
 
     @property
     def fixed(self):
@@ -319,10 +328,11 @@ def findings(connection, resolution, version=None):
 
         rows = connection.execute(
             "SELECT a.cve, a.cvss, a.cwe, a.remediation, a.vector, a.fix_text,"
-            "       v.rollup, e.epss, e.in_kev, e.ransomware"
+            "       v.rollup, e.epss, e.in_kev, e.ransomware, l.lev"
             " FROM affected a"
             " JOIN advisory v ON v.id = a.advisory_id"
             " LEFT JOIN exploitation e ON e.cve = a.cve"
+            " LEFT JOIN lev_estimate l ON l.cve = a.cve"
             " WHERE a.advisory_id = ? AND a.product_id = ?",
             (match.advisory_id, match.product_id)).fetchall()
 
@@ -349,6 +359,7 @@ def findings(connection, resolution, version=None):
                 cve=row["cve"], advisory_id=match.advisory_id,
                 cvss=row["cvss"], cwe=row["cwe"], epss=row["epss"],
                 in_kev=bool(row["in_kev"]), ransomware=bool(row["ransomware"]),
+                lev=row["lev"],
                 version_range=match.version_range, decided=decided,
                 remediation=row["remediation"] or "unknown",
                 vector=row["vector"],

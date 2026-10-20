@@ -104,3 +104,103 @@ def test_a_declared_network_is_shown_as_used_not_discarded():
     # And the declaration must actually change the number, not just the label.
     plain = score.assess("Example", _findings(), {"A"})
     assert declared.score > plain.score
+
+
+# --- the declaration clamp --------------------------------------------------
+
+_AV_NETWORK = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+
+
+def _finding(cve, cvss, epss, remediation):
+    return Finding(cve=cve, advisory_id="A", cvss=cvss, cwe="CWE-125",
+                   epss=epss, in_kev=False, ransomware=False, version_range="",
+                   decided=True, remediation=remediation, vector=_AV_NETWORK)
+
+
+def _near_the_line():
+    """A product that earns CONDITIONAL on evidence and PREFER if you declare.
+
+    Two patched findings lift patch availability, one unpatched network-
+    reachable medium holds exposure down, and the undeclared composite lands
+    at 67.0 -- just under the PREFER threshold. That gap is the only state in
+    which the clamp has anything to do, and a product has to be assembled
+    deliberately to sit in it.
+    """
+    return [_finding("CVE-2026-0001", 4.0, 0.001, "vendor_fix"),
+            _finding("CVE-2026-0002", 4.0, 0.001, "vendor_fix"),
+            _finding("CVE-2026-9001", 7.0, 0.02, "none_available")]
+
+
+RANK = {"AVOID": 0, "CONDITIONAL": 1, "PREFER": 2}
+
+
+def test_the_fixture_really_sits_below_the_line():
+    """Guards the tests below: a fixture that already earns PREFER proves nothing."""
+    earned = score.assess("Example", _near_the_line(), {"A"})
+    assert earned.verdict == "CONDITIONAL"
+    assert 60 < earned.score < 70
+
+
+@pytest.mark.parametrize("declaration", [
+    {"network_exposure": "isolated"},
+    {"network_exposure": "it_ot"},
+    {"interface": "blocked"},
+    {"remediation": "applied"},
+    {"consequence": "negligible"},
+    {"network_exposure": "isolated", "interface": "blocked",
+     "remediation": "applied", "consequence": "negligible"},
+])
+def test_no_declaration_can_promote_the_verdict(declaration):
+    """The bug this guards, measured on 489 real products with the clamp off:
+
+    declarations produced 1,657 promotions, 552 of them AVOID straight to
+    PREFER. Nobody can check "isolated" or "verified blocked", and because the
+    discount scales each product's own vector mix it also reordered 118 of 119
+    products in a comparison -- so an unverifiable dropdown was deciding
+    procurement outcomes. With the clamp on, the same scan gives zero.
+    """
+    findings = _near_the_line()
+    earned = score.assess("Example", findings, {"A"})
+    declared = score.assess("Example", findings, {"A"}, **declaration)
+    assert RANK[declared.verdict] <= RANK[earned.verdict]
+
+
+def test_the_clamp_leaves_the_score_free_to_move_inside_the_band():
+    """Clamping the band, not the number: declarations must still rank candidates.
+
+    A clamp on the score would throw the refinement away. Clamping the band
+    keeps the number usable for comparing candidates while keeping the verdict
+    on evidence.
+    """
+    findings = _near_the_line()
+    earned = score.assess("Example", findings, {"A"})
+    declared = score.assess("Example", findings, {"A"},
+                            network_exposure="isolated")
+    assert declared.score > earned.score
+    assert declared.verdict == earned.verdict
+
+
+def test_the_clamp_says_why_it_fired():
+    """A number the tool silently refused to honour would be worse than no clamp."""
+    declared = score.assess("Example", _near_the_line(), {"A"},
+                            network_exposure="isolated")
+    assert any("on evidence alone" in note for note in declared.notes)
+
+
+def test_a_product_that_earns_prefer_is_not_clamped():
+    """The clamp must not cap a verdict the evidence already supports."""
+    clean = [_finding("CVE-2026-0001", 2.0, 0.0001, "vendor_fix")]
+    earned = score.assess("Example", clean, {"A"})
+    declared = score.assess("Example", clean, {"A"}, network_exposure="isolated")
+    assert earned.verdict == declared.verdict == "PREFER"
+    assert not any("on evidence alone" in note for note in declared.notes)
+
+
+def test_only_a_real_declaration_trips_the_clamp():
+    """`narrows` is the guard: with nothing declared there is nothing to clamp."""
+    assert not score.narrows()
+    assert not score.narrows(interface="unknown", remediation="unknown")
+    assert score.narrows(network_exposure="isolated")
+    assert score.narrows(consequence="safety")
+    assert score.narrows(interface="blocked")
+    assert score.narrows(remediation="applied")

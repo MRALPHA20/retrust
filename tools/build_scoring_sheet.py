@@ -103,8 +103,10 @@ def measured():
     return {"a": assessment, "worst": worst, "n": len(first),
             "R": X.concentrate(risks), "pillars": pillars,
             "w": score.DEFAULT_WEIGHTS, "tail": X.TAIL_WEIGHT,
+            "one_path": X.concentrate([0.48]),
+            "three_path": X.concentrate([0.48, 0.20, 0.10]),
             "floor": X.THREAT_FLOOR, "verify": {
-                "R": X.concentrate([0.80, 0.40, 0.20]),
+                "R": X.concentrate([0.48, 0.20, 0.10]),
                 "S": score._composite(
                     [(s, score.Pillar(s.name, v, 1.0)) for s, v in (
                         (next(x for x in score.PILLARS if x.key == "exposure"), 34.0),
@@ -161,13 +163,22 @@ def story(m):
             table(rows, [44 * mm, 18 * mm, 16 * mm, 16 * mm, 16 * mm, 16 * mm, 20 * mm])]
 
     out += [Paragraph("Step 2 &#8212; concentrate on the worst few", S["H2"]),
-            box("R  =  0.70 z<sub>1</sub> + 0.20 z<sub>2</sub> + 0.10 z<sub>3</sub>"
-                "  +  %.2f &#215; mean(the rest)"
-                "<br/>E  =  100 (1 &#8722; R)" % m["tail"]),
+            box("R  =  min(1,  z<sub>1</sub> + 0.20 z<sub>2</sub> + 0.10 z<sub>3</sub>)"
+                "<br/>E  =  100 (1 &#8722; R)"),
             Paragraph("Averaging is what a purchase decision least wants: a product with "
                       "one catastrophic flaw and forty minor ones should not come out like "
-                      "forty-one middling ones. The worst three decide most of the result.",
-                      S["Body"]),
+                      "forty-one middling ones. So the worst path enters at full weight, and "
+                      "the next two add on top of it rather than diluting it &#8212; a real "
+                      "device has more than one route in. The leading coefficient is 1.00 "
+                      "because an earlier 0.70 reserved 30% of the score for flaws the "
+                      "product did not have, capping a single catastrophic finding at "
+                      "E = 30 when it should reach 0.", S["Body"]),
+            Paragraph("Two costs come with this, and both are consequences of the formula "
+                      "rather than oversights. R clips at 1, so a product with three severe "
+                      "paths reaches exactly E = 0 and stops being rankable against a worse "
+                      "one &#8212; 5.7% of a 582-product sample lands there. And only three "
+                      "paths are counted, so three severe flaws and three hundred score "
+                      "alike.", S["Small"]),
             box("R = %.4f over %d findings     &#8594;     E = %.1f"
                 % (m["R"], m["n"], 100 * (1 - m["R"]))),
             Paragraph("Step 3 &#8212; combine the four pillars", S["H2"]),
@@ -198,26 +209,30 @@ def story(m):
                       "functions return the reference results to four decimal places.",
                       S["Body"]),
             table([["Reference step", "Reference result", "Tool&#8217;s function", "Returns"],
-                   ["R from z = 0.80, 0.40, 0.20", "0.66", "exposure.concentrate()", "<b>%.4f</b>" % m["verify"]["R"]],
-                   ["E = 100(1 &#8722; R)", "34", "&#8212;", "<b>%.2f</b>" % (100 * (1 - m["verify"]["R"]))],
+                   ["R from one path, z = 0.48", "0.48", "exposure.concentrate()", "<b>%.2f</b>" % m["one_path"]],
+                   ["E = 100(1 &#8722; R), one path", "52", "&#8212;", "<b>%.0f</b>" % (100 * (1 - m["one_path"]))],
+                   ["R from z = 0.48, 0.20, 0.10", "0.53", "exposure.concentrate()", "<b>%.2f</b>" % m["three_path"]],
+                   ["E = 100(1 &#8722; R), three paths", "47", "&#8212;", "<b>%.0f</b>" % (100 * (1 - m["three_path"]))],
                    ["S from E=34, P=70, V=80, C=60", "45.95", "score._composite()", "<b>%.4f</b>" % m["verify"]["S"]]],
                   [52 * mm, 30 * mm, 48 * mm, 35 * mm])]
 
-    out += [Paragraph("Four deliberate departures, each for a measured reason", S["H2"]),
+    out += [Paragraph("Five deliberate departures, each for a measured reason", S["H2"]),
             table([["#", "Departure", "Why"],
                    ["1", "T is mapped onto [%.2f, 1] rather than used raw" % m["floor"],
                     "The OT corpus median EPSS is 0.007. Used directly, a critical, network-reachable, unfixed CVE gives z &#8776; 0.007 and so E &#8776; 99.5 &#8212; &#8220;harmless&#8221;, because nobody has attacked it yet. Threat now amplifies rather than decides."],
                    ["2", "H carries the finding&#8217;s CVSS severity, scaled by the declared consequence",
                     "The reference z has no severity term, so a CVSS 9.8 and a 4.0 with equal EPSS scored identically. This follows the reference&#8217;s own caveat that impact must consider what the vulnerability actually permits."],
-                   ["3", "A bounded tail term is added after the worst three",
-                    "Top-three alone cannot tell three severe flaws from three hundred: both give R = 0.80 exactly. Capped at %.2f, so breadth can never outvote the worst case." % m["tail"]],
-                   ["4", "C may lift the score but never lower it",
+                   ["3", "T reads LEV as well as KEV and EPSS",
+                    "The reference specifies T = max(KEV, LEV, EPSS). LEV&#8217;s corpus median is 0.167 against EPSS&#8217;s 0.007, so for most OT findings it is the only non-trivial exploitation evidence there is. An observation still outranks any model: a KEV listing beats any estimate."],
+                   ["4", "No operator declaration may promote the verdict",
+                    "Measured with the clamp off: declarations produced 1,657 band promotions across 489 products, 552 of them AVOID straight to PREFER, and reordered 118 of 119 products in a comparison. Nobody can verify &#8220;isolated&#8221;. The undeclared score now sets the best band; declarations still move the number inside it."],
+                   ["5", "C may lift the score but never lower it",
                     "As written, C<super>0.05</super> costs an uncertified product 20.6% of its score (57.8 against 72.7, measured). Most OT hardware is never submitted for certification, so absence is excluded rather than penalised."]],
                   [8 * mm, 58 * mm, 99 * mm])]
 
     out += [Paragraph("What the number is, and is not", S["H2"]),
-            table([["Higher is better", "A score is how favourable the public evidence is, not a probability that the equipment is secure. 78/100 means low assessed risk, not &#8220;78% safe&#8221;."],
-                   ["Gates override it", "A gated product is AVOID whatever the arithmetic says. Declaring an isolated network raises the number and does not lift the gate."],
+            table([["Higher is better", "A score is how favourable the public evidence is, not a probability that the equipment is secure. 70/100 means low assessed risk, not &#8220;70% safe&#8221;."],
+                   ["Gates override it", "A gated product is AVOID whatever the arithmetic says. Declaring an isolated network raises the number, and lifts neither the gate nor the band."],
                    ["Counts are never scored", "Raw CVE volume carries no weight, because that would rank a diligent discloser below a silent one."],
                    ["Absence is not safety", "An unresolved product is NOT ASSESSED, never a flattering 100. An unparseable version range stays in scope."],
                    ["Evidence completeness is separate", "It says how far to trust the score, not how risky the product is, so it is reported beside the verdict and never inside it."],

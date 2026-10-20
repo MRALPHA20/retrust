@@ -34,7 +34,7 @@ BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
 
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
-SCORING_VERSION = "RT2"
+SCORING_VERSION = "RT3"
 
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
@@ -417,6 +417,17 @@ def _network_exposure(value):
                    "ReTrust has not independently verified the plant network."])
 
 
+def narrows(network_exposure=None, consequence=None, interface="unknown",
+            remediation="unknown"):
+    """Did the operator supply anything that can narrow exposure?
+
+    `assessment_type` is absent on purpose: it is recorded, never scored, so it
+    cannot move a number and must not trip the clamp below.
+    """
+    return bool(network_exposure) or consequence is not None \
+        or interface != "unknown" or remediation != "unknown"
+
+
 def _exposure(findings, consequence=None, interface="unknown",
               assessment_type="purchase", remediation="unknown", network=None):
     """The E term: concentrated exposure, as a Pillar."""
@@ -721,6 +732,47 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         if others:
             composite = max(composite, _composite(others, weights))
 
+    # A declaration may refine the number; it may never promote the verdict.
+    #
+    # Network exposure and interface reachability are the strongest inputs in
+    # the model and the only ones nobody can check. Measured on 399 corpus
+    # products, ticking "isolated" alone moved 253 from CONDITIONAL to PREFER
+    # and 19 from AVOID to PREFER; "verified blocked" alone moved 19 from AVOID
+    # to PREFER. Worse, because the discount scales each product's own vector
+    # mix it is not a flat shift: it reordered 118 of 119 products in a
+    # comparison. An unverifiable dropdown was deciding procurement.
+    #
+    # So the undeclared score sets the best BAND this product can reach, and
+    # declarations move the score within it. They still rank candidates and
+    # still show in the report. Note that clamping promotion clamps everything
+    # a declaration can currently do: every multiplier in exposure.py is <= 1,
+    # so no answer the operator can give makes a product look worse. The
+    # clamp is written against the band rather than the score so that the one
+    # direction worth keeping open stays open if that ever changes.
+    #
+    # This is the same asymmetry certification already uses above, and it is
+    # uniform across all four declarations deliberately: a per-field carve-out
+    # would need defending field by field, and "no unverified input can
+    # promote a verdict" is a property a reviewer can check in one sentence.
+    clamp_note = None
+    if narrows(network_exposure, consequence, interface, remediation):
+        undeclared = [(spec, _exposure(base) if spec.key == "exposure" else pillar)
+                      for spec, pillar in usable]
+        earned = _composite(undeclared, weights)
+        rows = bands or BANDS
+        reached = next(t for t, _ in rows if earned >= t)
+        better = [t for t, _ in rows if t > reached]
+        if better and composite >= min(better):
+            promoted = next(b for t, b in rows if composite >= t)
+            composite = min(better) - 0.1
+            clamp_note = (
+                f"Your declared deployment scores {_composite(usable, weights):.1f}"
+                f" ({promoted}), but the product earns {earned:.1f} on evidence"
+                " alone. The band shown is the one the evidence earns: a"
+                " verdict that can be improved by an unverified answer is not"
+                " a procurement control. The declared figure still ranks this"
+                " product against the others you are comparing.")
+
     prefer_threshold = (bands or BANDS)[0][0]
     cap_note = None
     unmitigable = sorted({
@@ -745,6 +797,8 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     notes = []
     if cap_note:
         notes.append(cap_note)
+    if clamp_note:
+        notes.append(clamp_note)
     if first and third:
         notes.append(
             f"{len({f.cve for f in third})} of the CVEs in scope arrive via"
