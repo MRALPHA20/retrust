@@ -38,45 +38,38 @@ def test_lev_reaches_the_score():
 
 
 def test_an_observation_outranks_any_model():
-    """KEV is a sighting; LEV and EPSS are estimates. No estimate may beat one."""
-    assert exposure.threat(_finding(in_kev=True, lev=0.99, epss=0.99)) == \
-        pytest.approx(exposure.KEV_THREAT)
-    assert exposure.threat(_finding(lev=0.99, epss=0.99)) == \
-        pytest.approx(exposure.MODEL_CEILING)
-    assert exposure.MODEL_CEILING < exposure.KEV_THREAT
+    assert exposure.threat(_finding(in_kev=True, lev=.99, epss=.99)) == 1
+    assert exposure.threat(_finding(lev=.99, epss=.99)) == .99
 
 
-def test_no_signal_at_all_is_not_zero_threat():
-    assert exposure.threat(_finding(epss=None, lev=None)) == exposure.UNRATED_THREAT
+def test_missing_threat_sources_are_an_interval():
+    f = _finding(epss=None, lev=None)
+    f.kev_available = False
+    assert exposure.threat(f) is None
+    assert exposure.threat_bounds(f).values() == [0, 1]
 
 
 # --- T: threat amplifies, it never zeroes the rest ---------------------------
 
-def test_an_unexploited_critical_still_carries_weight():
-    """The bug this guards: multiplying by raw EPSS collapsed every unexploited
-    flaw to nothing, so a critical, reachable, unfixed vulnerability scored as
-    harmless purely because nobody had attacked it yet."""
-    remote = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
-    quiet = _finding(cvss=9.8, epss=0.005, vector=remote)   # OT median is 0.007
-    assert exposure.risk(quiet) > 0.3
-    # Confirmed exploitation must still be clearly worse than silence.
-    assert exposure.risk(_finding(cvss=9.8, epss=0.005, in_kev=True,
-                                  vector=remote)) > exposure.risk(quiet)
-    # And a vector we cannot read is neither extreme.
-    assert 0 < exposure.reach(_finding(vector=None)) < 1.0
+def test_raw_threat_is_used_without_a_floor_or_transform():
+    f = _finding(epss=.005, lev=0, vector=_NEEDS_NOTHING)
+    assert exposure.risk(f, consequence='control', interface='exposed') == pytest.approx(.004)
+    f.in_kev = True
+    assert exposure.risk(f, consequence='control', interface='exposed') == pytest.approx(.8)
+    assert exposure.reach_bounds(_finding(vector=None)).values() == [0, 1]
 
 
-def test_ransomware_is_the_top_of_the_threat_scale():
-    assert exposure.threat(_finding(ransomware=True)) == 1.0
-    assert exposure.threat(_finding(in_kev=True)) < 1.0
+def test_confirmed_exploitation_is_one():
+    assert exposure.threat(_finding(ransomware=True)) == 1
+    assert exposure.threat(_finding(in_kev=True)) == 1
 
 
 # --- H: severity carries the per-finding half of impact ----------------------
 
-def test_severity_still_reaches_the_score():
-    """z has no severity term of its own, so it enters through H. Without this
-    a 9.8 and a 4.0 with equal EPSS scored identically."""
-    assert exposure.risk(_finding(cvss=9.8)) > exposure.risk(_finding(cvss=4.0))
+def test_h_uses_credible_ot_consequence_without_a_cvss_multiplier():
+    low, high = _finding(cvss=4, lev=.6), _finding(cvss=9.8, lev=.6)
+    assert exposure.impact(low, 'control') == exposure.impact(high, 'control') == .8
+    assert exposure.impact(low) is None
 
 
 def test_an_undeclared_consequence_is_conservative_and_not_a_guess():
@@ -284,26 +277,19 @@ def test_demands_conditions_reads_all_three_cvss_generations():
     assert exposure.demands_conditions(cvss.parse(_NEEDS_CONDITIONS))
     # v2 spells privileges "Au" and never asked about interaction at all.
     assert exposure.demands_conditions(cvss.parse("AV:N/AC:L/Au:S/C:C/I:C/A:C"))
-    assert not exposure.demands_conditions(cvss.parse("AV:N/AC:L/Au:N/C:C/I:C/A:C"))
-    assert not exposure.demands_conditions(None)
+    assert exposure.demands_conditions(cvss.parse("AV:N/AC:L/Au:N/C:C/I:C/A:C")) is None
+    assert exposure.demands_conditions(None) is None
 
 
 # --- the worst single flaw, reported because exposure clips ------------------
 
-def test_the_worst_flaw_still_separates_products_the_score_has_flattened():
-    """Three severe paths clip R at 1, so E = 0 for every product past that.
-
-    Moxa EDS-405A, Rockwell ControlLogix and Schneider M340 all clip, leaving
-    5.9/5.9/6.0 -- which is not a ranking. The highest single z keeps working
-    after exposure has bottomed out.
-    """
-    bad = [_finding(cve=f"CVE-2026-{i:04d}", cvss=9.8, in_kev=True,
-                    vector=_NEEDS_NOTHING) for i in range(3)]
-    worse = bad + [_finding(cve="CVE-2026-9999", cvss=10.0, ransomware=True,
-                            vector=_NEEDS_NOTHING)]
-    assert exposure.concentrate([exposure.risk(f) for f in bad]) == \
-        exposure.concentrate([exposure.risk(f) for f in worse]) == 1.0
-    assert exposure.worst(worse) > exposure.worst(bad)
+def test_worst_flaw_retains_the_uncapped_largest_contribution():
+    bad = [_finding(cve=f'CVE-2026-{i:04d}', lev=.8, vector=_NEEDS_NOTHING) for i in range(3)]
+    worse = bad + [_finding(cve='CVE-2026-9999', in_kev=True, vector=_NEEDS_NOTHING)]
+    inputs = dict(consequence='safety', interface='exposed')
+    assert exposure.concentrate([exposure.risk(f, **inputs) for f in bad]) == 1
+    assert exposure.worst(bad, **inputs) == .8
+    assert exposure.worst(worse, **inputs) == 1
 
 
 def test_the_worst_flaw_is_none_when_there_is_nothing_to_rank():

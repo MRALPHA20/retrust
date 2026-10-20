@@ -67,9 +67,11 @@ class Change:
             return "moved" if abs(self.drift or 0) >= MOVED else "same"
         # A product that cannot be resolved any more has not become safer or
         # more dangerous; we have simply stopped being able to say.
+        if self.now == "VERIFY":
+            return "verify"
         if self.now == "NOT ASSESSED":
             return "lost"
-        if self.was == "NOT ASSESSED":
+        if self.was in ("NOT ASSESSED", "VERIFY"):
             return "gained"
         return "worse" if RANK[self.now] > RANK[self.was] else "better"
 
@@ -108,7 +110,7 @@ def compare(previous, current):
                               before=record, after=after, new_gates=gates))
     # Worst news first: a fresh gate, then a fallen verdict, then the rest.
     order = {"gated": 0, "worse": 1, "lost": 2, "better": 3, "gained": 4,
-             "moved": 5, "same": 6}
+             "verify": 2, "moved": 5, "same": 6}
     changes.sort(key=lambda c: (order.get(c.kind, 9), -abs(c.drift or 0)))
     return changes
 
@@ -143,6 +145,7 @@ HEADINGS = {
     "gated": "NEWLY GATED   a disqualifying fact has appeared",
     "worse": "WORSE         the verdict fell",
     "lost":  "NO LONGER ASSESSABLE   the query stopped resolving",
+    "verify": "VERIFY        technical checks are needed before deciding",
     "better": "BETTER        the verdict rose",
     "gained": "NOW ASSESSABLE   the query resolves where it did not",
     "moved": "SCORE MOVED   same verdict, different score",
@@ -155,6 +158,14 @@ def format_report(changes, previous_meta=None, current_weights=None):
         return "Nothing to compare: the stored result held no products."
 
     lines = []
+    models = sorted({(c.before.get('vector', '').split('/')[0],
+                      c.after.get('vector', '').split('/')[0]) for c in changes
+                     if c.before.get('vector') and c.after.get('vector')
+                     and c.before['vector'].split('/')[0] != c.after['vector'].split('/')[0]})
+    if models:
+        lines += ['THE SCORING MODEL CHANGED BETWEEN THESE TWO RUNS',
+                  '  ' + ', '.join(f'{old} -> {new}' for old, new in models),
+                  '  Score changes cannot be attributed to new vulnerability evidence alone.', '']
     if drifted := weights_differ(previous_meta or {}, current_weights or {}):
         # Said before any finding, because otherwise every score below reads as
         # evidence about the corpus when some of it is evidence about the config.

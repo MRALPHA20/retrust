@@ -28,7 +28,7 @@ from .match import boundary_key, prefix_matches
 CONSIDER = 40
 
 # Verdicts good enough to be worth a buyer's time, best first.
-RANK = {"PREFER": 0, "CONDITIONAL": 1}
+RANK = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2}
 
 
 @dataclass
@@ -42,6 +42,9 @@ class Option:
     shared: str          # the leading name tokens it has in common
     gates: list
     cves: int
+    score_min: float | None = None
+    score_max: float | None = None
+    provisional: bool = False
 
 
 def tokens(name):
@@ -148,6 +151,8 @@ def find(connection, vendor, product, assess, limit=8, exclude=()):
             product=assessment.product, name=name, verdict=assessment.verdict,
             score=assessment.score, gates=list(assessment.gates),
             cves=assessment.findings_count,
+            score_min=assessment.score_min, score_max=assessment.score_max,
+            provisional=assessment.provisional,
             shared=" ".join(product.split()[:depth])))
 
     options.sort(key=lambda option: (RANK[option.verdict], -option.score))
@@ -182,8 +187,7 @@ def format_report(subject, options, skipped, considered=0, version=None):
             f" again once you know which firmware you would buy."), ""]
 
     if not options:
-        lines.append("No product in this vendor's family scored better and could"
-                     " also be assessed.")
+        lines.append("No related product met the evidence and review requirements for this list.")
         if any(skipped.values()):
             lines += _skipped_lines(skipped)
         elif not considered:
@@ -191,12 +195,17 @@ def format_report(subject, options, skipped, considered=0, version=None):
                          " name under this vendor.")
         return "\n".join(lines)
 
+    if any(o.provisional for o in options):
+        lines += ["VERIFY candidates need technical checks; their ranges are provisional, "
+                  "not recommendations or proof that they are safer.", ""]
     lines.append(f"{'CANDIDATE':<44}  {'VERDICT':<12} SCORE  CVES  SHARED NAME")
     for option in options:
+        shown = (f"{option.score_min:.1f}-{option.score_max:.1f}" if option.provisional
+                 else f"{option.score:.1f}")
         lines.append(f"{option.product[:44]:<44}  {option.verdict:<12} "
-                     f"{option.score:>5.1f}  {option.cves:>4}  {option.shared}")
+                     f"{shown:>5}  {option.cves:>4}  {option.shared}")
 
-    if subject.score is not None:
+    if subject.score is not None and not subject.provisional and not any(o.provisional for o in options):
         better = sum(1 for o in options if o.score > subject.score)
         lines += ["", f"{better} of {len(options)} scored above "
                       f"{subject.product[:40]} ({subject.score:.1f})."]

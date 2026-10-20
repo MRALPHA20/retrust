@@ -119,296 +119,34 @@
   footer{margin-top:3.4rem;padding-top:1.6rem;border-top:1px solid var(--rule);color:var(--faint);font-size:.86rem;display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;align-items:center}
   footer .mono{font-family:var(--mono)}
   code{font-family:var(--mono);font-size:.85em;background:var(--sunk);border:1px solid var(--rule);border-radius:5px;padding:.08em .4em;white-space:nowrap}
+a{color:var(--accent);text-underline-offset:.15em}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{color:var(--soft)}
 </style>
 
 <div class="wrap">
-
-  <div class="top">
-    <div class="brand"><span class="mark">R<sup>↗</sup></span> ReTrust</div>
-    <button class="toggle" id="themeBtn" aria-label="Switch light or dark theme">◐ theme</button>
-  </div>
-
-  <p class="eyebrow">The scoring, in full</p>
-  <h1>How ReTrust turns evidence into a verdict.</h1>
-  <p class="lede">Everything you need to explain the score: the formula, every pillar’s maths, the gates,
-    and — for each — <em>why it’s built that way.</em></p>
-
-  <nav class="toc" aria-label="Contents">
-    <a href="#shape">The three layers</a>
-    <a href="#formula">The formula</a>
-    <a href="#weights">The weights</a>
-    <a href="#pillars">Each pillar</a>
-    <a href="#names">Buyer names</a>
-    <a href="#gates">The gates</a>
-    <a href="#overrides">Two overrides</a>
-    <a href="#bands">Bands &amp; verdict</a>
-    <a href="#examples">Worked examples</a>
-    <a href="#explain">When you explain it</a>
-  </nav>
-
-  <h2 id="shape">1 · The shape: three layers, not one number</h2>
-  <p class="note-txt">A single blended number is dangerous for procurement, because a genuine deal-breaker
-    can be <em>averaged away</em> by good scores elsewhere. So a verdict is built in three separate stages:</p>
-  <div class="layers">
-    <div class="layer"><span class="ln">1</span><div><b>Hard gates</b> — pass / fail, outside the maths. Any one tripping ends it: AVOID, no score.</div></div>
-    <div class="layer"><span class="ln">2</span><div><b>Weighted score</b> — a 0–100 product of four pillars, for everything that clears the gates.</div></div>
-    <div class="layer"><span class="ln">3</span><div><b>Bands</b> — the number becomes a word: ≥ 70 PREFER · ≥ 40 CONDITIONAL · else AVOID.</div></div>
-  </div>
-  <div class="callout"><p>The one line that captures the philosophy: <em>a deal-breaker can’t be out-voted by a decent average.</em></p></div>
-
-  <h2 id="formula">2 · The formula</h2>
-  <p class="note-txt">The composite is a weighted <b>product</b> of the pillar scores — not an average — and
-    only of the pillars that actually had evidence:</p>
-  <div class="formula" role="img" aria-label="S equals E to the power 0.60 times P to the power 0.20 times V to the power 0.15 times C to the power 0.05">
-    <div class="frac" style="font-size:clamp(.95rem,3vw,1.3rem)">
-      S &nbsp;=&nbsp; E<sup>0.60</sup> &nbsp;×&nbsp; P<sup>0.20</sup> &nbsp;×&nbsp; V<sup>0.15</sup> &nbsp;×&nbsp; C<sup>0.05</sup>
-    </div>
-  </div>
-  <p class="note-txt"><b>Why a product and not a mean?</b> So that dangerous exposure cannot be bought back with
-    a good vendor record and a certificate. In an average, 60% weight still lets the other 40% drag a bad score
-    up; in a product, a poor E pulls the whole result down. It is the same rule the hard gates enforce, applied
-    to the weighted part.</p>
-  <p class="note-txt">Two details that matter. Pillars enter as <b>1–100, never 0</b>: a zero in a product is
-    absorbing, and one unmeasured term must not erase every other measurement — the floor keeps a catastrophic
-    pillar catastrophic (E = 0 lands near 5/100, deep in AVOID) without annihilating the score. And a pillar with
-    <b>no evidence is dropped and the remaining exponents renormalised</b> back to 1.0 — never scored as a
-    neutral 50, which would quietly shift every ranking. Each pillar is 0–100 where <b>higher is better</b>.</p>
-
-  <h2 id="weights">3 · The weights, and why these</h2>
-  <p class="note-txt">Weight = how much a pillar counts. They sum to 1.0 and are ordered by <b>decision relevance</b>:</p>
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>Pillar</th><th class="n">Exponent</th><th>Why it sits there</th></tr></thead>
-      <tbody>
-        <tr><td class="prod">E — Exposure</td><td class="n">0.60</td><td>Three-fifths of the result. It carries the whole question of “how dangerous are the actual flaws, here, on this box?” — threat, reachability, impact and applicability combined.</td></tr>
-        <tr><td class="prod">P — Patch availability</td><td class="n">0.20</td><td>Can you fix what is wrong? The maintenance half of the decision.</td></tr>
-        <tr><td class="prod">V — Vendor practice</td><td class="n">0.15</td><td>A softer, proxy signal, so it gets less pull.</td></tr>
-        <tr><td class="prod">C — Certification</td><td class="n">0.05</td><td>The lightest, and the only asymmetric one: it may lift a score, never lower it.</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <p class="note-txt">In a product the exponent is leverage rather than a slice of points: raising E does more
-    for the result than raising C by the same amount, and a <em>bad</em> E costs more than a good C can recover.
-    <b>The honest part:</b> these are a defensible default, <em>not</em> a claim of truth. They live in a config
-    file you can change, and <code>retrust sensitivity</code> re-runs the verdict under hundreds of random
-    reweightings — if a verdict only holds under this exact weighting, it is flagged as a judgement call.</p>
-
-  <h2 id="pillars">4 · Each pillar: the maths, and why that shape</h2>
-  <p class="note-txt">Every pillar returns a 0–100 score. Here is exactly how each is computed, and the reason
-    it isn’t simpler.</p>
-
-  <div class="pillar">
-    <div class="ph"><h3>🎯 E — Exposure</h3><span class="wt">exponent 0.60</span></div>
-    <div class="eq">z  = T&#39; × A × H × U        per finding, 0–1, higher is worse
-T&#39; = 0.40 + 0.60 T         threat amplifies; it never zeroes the rest
-R  = 0.70 z₁ + 0.20 z₂ + 0.10 z₃ + 0.10 mean(the rest)
-E  = 100 (1 − R)</div>
-    <p class="why"><b>Built per flaw, then concentrated on the worst few.</b> Averaging is what a purchase
-      decision least wants: a product with one catastrophic flaw and forty minor ones should not come out like
-      forty-one middling ones. So each finding gets its own risk number and the worst three decide most of the
-      result.</p>
-    <p class="why" style="margin-top:.6rem"><b>T&#39; — threat</b> from KEV, ransomware linkage and EPSS.
-      Mapped onto [0.40, 1] rather than used raw, because the OT median EPSS is 0.007 — multiply by that
-      directly and a critical, reachable, unfixed flaw scores as harmless purely because nobody has attacked it
-      <em>yet</em>. <b>A — reachability</b> from the CVSS attack vector, narrowed by where the box sits and by a
-      <em>verified</em> interface block. <b>H — impact</b> is the flaw’s own CVSS severity scaled by the process
-      consequence you declare. <b>U — applicability</b> asks whether it still applies to the firmware you are
-      buying or running.</p>
-    <p class="why" style="margin-top:.6rem"><b>The tail term is ours, not the proposal’s.</b> Top-three alone
-      cannot tell three severe flaws from three hundred — they give an identical result. So a long tail of
-      equally bad findings still moves the number, bounded at a tenth so breadth can never outvote the worst case.</p>
-  </div>
-
-  <div class="pillar">
-    <div class="ph"><h3>🔧 P — Patch availability</h3><span class="wt">exponent 0.20</span></div>
-    <div class="eq">P = 100 × (fixed + 0.4 × workaround) / known
-known = fixed + workaround + none_available   (only CVEs whose remedy is stated)</div>
-    <p class="why"><b>Why 0.4 for a workaround:</b> a mitigation is not a fix, but it is not nothing — it earns
-      part credit. Only CVEs whose remediation status is actually stated are counted, so “no data” is never read
-      as “no fix”. Some vendors file a shipped patch under “mitigation” with the fix named in prose; the tool
-      reads that text, so a fixed product is not shown as 0/10 fixed.</p>
-  </div>
-
-  <div class="pillar">
-    <div class="ph"><h3>🏢 V — Vendor practice</h3><span class="wt">exponent 0.15</span></div>
-    <div class="eq">V = 70 × quality + (30 if the vendor runs its own CSAF feed)
-quality = ( share_with_CVSS + share_with_CWE ) / 2</div>
-    <p class="why"><b>Why the +30 is the real signal:</b> advisory <em>content</em> is nearly constant on CISA’s
-      corpus, because CISA normalises what it republishes — scoring it alone handed free points to everyone.
-      What genuinely varies, and is the vendor’s own doing, is whether they publish machine-readable advisories
-      themselves. Not being on the publisher list is never a penalty, only a missed bonus.</p>
-  </div>
-
-  <div class="pillar">
-    <div class="ph"><h3>📜 C — Certification</h3><span class="wt">exponent 0.05</span></div>
-    <div class="eq">C = 50 + 15 (certified process, 62443-4-1)
-      + 20 (certified component, 62443-4-2)
-      + 15 (a cert covers this product specifically)
-
-S = max( S_with_C , S_without_C )      it may lift, never lower</div>
-    <p class="why"><b>Positive evidence only, and the review got this one wrong.</b> Applied naively,
-      <code>C^0.05</code> costs an uncertified product <b>20.6%</b> of its score (57.8 against 72.7, measured) —
-      which punishes the majority of OT hardware for a vendor’s paperwork decision, since most is never
-      submitted. So absence is excluded rather than penalised, and the composite is computed with and without
-      the certificate and the better one taken. The pillar meant to reward certification is never allowed to
-      punish its absence.</p>
-  </div>
-
-  <div class="pillar" style="border-style:dashed">
-    <div class="ph"><h3>📊 Evidence quality <span style="font-weight:400;color:var(--faint)">— reported, never scored</span></h3><span class="wt">exponent 0</span></div>
-    <div class="eq">quality = ( share_decided + share_with_CVSS + share_with_EPSS ) / 3</div>
-    <p class="why"><b>Deliberately kept out of the risk number.</b> It answers a different question — “how much
-      should you <em>trust</em> the score above?” — so it sits beside the verdict but never inside it. A product
-      whose version ranges could not be confirmed scores low here even if it looks clean; the right response is
-      review, not confidence. Exploitation and severity are also shown beside the score as diagnostics, since
-      they now feed Exposure rather than scoring separately.</p>
-  </div>
-
-  <h2 id="owner">4b · The facts only you have</h2>
-  <p class="note-txt">Four inputs describe <em>your plant</em>, not the product. ReTrust supplies the
-    vulnerability intelligence and never asks you to score a vendor or guess a percentage. Every one is optional,
-    and every one can only ever <b>narrow</b> the risk — saying nothing is already the conservative reading, so a
-    claim about your own plant never makes a flaw worse than its own vector says.</p>
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>Input</th><th>Choices</th><th>What it changes</th></tr></thead>
-      <tbody>
-        <tr><td class="prod">Assessment type</td><td>purchase · installed</td><td>Records whether this is a procurement decision or an existing asset review</td></tr>
-        <tr><td class="prod">Network exposure</td><td>isolated · IT–OT · internet–OT</td><td>Narrows <code>A</code>. Folded into reachability rather than scored separately — “an attacker cannot route here” is the statement <code>A</code> already makes</td></tr>
-        <tr><td class="prod">Process consequence</td><td>safety · control · recoverable · minor · negligible</td><td>Scales <code>H</code>. Left blank, exposure is reported at full process impact</td></tr>
-        <tr><td class="prod">Interface reachable?</td><td>exposed · blocked · unknown</td><td>Only a <em>verified</em> block narrows <code>A</code></td></tr>
-        <tr><td class="prod">Fix / mitigation status</td><td>applied · mitigated · available · planned · unknown</td><td>Apply only to all in-scope findings; planned work does not reduce current risk</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <p class="note-txt" style="margin-top:.9rem">Each assessment also carries a reproducible vector, so a result
-    can be re-run and disputed by somebody who was not in the room — CVSS’s idea, and a good one:</p>
-  <div class="eq" style="margin-bottom:1.5rem">RT2/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:4f3a9c2d6b18</div>
-  <p class="note-txt">The firmware and operator choices are recorded with each result. <code>DS</code> fingerprints the
-    recorded source, count and capture-date metadata; it is not a checksum of the full advisory database.</p>
-
-  <h2 id="names">4c · The same pillars, named for a buyer</h2>
-  <p class="note-txt">The web interface uses plain-language labels while this page and the
-    configuration file use the model's own names. Same measurements, two audiences — here is the map,
-    so a reader moving between the two is never left wondering whether they are looking at a
-    different number.</p>
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>In the model, config and this page</th><th>On screen and in reports</th></tr></thead>
-      <tbody>
-        <tr><td><code>exposure</code> — Exposure</td><td>Exposure safety</td></tr>
-        <tr><td><code>patchability</code> — Patch availability</td><td>Available fixes</td></tr>
-        <tr><td><code>vendor_practice</code> — Vendor practice</td><td>Vendor security practices</td></tr>
-        <tr><td><code>certification</code> — Certification</td><td>Certification evidence</td></tr>
-        <tr><td>Exploitation <span class="sub" style="display:inline">(diagnostic)</span></td><td>Attack activity</td></tr>
-        <tr><td>Severity <span class="sub" style="display:inline">(diagnostic)</span></td><td>Issue severity</td></tr>
-        <tr><td>Network exposure <span class="sub" style="display:inline">(input)</span></td><td>Network access</td></tr>
-        <tr><td>Evidence quality <span class="sub" style="display:inline">(never scored)</span></td><td>Evidence completeness</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <p class="note-txt" style="margin-top:.9rem">The left column is what you write in
-    <code>retrust config</code> if you change a weight.</p>
-
-  <h2 id="gates">5 · The gates (outside the maths — any one → AVOID)</h2>
-  <p class="note-txt">These are facts that <em>end</em> the assessment. They’re checked on the product’s own
-    (first-party) findings, and no weighted score can out-vote them.</p>
-  <div class="gate-list">
-    <div class="gate-item"><b>Known-exploited vulnerability</b><div class="g">A CVE appears in CISA’s KEV catalogue — confirmed exploitation in the wild.</div></div>
-    <div class="gate-item"><b>Ransomware-linked</b><div class="g">A CVE tied to a known ransomware campaign.</div></div>
-    <div class="gate-item"><b>Critical with no fix</b><div class="g">CVSS ≥ 9.0, high exploitation likelihood (EPSS ≥ 0.5 or in KEV), <em>and</em> no vendor remedy — critical, reachable, and nothing the buyer can do.</div></div>
-    <div class="gate-item"><b>Supplier screening</b><div class="g">The vendor is on a sanctions / covered list. Checked on the name alone, so it fires even if the product isn’t in the advisory corpus.</div></div>
-  </div>
-  <p class="note-txt" style="margin-top:1rem">A KEV that arrives inside a <em>third-party component bundle</em>
-    (e.g. the Linux stack a device ships) is shown as a <b>caution</b>, not a gate — the bundle proves the
-    component ships, not that each of its hundreds of CVEs is reachable on the device.</p>
-
-  <h2 id="overrides">6 · Two overrides on the average</h2>
-  <div class="pillar">
-    <h3>Certification clamp</h3>
-    <div class="eq">composite = max( composite , composite_without_certification )</div>
-    <p class="why">Because the certification pillar may only <em>reward</em>, it’s never allowed to pull the number <em>down</em> — otherwise a vendor holding a mid-tier certificate could score below one holding none, and the pillar meant to credit certification would punish it.</p>
-  </div>
-  <div class="pillar">
-    <h3>Unmitigable cap</h3>
-    <div class="eq">if a hardcoded-credential-class flaw has no fix
-  and the composite would reach PREFER →  composite = PREFER threshold − 0.1  (69.9 by default)</div>
-    <p class="why">A credential baked into firmware with no shipped fix isn’t a weighting question: whatever the other pillars say, the operator can’t engineer around it for the life of the asset, so the product cannot be <em>preferred</em> while that stands.</p>
-  </div>
-
-  <h2 id="bands">7 · Bands → verdict</h2>
-  <div class="bands">
-    <div class="band p"><div class="r">score ≥ 70</div><div class="v">PREFER</div></div>
-    <div class="band c"><div class="r">40 – 69</div><div class="v">CONDITIONAL</div></div>
-    <div class="band a"><div class="r">&lt; 40, or any gate</div><div class="v">AVOID</div></div>
-  </div>
-  <p class="note-txt">A fourth outcome, <b>NOT ASSESSED</b>, means the product couldn’t be resolved or had no
-    evidence — “needs review”, never read as a clean 100.</p>
-
-  <h2 id="examples">8 · Worked examples</h2>
-
-  <h3 style="margin-top:1.4rem">① A clean product — ABB AC 800M → PREFER 77.9</h3>
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>Pillar</th><th class="n">Exponent</th><th class="n">Score</th><th class="n">Factor</th></tr></thead>
-      <tbody>
-        <tr><td>E — Exposure</td><td class="n">0.60</td><td class="n">82.1</td><td class="n">14.08</td></tr>
-        <tr><td>P — Patch availability</td><td class="n">0.20</td><td class="n">52.0</td><td class="n">2.20</td></tr>
-        <tr><td>V — Vendor practice</td><td class="n">0.15</td><td class="n">100.0</td><td class="n">2.00</td></tr>
-        <tr><td>C — Certification</td><td class="n">0.05</td><td class="n">100.0</td><td class="n">1.26</td></tr>
-        <tr class="tot"><td>multiplied together</td><td class="n"></td><td class="n"></td><td class="n">77.9</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <p class="note-txt" style="margin-top:.8rem"><code>14.08 × 2.20 × 2.00 × 1.26 = 77.9</code> → ≥ 70 →
-    <span class="tag prefer">PREFER</span>. Note the factors <em>multiply</em>, they do not add: each pillar
-    contributes <code>score<sup>exponent</sup></code>. Patch availability at 52 is what holds this back — fixing
-    it alone would gain about 11 points, which is exactly what <code>retrust sensitivity</code> prints.</p>
-
-  <h3 style="margin-top:1.8rem">② A gated product — Siemens S7-1500 (fw 3.1.6) → AVOID 50.9</h3>
-  <p class="note-txt">Its weighted score is 50.9 — CONDITIONAL territory. But a <b>known-exploited gate</b>
-    fired, so the verdict is <span class="tag avoid">AVOID</span> regardless. <em>This is the whole point:</em>
-    the gate cannot be out-voted by a decent score.</p>
-
-  <h3 style="margin-top:1.8rem">③ An unmitigable weakness — Modicon M340 → CONDITIONAL 64.5</h3>
-  <p class="note-txt">It carries a hardcoded-credential CVE with no fix — a credential the operator cannot change for the
-    life of the asset. Exposure already scores it below PREFER, so the <b>unmitigable cap</b> has nothing to
-    do here; were the other pillars strong enough to reach 70, the cap would pin it just below. Either way the
-    invariant holds, and across the corpus <b>none</b> of the 497 products carrying such a flaw reads PREFER.
-    Isolation does not move it: you cannot isolate a baked-in credential into being preferable.</p>
-
-  <h3 style="margin-top:1.8rem">④ The one that looks wrong — S7-1500 MFP, 1,034 CVEs → CONDITIONAL 55.5</h3>
-  <p class="note-txt">A box with 1,034 CVEs scoring mid-table rather than bottom looks like a failure until you see why: all but
-    a handful arrive in <b>third-party component-bundle advisories</b> — the Linux and OpenSSL stack the device
-    ships — and a bundle establishes that a component is <em>present</em>, not that each of its CVEs is reachable
-    on the controller. So exposure measures the vendor’s own firmware, and the bundled KEV is raised as a
-    <b>caution</b> rather than a gate, because gating on it would punish precisely the vendors who publish their
-    component stacks. <b>The caution is the output here, not a footnote.</b> Read it aloud in a demo.</p>
-
-  <h2 id="explain">9 · Things to get right when you explain it</h2>
-  <ul class="know">
-    <li><span class="dot"></span><div><b>A high score is good.</b> 82/100 means <em>low risk, buy with confidence</em> — not “82% risky.” The tool measures how safe a product looks.</div></li>
-    <li><span class="dot"></span><div><b>Gates sit outside the score.</b> KEV, ransomware, unfixable-critical and sanctions can’t be averaged away.</div></li>
-    <li><span class="dot"></span><div><b>Raw CVE counts are never scored.</b> A diligent discloser shouldn’t rank below a vendor who stays quiet.</div></li>
-    <li><span class="dot"></span><div><b>No resolution, no score.</b> An unknown product is NOT ASSESSED — never a flattering 100.</div></li>
-    <li><span class="dot"></span><div><b>“Couldn’t parse the version range” stays in scope.</b> Uncertainty is flagged for review, never assumed safe.</div></li>
-    <li><span class="dot"></span><div><b>Evidence quality is separate from risk.</b> It tells you how far to trust the number, not how risky the product is.</div></li>
-    <li><span class="dot"></span><div><b>The weights are configurable, and tested.</b> <code>retrust sensitivity</code> shows whether a verdict survives different weightings; a fragile one is labelled a judgement call.</div></li>
-  </ul>
-
-  <h2>More</h2>
-  <div class="related">
-    <a href="overview.html"><span class="emo">🛡️</span><span><b>ReTrust Explained</b><small>What it is &amp; how it works</small></span></a>
-    <a href="commands.html"><span class="emo">🧰</span><span><b>ReTrust Commands</b><small>Every command, by job</small></span></a>
-  </div>
-
-  <footer>
-    <span class="mono">ReTrust</span>
-    <span>Scores are decision support, not a certification.</span>
-    <span>Every figure traces to public CISA, FIRST &amp; vendor data; weights are configurable and shown.</span>
-  </footer>
+<div class="top"><a href="overview.html" class="brand">ReTrust</a><button id="themeBtn" class="toggle">Theme</button></div>
+<h1>How a ReTrust score works</h1>
+<p class="lede">Start with the product and firmware. Then check whether each weakness can actually matter in your network and industrial process.</p>
+<h2>First, check the blockers</h2><p>Known exploited, unfixed flaws and supplier restrictions can force AVOID regardless of the number. A score never cancels a mandatory blocker.</p>
+<h2>Measure each material weakness</h2><div class="eq">Z = T × A × H × U</div>
+<ul><li><b>T — threat evidence:</b> the maximum of confirmed exploitation (KEV), estimated past exploitation (LEV) and current EPSS. Missing data stays unavailable.</li>
+<li><b>A — attack access:</b> 1 when a feasible path and its prerequisites are established; 0 when all relevant paths are verified blocked. Unknown is a range.</li>
+<li><b>H — operational harm:</b> safety/environment 1; control .8; recoverable disruption .5; minor .2; no material harm 0. An engineer must establish the credible effect of this particular weakness.</li>
+<li><b>U — affected and unfixed:</b> 1 for affected firmware without an applied fix; 0 for verified patched or not affected. Unknown firmware produces a range.</li></ul>
+<h2>Network access is a main input</h2><p>Choose isolated, OT-only, IT–OT connected, remote vendor access, direct Internet or unknown. Then establish actual reachability. An isolated controller may still be reachable from a compromised engineering workstation. Network type alone gives no numerical discount. ReTrust does not inspect your network.</p>
+<h2>Use the three largest contributions</h2><div class="eq">R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)
+E = 100 × (1 − R)</div><p>A single contribution of .48 gives E=52. Adding .20 gives E=48; adding .10 gives E=47. The largest contribution counts fully, and missing paths count as zero.</p>
+<p>Duplicate advisories for the same CVE count once. Different CVEs are review units, not proof of independent paths. A reviewed shared path can be grouped explicitly by an engineer.</p>
+<h2>Combine four pillars</h2><div class="eq">S = E^.60 × P^.20 × V^.15 × C^.05</div>
+<p>E is exposure safety (60%), P is patch availability (20%), V is vendor security practice (15%), and C is certification evidence (5%). Values enter on a 1–100 scale. Missing P, V or C is excluded and the remaining weights are adjusted; unknown exposure stays in the provisional range.</p>
+<p><b>Illustrative calculation:</b> E=47, P=70, V=80, C=60 produces 55.80/100. A higher score is more favourable under the chosen settings. It is not a percentage chance that equipment is safe.</p>
+<h2>Unknown means VERIFY</h2><p>For T=.6, A=1, H=.8 and unknown U, the contribution is between 0 and .48. Exposure safety is between 52 and 100. The result shows a range and the checks needed before deciding. It does not guess a middle value.</p>
+<p>Resolved, ungated scores use the current bands: PREFER ≥70, CONDITIONAL 40–69.9, AVOID below 40. Mandatory gates can still force AVOID, and unfixed hardcoded credentials cap the score below PREFER. Missing product evidence produces NOT ASSESSED.</p>
+<h2>Keep the evidence</h2><p>Save the JSON or HTML report. It records the RT4 settings, source capture dates, factor ranges and missing checks. Website answers apply across the findings in scope, so ask an engineer to review any that need different consequences or controls. Operator statements need supporting evidence; the tool does not independently verify them.</p>
+<p>These weights and consequence values are ReTrust design choices that require validation. Historical benchmarks from earlier models do not establish RT4 procurement accuracy.</p>
+<footer>ReTrust RT4 · 20 October 2026 · <a href="overview.html">Overview</a> · <a href="commands.html">Commands</a></footer>
 </div>
-
 <script>
   (function(){
     var btn=document.getElementById('themeBtn'),root=document.documentElement;

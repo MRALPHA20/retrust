@@ -24,24 +24,24 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  PREFER  ·  70.1/100
+  VERIFY · 68.2–87.7/100
   CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  28.6/100
+  AVOID · 5.6–89.4/100
   CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
   Known exploited vulnerability
 
   Schneider Electric Modicon M340
-  AVOID  ·  6.0/100
+  VERIFY · 6.0–69.9/100
   CVEs 48  ·  ROBUST 51%  ·  WORST FLAW 0.88
 
   Moxa EDS-405A
-  AVOID  ·  5.9/100
+  VERIFY · 5.9–92.8/100
   CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
 
   Rockwell ControlLogix
-  AVOID  ·  5.9/100
+  VERIFY · 5.9–92.8/100
   CVEs 35  ·  ROBUST 51%  ·  WORST FLAW 0.88
 
   Hikvision IP Camera
@@ -666,10 +666,11 @@ are stored, which is what makes five years of history a 40 MB table.
 **Without that history the command abstains.** Today's scores cannot produce a
 LEV, and printing one from them would be arithmetic on data that is not there.
 
-**LEV is not in the score, deliberately.** It is a model-derived lower bound, and
-folding it into the composite would change every figure published above and
-invalidate the back-test that checks them. It is reported alongside, like
-evidence confidence, for a reader to weigh.
+**LEV is included in RT4 threat priority.** T takes the maximum of KEV, LEV
+and current EPSS. Missing sources remain unavailable and keep the assessment
+provisional where they can change the result. Their time horizons differ, so
+this maximum is a priority index rather than a compromise probability.
+Historical backtests from earlier models do not validate this revision.
 
 **Check whether the threshold discriminates before leaning on it.** Run
 `retrust lev --audit`:
@@ -730,20 +731,20 @@ retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
 ABB AC 800M
-PREFER  ·  70.1/100
+VERIFY · 68.2–87.7/100
 CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
 
 Siemens SIMATIC S7-1500 (firmware 3.1.6)
-AVOID  ·  28.6/100
+AVOID · 5.6–89.4/100
 CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
 Known exploited vulnerability
 
 Schneider Electric Modicon M340
-AVOID  ·  6.0/100
+VERIFY · 6.0–69.9/100
 CVEs 48  ·  ROBUST 51%  ·  WORST FLAW 0.88
 
 Moxa EDS-405A
-AVOID  ·  5.9/100
+VERIFY · 5.9–92.8/100
 CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
 
 Hikvision IP Camera
@@ -874,122 +875,91 @@ already going to hear about.
 | Vendor practice | 0.15 | whether the vendor runs its own CSAF feed, and advisory completeness |
 | Certification | 0.05 | IEC 62443 (ISASecure) and Common Criteria certificates |
 
-**Exposure** is built per finding and then concentrated, because averaging is
-what a purchase decision least wants: a product with one catastrophic flaw and
-forty minor ones should not average out like forty-one middling ones.
-
-`compare` prints a **WORST FLAW** figure beside each score for the same reason
-the formula needs it: `R` clips at 1, so once three paths are severe enough
-every worse product reads `E = 0` and the band stops telling them apart. The
-worst single `z` — 0–1, higher is worse, the opposite direction to the score —
-keeps ranking after exposure has bottomed out.
+**Exposure in RT4 follows the ReTrust-OT V1 proposal:**
 
 ```
-z  = T' × A × H × U          one number per vulnerability, 0–1, higher is worse
-T' = 0.40 + 0.60 T           threat amplifies; it never zeroes the rest
-R  = min(1, z₁ + 0.20 z₂ + 0.10 z₃)
-E  = 100 (1 − R)
-```
-
-| Term | Reads | From |
-|---|---|---|
-| `T` threat | ransomware linkage, KEV, LEV, EPSS — the strongest of them | evidence; never asked |
-| `A` reachability | the CVSS attack vector, narrowed by deployment, by a *verified* interface block, and by ruling out the conditions the vector demands | evidence + operator |
-| `H` impact | the finding's own CVSS severity, scaled by the declared process consequence | evidence + operator |
-| `U` applicability | does it still apply to the firmware being bought or run | CSAF + operator |
-
-Four decisions worth stating.
-
-`T` is mapped onto `[0.40, 1]` rather than used raw: the OT median EPSS is
-0.007, so multiplying by it directly scored a critical, reachable, unfixed
-vulnerability as harmless purely because nobody had attacked it yet.
-
-`T` takes the strongest of four signals rather than blending them. KEV and
-ransomware linkage are observations, LEV estimates whether exploitation has
-already happened, and EPSS forecasts the next thirty days; they share no
-horizon, so an average is meaningless and would let a model talk down something
-somebody watched happen. LEV matters most here — its corpus median is 0.167
-against EPSS's 0.007, so for most OT findings it is the only non-trivial
-exploitation evidence that exists.
-
-The worst path carries a coefficient of `1.00`, not the `0.70` an earlier
-revision used. At 0.70 a single maximal flaw — reachable, unfixed, confirmed
-exploited, process-ending — produced `E = 30` rather than 0, because 30% of the
-score was reserved for flaws the product did not have. Two costs come with
-fixing it, and both follow from the formula rather than from an oversight: `R`
-clips at 1, so a product with three severe paths reaches exactly `E = 0` and
-stops being rankable against a worse one (5.7% of a 582-product sample lands
-there); and only three paths are counted, so three severe flaws and three
-hundred score alike.
-
-`A` also reads the conditions CVSS records beyond arriving at the service:
-Privileges Required, User Interaction, and v4's Attack Requirements. Those are
-three CVSS metrics, so `--prerequisites unsatisfiable` is one question answered
-against each finding's own vector rather than applied flatly. A `PR:N/UI:N`
-flaw asks nothing of an attacker and has no condition to rule out, so the
-answer cannot discount it — which matters, because those are the most
-dangerous findings and a flat discount would hit them hardest.
-
-**No operator declaration may promote a verdict.** Network exposure and
-interface reachability are the strongest inputs in the model and the only ones
-nobody can check. Measured with the clamp disabled, declarations produced 1,657
-band promotions across 489 products — 552 of them AVOID straight to PREFER —
-and, because the discount scales each product's own vector mix, reordered 118
-of 119 products in a comparison. So the undeclared score sets the best band a
-product can reach; declarations still move the number inside it, still rank
-candidates, and are still shown. A verdict that an unverified dropdown can
-improve is not a procurement control.
-
-**3. A weighted product**, reported as a band:
-
-```
+T = max(KEV, LEV, EPSS)
+Z = T × A × H × U
+R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)
+E = 100 × (1 − R)
 S = E^0.60 × P^0.20 × V^0.15 × C^0.05
 ```
 
-A product rather than a mean, so dangerous exposure cannot be bought back with
-a good vendor record and a certificate — the rule the gates enforce, applied to
-the weighted part. Pillars enter as 1–100: a floor at 1 keeps a catastrophic
-pillar catastrophic (E = 0 lands near 5/100, deep in `AVOID`) without letting
-one unmeasured term annihilate every other measurement. Bands are `PREFER`
-(≥70), `CONDITIONAL` (≥40), `AVOID`. Exponents and thresholds live in an
-editable config file; run `retrust config --init`.
+The largest contribution counts fully. The next two contribute 20% and 10%;
+missing paths contribute zero. Only three units count. These are risk-priority
+indices, not probabilities of a device being compromised.
 
-Certification is the one asymmetric term. Most OT hardware is never submitted,
-so a missing certificate is excluded rather than penalised — and because its
-absence is never a penalty, its presence is never allowed to lower the score
-either: the composite is computed with and without it and the better taken. A
-`C^0.05` applied naively costs an uncertified product 20.6% of its score, which
-would punish the majority for a vendor's paperwork decision.
+| Factor | Rule | Evidence needed |
+|---|---|---|
+| T: threat | Maximum available KEV, LEV and EPSS; confirmed exploitation is 1 | Source values and capture dates |
+| A: attack access | 1 for a feasible path; 0 for a verified block; unknown is [0,1] | Actual service/local/physical access plus prerequisites |
+| H: operational harm | Safety 1; control .8; recoverable .5; minor .2; negligible 0 | Credible consequence of this specific weakness |
+| U: affected and unfixed | Affected/unpatched 1; verified fixed/not affected 0; unknown [0,1] | Selected firmware and fix evidence |
+
+**Network context is a main assessment input.** Select isolated, OT-only,
+IT–OT, remote vendor access, direct Internet, or unknown, then establish actual
+reachability. Topology alone never multiplies risk by an invented discount.
+An isolated PLC can still be reachable from a compromised OT workstation.
+The website displays these questions in the main assessment and comparison forms.
+ReTrust does not scan or independently verify the plant network.
+
+CVSS prerequisites are checked per finding. A no-privilege, no-interaction flaw
+cannot be ruled out by declaring other prerequisites impossible. An unreadable
+vector stays unresolved unless actual requirements are established.
+CVSS severity is retained as context; H is not CVSS/10.
+A firewall can change A, but does not count as a firmware patch in U.
+
+Unknown factors are intervals. With T=.6, A=1, H=.8 and U=1, Z=.48 and E=52.
+With U unknown, Z is [0,.48] and E is [52,100]. Adding contributions .20 and
+.10 to the resolved .48 gives R=.53 and E=47. For P=70, V=80, C=60,
+S = 47^.60 × 70^.20 × 80^.15 × 60^.05 = 55.80/100 (illustrative).
+
+**VERIFY means the assessment is provisional.** The result lists missing
+checks and shows the score range. A mandatory blocker still forces AVOID.
+Missing threat sources are retained as unavailable, with conservative bounds;
+a missing source is not a measured zero. Weight sensitivity is deferred until
+material gaps close, so it cannot dress incomplete evidence up as stable approval.
+
+Repeated advisories for one CVE form one review unit; all citations remain.
+An explicit `Finding.path_id` can group findings into a reviewed common path;
+`Finding.review` retains per-finding choices, rationale and evidence. Default
+CVE groups do not establish that different CVEs are independent attack paths.
+The web form applies its answers to all in-scope findings: use it only where
+that scope is justified. An engineer must review findings with different effects.
+The tool does not infer a verified attack graph from advisory records.
+
+The four-pillar composite uses the stated weighted product. Pillars are floored
+at 1 for that calculation. Missing P, V or C evidence is excluded and the
+remaining weights are renormalized; unknown exposure remains in the range
+rather than disappearing. A measured certification participates directly;
+there is no hidden choice of a better score with or without it.
+Existing hard gates and the cap below PREFER for unfixable hardcoded credentials
+still apply. Bands remain PREFER ≥70, CONDITIONAL 40–69.9, AVOID <40.
+These proposal-specific weights and consequence values require validation;
+they are not a NIST standard or a measured procurement accuracy guarantee.
 
 ### The facts only you have
 
-Four inputs describe your plant rather than the product. ReTrust supplies the
-vulnerability intelligence and never asks you to score a vendor or guess a
-percentage. Every one is optional, and an unanswered question stays unresolved
-rather than quietly becoming a best or worst case.
-
 | Input | Choices | Effect |
 |---|---|---|
-| `--assessment-type` | `purchase` (default), `installed` | Records whether this is a procurement decision or an existing asset review |
-| `--network-exposure` | `isolated`, `it_ot`, `internet_ot` | Narrows `A`. Folded into reachability rather than scored separately: "an attacker cannot route here" is the statement `A` already makes |
-| `--consequence` | `safety`, `control`, `recoverable`, `minor`, `negligible` | Scales `H`. Left blank, exposure is reported at full process impact — the conservative reading, and said out loud |
-| `--interface` | `exposed`, `blocked`, `unknown` | Only a *verified* block narrows `A` |
-| `--remediation` | `applied`, `mitigated`, `available`, `planned`, `unknown` | Use for all in-scope findings; planned work does not reduce current risk |
+| `--assessment-type` | `purchase`, `installed` | Records the review context |
+| `--network-exposure` | `isolated`, `ot_only`, `it_ot`, `remote_vendor`, `internet_ot` | Main network context; unknown requires verification |
+| `--interface` | `exposed`, `blocked`, `unknown` | Verified feasible access or block, otherwise a range |
+| `--prerequisites` | `satisfiable`, `unsatisfiable`, `unknown` | Checks conditions recorded by each CVSS vector |
+| `--consequence` | `safety`, `control`, `recoverable`, `minor`, `negligible` | Credible OT harm; unknown produces a range |
+| `--remediation` | `affected`, `available`, `applied`, `not_affected`, `mitigated`, `planned`, `unknown` | Verified firmware applicability; protective controls do not patch it |
 
-Every declaration can only ever narrow the risk: saying nothing is already the
-conservative reading, so a claim about your own plant never makes a flaw worse
-than its own vector says.
+Batch CSV and JSON can supply the same six site fields per candidate:
+`network_exposure`, `assessment_type`, `interface`, `prerequisites`,
+`consequence`, and `remediation`. Omitted answers stay unknown; invalid values
+are refused. Add verified context before using `--fail-on unassessed` to approve
+a procurement list. Example files without site evidence deliberately need review.
 
-Each assessment also carries a reproducible vector, so a result can be re-run
-and disputed by somebody who was not there:
-
-```
-RT2/AT:installed/FW:3.1.6/NX:it_ot/IF:blocked/OC:control/RS:applied/DS:4f3a9c2d6b18
-```
-
-`DS` is a short fingerprint of the recorded source, count and capture-date
-metadata, not a checksum of the full advisory database. The report lists those
-source records below the vector.
+JSON schema 3 includes `score_min`, `score_max`, `exposure_min`, `exposure_max`,
+`provisional`, `verification`, and full per-unit factors under `paths` in detail
+exports. CSV retains the ranges and verification actions. `--fail-on unassessed`
+returns exit 2 for VERIFY, so a pipeline can reject incomplete assessments.
+Scoring vectors begin `RT4`; RT3 results must be reassessed under the new model.
 
 ### What the vector says, not just the score
 
@@ -1010,12 +980,10 @@ other optional field in the data.
 | Automatable (that, and low complexity) | 35.5% |
 | Physical access only | 1.8% |
 
-The vector is what `A` reads: a flaw reachable over the network scores the full
-reachability term, one needing physical access a tenth of it. A vector we could
-not read is treated as neither extreme and said so, because silently weighing
-reachability as zero would be a claim about the product rather than about the
-data. The severity pillar still reports peak CVSS, critical share and the
-wormable count as a diagnostic beside the score.
+The vector identifies the access type and required conditions. Actual feasible
+access is 1, a verified block is 0, and unresolved access is [0,1]. Physical
+access is not automatically a tenth of network access. The severity diagnostic
+retains peak CVSS and critical share, without multiplying CVSS into OT harm.
 
 `retrust ssvc --automatable auto` derives SSVC's Automatable from the vectors and
 shows its working. SSVC does not define that metric as a function of CVSS, so it
@@ -1023,37 +991,11 @@ is offered as a suggestion for a human to accept, never as the answer.
 
 ### Do the weights actually matter?
 
-The usual objection to any composite score is that its weights were invented.
-That is fair, and the honest answer is to measure it instead of arguing about it.
-`retrust sensitivity` samples hundreds of weightings from across the whole
-simplex and reports how often the verdict survives:
-
-```
-$ retrust sensitivity --vendor Omron --product CJ2M
-
-CONDITIONAL  Omron CJ2M
-
-  CONDITIONAL under 90% of weightings -- the verdict does not hinge on the weights
-  score across 500 random weightings: 31.5 to 69.4 (median 53.7)
-
-$ retrust sensitivity --vendor "Schneider Electric" --product "Modicon M340"
-
-AVOID  Schneider Electric Modicon M340
-
-  AVOID under only 52% of weightings (also CONDITIONAL 48%) -- this is a judgement call, not a clear result
-  score across 500 random weightings: 1.9 to 69.9 (median 38.1)
-```
-
-The first verdict is not a matter of opinion; the second is, and the tool says
-so rather than handing you a false precision. `compare` prints this as a
-**ROBUST** column and flags anything below 90%.
-
-Expect to see the flag often. Across a 192-product sample, 67% of ungated
-products score below 90% agreement under the current model, because exposure
-usually sits well below the other three pillars -- so how much weight exposure
-carries genuinely changes the answer. That is the measurement being honest
-about a real disagreement, not noise: a low ROBUST means read the pillars
-rather than the headline.
+`retrust sensitivity` samples pillar weights only after material inputs are
+resolved. An incomplete assessment reports VERIFY and does not run the weight
+check. With resolved inputs, it reports the most common verdict and the score
+spread. A mandatory blocker decides the verdict without sampling.
+Weight stability does not establish that site assertions or public records are correct.
 
 Reported alongside, but deliberately **not** part of the score: **evidence
 confidence**, the share of findings whose version range parsed cleanly and which
@@ -1075,7 +1017,7 @@ how much to trust the verdict, not how safe the product is.
   CVEs found" as good news, so an unresolvable product would otherwise score
   near 100 and rank top of a comparison. `NOT ASSESSED` sorts below `AVOID`.
 - **Missing certification is never a penalty.** Most OT products are never
-  submitted, so absence says nothing; a certificate can only add.
+  submitted, so absence says nothing. A measured certificate participates directly in the weighted product.
 - **A pillar that cannot discriminate is a bug, not a feature.** Sensitivity
   analysis caught two: severity scored ~0 for every OT product (nearly all have
   a 9.8+, so `100 - peak × 10` saturated), and vendor practice scored ~100 for

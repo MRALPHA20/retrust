@@ -18,16 +18,16 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  PREFER  ·  70.1/100
+  VERIFY · 68.2–87.7/100
   CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  28.6/100
+  AVOID · 5.6–89.4/100
   CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
   Known exploited vulnerability
 
   Moxa EDS-405A
-  AVOID  ·  5.9/100
+  VERIFY · 5.9–92.8/100
   CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
 
   Hikvision IP Camera
@@ -112,8 +112,11 @@ retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
 You get a verdict, the pillar scores with the evidence behind each, and any
 hard gate that fired — never a bare number. Add `--consequence`,
 `--network-exposure`, `--interface` or `--remediation` to describe where the
-equipment will actually live; left out, each stays unresolved rather than
-guessed.
+equipment will actually live. Network context and actual reachability are main
+assessment inputs. Unknown material inputs produce **VERIFY**, a provisional
+score range and concrete checks for your technical team. RT4 uses the raw
+`T × A × H × U` model and `R = min(1, Z1 + .20 Z2 + .10 Z3)`; repeated advisory
+records for one CVE count once. See [the current scoring explanation](docs/explainers/scoring.html).
 
 ## Three ways to drive it
 
@@ -182,6 +185,13 @@ These diagnostics do not validate prediction of compromise. See the
 Read the [illustrated PDF overview](docs/ReTrust-Guide.pdf) for the complete
 explanation, worked example and measured results. Rebuild it with `make guide`
 after installing the optional documentation dependencies: `pip install -e '.[docs]'`.
+
+## Scoring revision
+
+RT4 replaces the earlier network discounts, threat floor and CVSS-derived OT
+impact with the proposed V1 rules. Results from earlier versions need reassessment.
+Historical backtests and latency tables retained below were measured before RT4;
+they do not validate the new model or its procurement accuracy. Gates still apply.
 
 ## Honest by design
 

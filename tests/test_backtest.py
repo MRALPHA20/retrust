@@ -202,6 +202,10 @@ def _stratified_db(tmp_path, vendors=("VendorA", "VendorB"), per_vendor=12):
             # Pre-cutoff: a varying number of CVEs so scores differ.
             before = _advisory(f"ICSA-20-{n:03d}-01", "2020-01-01", f"{vendor}-P{i}",
                                [f"CVE-2020-{n:04d}"], cvss=4.0 + (i % 6))
+            # RT4 does not derive OT consequences from CVSS. Vary actual
+            # patch evidence to exercise the matched-statistics machinery.
+            before['vulnerabilities'][0]['remediations'][0]['category'] = (
+                'vendor_fix' if i % 2 else 'none_available')
             before["product_tree"]["branches"][0]["name"] = vendor
             (directory / f"b{n}.json").write_text(json.dumps(before))
             n += 1

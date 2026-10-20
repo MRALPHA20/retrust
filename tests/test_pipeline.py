@@ -138,7 +138,8 @@ def test_clean_product_scores_well(db):
     findings = match.findings(db, resolution, version="2.5")
     assessment = score.assess("TestPLC 9000", findings, {"ICSA-26-001-01"})
     assert assessment.gates == []
-    assert assessment.verdict in ("PREFER", "CONDITIONAL")
+    assert assessment.verdict == "VERIFY"
+    assert assessment.provisional and assessment.score_min < assessment.score_max
 
 
 def test_evidence_quality_is_not_in_the_score(db):

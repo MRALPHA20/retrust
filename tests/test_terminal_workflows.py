@@ -99,7 +99,8 @@ def test_web_comparison_samples_verdict_robustness(workspace):
         return cli._assess(connection, vendor, product, version, None, context=context)
     markup = serve._compare_page(assess, context, [['Testco', 'TestPLC 9000', '1.0'],
                                                     ['Testco', 'TestPLC 9000', '2.0']])
-    assert '300 tested weight settings' in markup
+    assert 'This check was not run for this result' in markup
+    assert 'VERIFY' in markup
     assert 'Verdict stability.' in markup
     assert 'scroll horizontally for more columns' in markup
     connection.close()

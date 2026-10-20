@@ -32,8 +32,13 @@ COLUMN_ALIASES = {
                      "article", "article_number"},
 }
 
+# Site evidence uses the same vocabulary as the single-product assessment.
+OWNER_FIELDS = ('network_exposure', 'assessment_type', 'consequence', 'interface',
+                'prerequisites', 'remediation')
+COLUMN_ALIASES.update({name: {name} for name in OWNER_FIELDS})
+
 # Bumped whenever the JSON shape changes in a way a consumer would notice.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Exit codes, so a pipeline can branch without parsing output.
 EXIT_OK = 0
@@ -92,12 +97,13 @@ def read_candidates(path):
             # Accept the same column names the CSV path does, and coerce values
             # rather than assuming strings -- a spreadsheet exported to JSON
             # yields bare numbers for model codes.
-            row = {k: None for k in COLUMN_ALIASES}
+            row = {k: None for k in QUERY_FIELDS}
             for name, value in entry.items():
                 key = _canonical(name)
                 if key and value is not None and str(value).strip():
                     row[key] = str(value).strip()
             if any(row.values()):
+                _validate_context(row, source)
                 rows.append(row)
     else:
         reader = csv.DictReader(text.splitlines())
@@ -109,16 +115,32 @@ def read_candidates(path):
                 f"{source}: no recognised columns. Expected some of: "
                 + ", ".join(sorted(COLUMN_ALIASES)))
         for entry in reader:
-            row = {k: None for k in COLUMN_ALIASES}
+            row = {k: None for k in QUERY_FIELDS}
             for name, value in entry.items():
                 if (key := mapping.get(name)) and value and value.strip():
                     row[key] = value.strip()
             if any(row.values()):
+                _validate_context(row, source)
                 rows.append(row)
 
     if not rows:
         raise SystemExit(f"{source} contained no candidates")
     return rows
+
+
+def _validate_context(row, source):
+    from . import score
+    tables = dict(network_exposure=score.NETWORK_EXPOSURES,
+                  assessment_type=score.ASSESSMENT_TYPES, consequence=score.CONSEQUENCES,
+                  interface=score.INTERFACES, prerequisites=score.PREREQUISITES,
+                  remediation=score.REMEDIATIONS)
+    if row.get('network_exposure') == 'unknown':
+        row['network_exposure'] = None
+    for field, table in tables.items():
+        value = row.get(field)
+        if value is not None and value not in table:
+            raise SystemExit(f'{source}: invalid {field}: {value!r}. '
+                             f'Expected one of: {", ".join(table)}')
 
 
 def _cyclonedx_candidates(source, document):
@@ -167,6 +189,12 @@ def to_record(assessment, resolution, stability=None, query=None):
         "product": assessment.product,
         "verdict": assessment.verdict,
         "score": assessment.score,
+        "score_min": assessment.score_min,
+        "score_max": assessment.score_max,
+        "exposure_min": assessment.exposure_min,
+        "exposure_max": assessment.exposure_max,
+        "provisional": assessment.provisional,
+        "verification": list(assessment.verification),
         "cves": assessment.findings_count if assessment.score is not None else None,
         "undecided": assessment.undecided_count,
         "confidence": assessment.confidence,
@@ -199,7 +227,8 @@ def to_record(assessment, resolution, stability=None, query=None):
                     if p.scored or p.name == "Evidence quality"},
     }
     if stability is not None:
-        record["robust"] = None if stability.gated else round(stability.agreement, 3)
+        record["robust"] = None if stability.gated or not stability.samples else round(stability.agreement, 3)
+        record["stability_samples"] = stability.samples
         record["gated"] = stability.gated
     return record
 
@@ -224,6 +253,7 @@ def to_detail(assessment, resolution, findings=(), stability=None,
     ]
     record["gates"] = [dict(g) for g in assessment.gates]
     record["notes"] = list(assessment.notes)
+    record["paths"] = assessment.paths
 
     if resolution.resolved:
         record["matches"] = [
@@ -268,7 +298,7 @@ def exit_code(records, fail_on="avoid"):
     verdicts = {r["verdict"] for r in records}
     if "AVOID" in verdicts:
         return EXIT_AVOID
-    if fail_on == "unassessed" and "NOT ASSESSED" in verdicts:
+    if fail_on == "unassessed" and verdicts.intersection({"NOT ASSESSED", "VERIFY"}):
         return EXIT_UNASSESSED
     return EXIT_OK
 
@@ -297,7 +327,7 @@ def _excel_safe(value):
 def dumps_csv(records, include_queries=False):
     """Render spreadsheet-safe CSV in memory, optionally retaining input fields."""
     pillar_names = sorted({name for r in records for name in r.get("pillars", {})})
-    columns = ["product", "verdict", "score", "cves", "undecided", "confidence",
+    columns = ["product", "verdict", "score", "score_min", "score_max", "exposure_min", "exposure_max", "provisional", "verification", "cves", "undecided", "confidence",
                "robust", "resolved_by", "match_confidence", "gates", "reason",
                "assessment_type", "network_exposure", "consequence",
                "interface", "prerequisites", "remediation", "worst_flaw",
@@ -311,6 +341,7 @@ def dumps_csv(records, include_queries=False):
         writer.writeheader()
         for record in records:
             row = dict(record)
+            row["verification"] = "; ".join(record.get("verification") or [])
             row["gates"] = "; ".join(record.get("gates") or [])
             for name in pillar_names:
                 row[f"pillar_{name.lower().replace(' ', '_')}"] = \

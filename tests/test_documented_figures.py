@@ -27,7 +27,7 @@ DOCS = ["README.md", "docs/manual.md", "docs/user-guide.html",
         "docs/explainers/overview.html", "docs/explainers/scoring.html"]
 
 # "PREFER  ·  77.9/100" and the bare "77.9/100" blocks the terminal prints.
-SCORE = re.compile(r"(PREFER|CONDITIONAL|AVOID)\s*·\s*([0-9]{1,3}\.[0-9])/100")
+SCORE = re.compile(r"(PREFER|CONDITIONAL|AVOID|VERIFY)\s*·\s*([0-9]{1,3}\.[0-9])(?:[–-]([0-9]{1,3}\.[0-9]))?/100")
 
 # The products the docs actually use as worked examples, with the query that
 # reproduces each. Keyed by the label the docs print.
@@ -50,7 +50,7 @@ def live():
     for label, (vendor, product, version, order) in EXAMPLES.items():
         assessment, _, _ = _assess(connection, vendor, product, version, order,
                                    context=context)
-        scores[label] = (assessment.verdict, assessment.score)
+        scores[label] = (assessment.verdict, assessment.score, assessment.score_max, assessment.provisional)
     return scores
 
 
@@ -77,11 +77,14 @@ def test_documented_scores_match_the_tool(relative, live):
                 nearest, distance = label, gap
         if nearest is None:
             continue
-        verdict, score = live[nearest]
+        verdict, score, upper, provisional = live[nearest]
         if score is None:
             continue
         quoted_verdict, quoted = match.group(1), float(match.group(2))
-        if quoted_verdict != verdict or abs(quoted - score) > 0.05:
+        quoted_upper = float(match.group(3)) if match.group(3) else quoted
+        expected_upper = upper if provisional else score
+        if (quoted_verdict != verdict or abs(quoted-score) > .05
+                or abs(quoted_upper-expected_upper) > .05):
             stale.append(f"{relative}: {nearest} documented as "
                          f"{quoted_verdict} {quoted}, tool says {verdict} {score}")
     assert not stale, "stale documented figures:\n  " + "\n  ".join(stale)

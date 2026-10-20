@@ -210,3 +210,15 @@ def test_a_good_file_round_trips(tmp_path):
 
 def test_an_empty_comparison_does_not_divide_by_zero():
     assert "Nothing to compare" in diff.format_report([])
+
+
+def test_model_revision_is_reported_before_score_changes():
+    before = _record('A', 'PREFER', 80)
+    after = _record('A', 'VERIFY', 30)
+    before['vector'], after['vector'] = 'RT3/AT:purchase', 'RT4/AT:purchase'
+    changes = diff.compare([before], [after])
+    assert changes[0].kind == 'verify'
+    text = diff.format_report(changes)
+    assert 'RT3 -> RT4' in text
+    assert text.index('SCORING MODEL CHANGED') < text.index('VERIFY ')
+    assert 'query stopped resolving' not in text

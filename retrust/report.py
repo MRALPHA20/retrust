@@ -169,9 +169,10 @@ def _footer_sources(provenance, weights, config_source):
     return "".join(parts)
 
 
-VERDICT_COLOR = {"PREFER": "var(--prefer)", "CONDITIONAL": "var(--cond)",
+VERDICT_COLOR = {"VERIFY": "var(--cond)", "PREFER": "var(--prefer)", "CONDITIONAL": "var(--cond)",
                  "AVOID": "var(--avoid)", "NOT ASSESSED": "var(--faint)"}
 VERDICT_HELP = {
+    "VERIFY": "More checks are needed before deciding. Ask your technical team to confirm the network access, operational consequences and firmware status listed below. The range shows how the score could change.",
     "PREFER": "A candidate for your shortlist. Complete the checks below before approving the purchase.",
     "CONDITIONAL": "Consider this product only after your technical team reviews the listed risks and missing evidence.",
     "AVOID": "This assessment advises against the purchase because of a purchase blocker or a low score. Review the reasons below.",
@@ -220,6 +221,15 @@ def _ids(escaped):
     return IDENTIFIER.sub(r"<code>\1</code>", escaped)
 
 
+def score_label(assessment):
+    """Consistent score display across single-product and comparison views."""
+    if assessment.score is None:
+        return '&mdash;'
+    if assessment.provisional:
+        return f'{assessment.score_min}–{assessment.score_max} (provisional)'
+    return str(assessment.score)
+
+
 def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                       weights=None, tools=''):
     colour = VERDICT_COLOR.get(assessment.verdict, INERT)
@@ -242,7 +252,11 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         detail = f'{assessment.findings_count} known {noun} included'
         if assessment.undecided_count:
             detail += f' &middot; {assessment.undecided_count} need review'
-        summary = (f'<span class="s">{assessment.score}/100</span>'
+        shown_score = (f"{assessment.score_min}–{assessment.score_max}" if assessment.provisional
+                       else str(assessment.score))
+        if assessment.provisional:
+            detail = "Provisional range · " + detail
+        summary = (f'<span class="s">{shown_score}/100</span>'
                    f'<span class="n">{detail}</span>')
 
     supplier_review = bool(assessment.cautions or assessment.third_party_count)
@@ -263,6 +277,13 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                      'need separate supplier review.</b> Their reachability on this equipment '
                      'has not been confirmed.</p>')
 
+    if assessment.verification:
+        parts.append('<section class="verification"><h3>What to check next</h3>'
+                     '<p>A network or operations owner can help with these checks. '
+                     'Unknown answers stay unresolved; ReTrust does not test your network.</p><ul>'
+                     + ''.join(f'<li>{_esc(item)}</li>' for item in assessment.verification)
+                     + '</ul></section>')
+
     # Keep the verdict and its limits ahead of editing and download controls.
     parts.append(tools)
 
@@ -274,12 +295,29 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                      'provenance metadata; it does not checksum the full database.</p>'
                      '</details>')
 
+    if assessment.paths:
+        rows = []
+        for path in assessment.paths:
+            for entry in path['inputs']:
+                cells = ''.join('<td>' + _esc(f"{bounds[0]:.3g}–{bounds[1]:.3g}") + '</td>'
+                                for bounds in entry['factors'].values())
+                rows.append('<tr><td>' + _esc(entry['cve']) + '</td>' + cells
+                            + '<td>' + _esc(entry['advisory']) + '</td></tr>')
+        parts.append('<details><summary>How each vulnerability contributes</summary>'
+                     '<p>T = threat evidence; A = attack access; H = operational harm; '
+                     'U = affected and unfixed. A range means evidence is missing. '
+                     'Repeated advisories for the same CVE count once. Separate CVEs '
+                     'are review units; independent attack paths have not been established.</p>'
+                     '<div class="table-scroll"><table><thead><tr><th>Vulnerability</th>'
+                     '<th>T</th><th>A</th><th>H</th><th>U</th><th>Advisory</th></tr></thead><tbody>'
+                     + ''.join(rows) + '</tbody></table></div></details>')
+
     if stability is not None:
         klass = "robust" if (stability.gated or stability.robust) else "fragile"
         parts.append(
             f'<p class="stability {klass}"><b>Verdict stability.</b> '
             + ('A purchase blocker sets this verdict regardless of score weights.' if stability.gated else
-               'This check was not run for this result.' if not stability.samples else
+               'This check was not run for this result. Resolve missing evidence before testing weight sensitivity.' if not stability.samples else
                f'{_esc(stability.dominant)} was the most common verdict, appearing in {stability.agreement:.0%} of '
                f'{stability.samples} tested weight settings. Scores ranged '
                f'{stability.score_min}&ndash;{stability.score_max}. '
@@ -337,12 +375,9 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     return "".join(parts)
 
 
-# The three rows that carry no weight of their own because they are inputs to
-# Exposure: threat, severity and deployment reachability. Saying only "not
-# scored" against a network exposure the operator deliberately declared reads
-# as "we ignored you" -- and it is wrong, because declaring it can move the
-# score by twenty points. Name the destination instead.
-FEEDS_EXPOSURE = {"Exploitation", "Severity", "Network exposure"}
+# Threat data feeds T. CVSS severity and network topology are context; actual
+# reachability and credible OT consequence are established separately in RT4.
+FEEDS_EXPOSURE = {"Exploitation"}
 
 
 def _pillar_table(assessment, weights):
@@ -420,7 +455,8 @@ def _summary_table(blocks, stabilities):
         colour = VERDICT_COLOR.get(assessment.verdict, INERT)
         st = stabilities.get(id(assessment), stabilities.get(assessment.product))
         robust = "&mdash;" if st is None else (
-            "Blocked" if st.gated else f"{st.agreement:.0%}")
+            "Blocked" if st.gated else "Needs verification" if assessment.provisional else
+            "Not tested" if not st.samples else f"{st.agreement:.0%}")
         note = (assessment.gates[0]["gate"] if assessment.gates
                 else 'Supplier verification required' if assessment.cautions or assessment.third_party_count
                 else "" if resolution.resolved else resolution.reason)
@@ -428,7 +464,7 @@ def _summary_table(blocks, stabilities):
             f'<tr class="cand" style="--vc:{colour}">'
             f'<td><b>{_esc(assessment.product)}</b></td>'
             f'<td class="v">{_esc(assessment.verdict)}</td>'
-            f'<td class="n">{"&mdash;" if assessment.score is None else assessment.score}</td>'
+            f'<td class="n">{score_label(assessment)}</td>'
             f'<td class="n">{"&mdash;" if assessment.score is None else assessment.findings_count}</td>'
             f'<td class="n">{robust}</td>'
             f'<td>{_esc(note)}</td></tr>')

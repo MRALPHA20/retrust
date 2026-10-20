@@ -628,7 +628,7 @@ def test_comparison_download_preserves_ranked_queries_and_stability(comparison_h
     assert best['score'] == 80 and best['robust'] == .9
     assert second['query']['order_number'] == 'SECOND' and second['robust'] == .6
     assert payload['weights'] == {'severity': 1} and payload['provenance']
-    assert payload['warnings'] and payload['stability_samples'] == 300
+    assert payload['warnings'] and payload['requested_stability_samples'] == 300
     assert 'retrust-comparison.json' in headers['Content-Disposition']
     _, _, page = _get(handler, '/compare' + query)
     assert '90%' in page and '60%' in page

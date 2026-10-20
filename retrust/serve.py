@@ -157,8 +157,8 @@ def _search_page(connection, stats, query):
             '<p>Compare candidates and prepare questions for the supplier.</p></div></li></ol></section>'
             '<section class="panel"><div class="panel-heading"><h2>Explore an example</h2>'
             '<span>Live assessments</span></div>'
-            '<a class="example" href="/score?vendor=ABB&amp;product=AC%20800M">'
-            '<span><strong>ABB · AC 800M</strong><small>Inspect the evidence and network exposure</small></span><span class="arrow">↗</span></a>'
+            '<a class="example" href="/score?vendor=Siemens&amp;product=SIMATIC%20IPC477E%20Pro">'
+            '<span><strong>Siemens · SIMATIC IPC477E Pro</strong><small>Inspect the evidence and network exposure</small></span><span class="arrow">↗</span></a>'
             '<a class="example" href="/score?vendor=Siemens&amp;product=SIMATIC%20S7-1500&amp;version=3.1.6">'
             '<span><strong>Siemens · SIMATIC S7-1500</strong><small>See how firmware changes the assessment</small></span><span class="arrow">↗</span></a>'
             '<a class="example" href="/demo"><span><strong>Take the guided demo</strong>'
@@ -205,7 +205,8 @@ def _demo_page():
         ('Identify the exact hardware', 'Search by the order number from a requisition. '
          'Check the matched model before assessing its firmware.', '/?q=6ES7518-4AX00-1AB0', 'Find a Siemens controller'),
         ('Explain a verdict', 'See why the product received its recommendation. '
-         'Review the four parts of the score, missing information and assumptions about your network.', '/score?vendor=ABB&product=AC%20800M', 'Assess ABB AC 800M'),
+         'Review the four parts of the score, missing information and assumptions about your network.', '/score?vendor=Siemens&product=SIMATIC%20IPC477E%20Pro',
+         'Assess Siemens SIMATIC IPC477E Pro'),
         ('Compare a shortlist', 'Review three examples together. These are different equipment classes '
          'to demonstrate the workflow, not interchangeable engineering alternatives.',
          '/compare?c=ABB%7CAC%20800M&c=Moxa%7CEDS-405A&c=Siemens%7CSIMATIC%20S7-1500%7C3.1.6', 'Open example comparison'),
@@ -336,7 +337,7 @@ def _lookup_form(route, action, vendor, product, version=None, product_optional=
     """A consistent entry point for the evidence pages."""
     fields = (_field('v', 'vendor', 'Manufacturer (vendor)', vendor, 'e.g. ABB', required=True)
               + _field('p', 'product', 'Product / model' + (' (optional)' if product_optional else ''),
-                       product, 'e.g. AC 800M', required=not product_optional))
+                       product, 'e.g. SIMATIC IPC477E Pro', required=not product_optional))
     if version is not None:
         fields += _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
     helper = ('Leave the product blank to see the manufacturer’s full history.' if product_optional else
@@ -353,7 +354,7 @@ def _lookup_controls(form, populated, label='Change product'):
             if populated else form)
 
 
-def _lookup_example(route, vendor='ABB', product='AC 800M'):
+def _lookup_example(route, vendor='Siemens', product='SIMATIC IPC477E Pro'):
     query = urllib.parse.urlencode(dict(vendor=vendor, product=product))
     return (f'<p class="helper">Try an example: <a href="{route}?{_esc(query)}">'
             f'{_esc(vendor)} · {_esc(product)}</a>. Examples use the loaded public evidence.</p>')
@@ -399,23 +400,23 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
     leaving one unanswered keeps it unresolved rather than guessing either way.
     """
     return ('<div class="form-grid">'
-            + _choice('assessment_type' + suffix, 'Are you buying or reviewing installed equipment?',
-                      score.ASSESSMENT_TYPES, assessment_type,
-                      helper='Buying it, or assessing one already installed.')
             + _choice('network_exposure' + suffix, 'What is the equipment connected to?',
                       score.NETWORK_EXPOSURES, network_exposure,
                       blank='Unknown — ask your technical team',
-                      helper='Operator-reported, not verified. IT–OT means a connection to business IT; Internet–OT means internet access. These choices do not prove every weakness can be reached.')
-            + _choice('consequence' + suffix, 'If the equipment were attacked, what could happen?',
-                      score.CONSEQUENCES, consequence, blank='Unknown — needs engineering review',
-                      helper='Ask your operations or safety team. Unknown consequences receive no reduction in impact.')
+                      helper='Operator-reported, not verified. An isolated device may still be reached from another industrial computer. Confirm actual access alongside this choice.')
             + _choice('interface' + suffix, 'Can an attacker reach the affected service?',
                       score.INTERFACES, interface,
-                      helper='Choose “Not established” if unsure. A technical owner must verify a block for all in-scope findings before you select it.')
+                      helper='Include network, local and physical access where relevant. Select “blocked” only after a technical owner has checked every relevant path.')
             + _choice('prerequisites' + suffix, 'Can an attacker meet what the weakness requires?',
                       score.PREREQUISITES, prerequisites,
-                      helper='Some weaknesses need more than network access: an account, a logged-in engineer tricked into clicking, or a particular machine state. CVSS records which. Choose “verified impossible” only where a technical owner has ruled those conditions out; it is ignored for weaknesses that require nothing.')
-            + _choice('remediation' + suffix, 'Have the fixes or protective measures been verified?',
+                      helper='An attack may need an account, someone clicking a link, or a particular device state. Ask a technical owner to check these conditions for every weakness. Unknown is a valid answer.')
+            + _choice('assessment_type' + suffix, 'Are you buying or reviewing installed equipment?',
+                      score.ASSESSMENT_TYPES, assessment_type,
+                      helper='Buying it, or assessing one already installed.')
+            + _choice('consequence' + suffix, 'What could exploiting these weaknesses do to the process?',
+                      score.CONSEQUENCES, consequence, blank='Unknown — needs engineering review',
+                      helper='Ask your operations or safety team. Unknown consequences produce a range and need verification. Use a consequence credible for every finding, not just the importance of the equipment.')
+            + _choice('remediation' + suffix, 'Is the selected firmware affected or already fixed?',
                       score.REMEDIATIONS, remediation,
                       helper='“Applied” or “verified” must cover all in-scope findings. A plan or an available download does not mean the equipment is fixed.')
             + '</div>')
@@ -436,14 +437,14 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
             + '</div></details>'
             + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
             + '<p class="helper">Firmware is the software running on the equipment. Leave blank if unknown; the result will show what still needs checking.</p>'
-            '<details class="form-options"><summary>Site details and fixes (optional)</summary>'
-            '<p class="helper">You can get a first assessment without these answers. '
+            '<section class="site-context"><h3>Network access and operating context</h3>'
+            '<p class="helper">These answers are central to the assessment. '
             'Leave them unknown if unsure, then ask your technical team. '
             'ReTrust uses your answers; it does not inspect your network.</p>'
             + _owner_fields(network_exposure, consequence, interface,
                             assessment_type, remediation,
                             prerequisites=prerequisites)
-            + '</details>'
+            + '</section>'
             + '<button type="submit">Assess product →</button></form>')
 
 
@@ -494,9 +495,10 @@ def _comparison_results(assess, context, rows):
         query = dict(zip(batch.QUERY_FIELDS, (vendor, product, version, order_number)))
         assessment = block[0]
         stability = (sensitivity.stability(*assessment.inputs, samples=300,
-                     bands=context.get('bands')) if assessment.inputs else None)
+                     bands=context.get('bands'), network_exposure=network, **owner)
+                     if assessment.inputs else None)
         entries.append((block, query, stability))
-    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'AVOID': 2, 'NOT ASSESSED': 3}
+    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'AVOID': 2, 'VERIFY': 3, 'NOT ASSESSED': 4}
     entries.sort(key=lambda entry: (rank.get(entry[0][0].verdict, 4),
                                    -(entry[0][0].score or 0)))
     return entries
@@ -523,9 +525,8 @@ def _compare_page(assess, context, candidates, submitted=False):
                   + _field(f'cv{i}', f'vendor_{i}', 'Vendor', vendor, 'e.g. Moxa')
                   + _field(f'cp{i}', f'product_{i}', 'Product / model', product, 'e.g. EDS-405A')
                   + _field(f'cf{i}', f'version_{i}', 'Firmware (optional)', version, 'e.g. 3.0')
-                  + '</div><details class="form-options"><summary>Site details and fixes'
-                  + (' (saved)' if saved else ' (optional)') + '</summary>'
-                  + _owner_fields(network, suffix=f'_{i}', **owner) + '</details></fieldset>')
+                  + '</div><h3>Network access and operating context</h3>'
+                  + _owner_fields(network, suffix=f'_{i}', **owner) + '</fieldset>')
     form = ('<form method="get" action="/compare">' + boxes
             + '<p class="helper">Use an order number, or a vendor and model. If you enter both, '
             'they must agree. Leave unused candidates blank. Another row appears after comparing, '
@@ -577,7 +578,7 @@ def _alternatives_page(connection, assess, vendor, product, version):
                      + f'<p class="notice">{_esc(resolution.reason)}. '
                      '<a href="/">Search for the exact model</a> and try again.</p>')
     body = heading + _lookup_controls(form, True)
-    shown = "no score" if subject.score is None else f"{subject.score}/100"
+    shown = "no score" if subject.score is None else f"{report.score_label(subject)}/100"
     body += (f'<div class="tw"><p><b>{_esc(subject.product)}</b> &mdash; '
              f'{_esc(subject.verdict)}, {shown}.</p></div>')
 
@@ -591,6 +592,9 @@ def _alternatives_page(connection, assess, vendor, product, version):
                  'Alternatives have no firmware specified. Check each version before comparing scores.</p>')
 
     if options:
+        if any(o.provisional for o in options):
+            body += ('<p class="notice">VERIFY candidates need technical checks. Their score ranges are provisional; '
+                     'they are not recommendations or proof that they are safer.</p>')
         rows = "".join(
             f'<tr><td><a href="/score?vendor='
             f'{urllib.parse.quote(family_vendor)}&amp;product='
@@ -598,14 +602,14 @@ def _alternatives_page(connection, assess, vendor, product, version):
             f'{_esc(o.product)}</a></td>'
             f'<td style="color:{report.VERDICT_COLOR.get(o.verdict, report.INERT)};'
             f'font-weight:700">{_esc(o.verdict)}</td>'
-            f'<td class="n">{o.score:.1f}</td><td class="n">{o.cves}</td></tr>'
+            f'<td class="n">{report.score_label(o)}</td><td class="n">{o.cves}</td></tr>'
             for o in options)
         body += ('<div class="tw" tabindex="0" role="region" aria-label="Alternative products; scroll sideways for more columns">'
                  '<p class="table-scroll-hint">Scroll sideways to see all columns →</p>'
                  '<table><thead><tr><th>Product — open for an assessment</th>'
                  '<th>Verdict</th><th class="n">Score / 100</th><th class="n">Known vulnerabilities</th></tr></thead>'
                  f'<tbody>{rows}</tbody></table></div>')
-        if subject.score is not None:
+        if subject.score is not None and not subject.provisional and not any(o.provisional for o in options):
             better = sum(1 for o in options if o.score > subject.score)
             body += (f'<p>{better} of {len(options)} scored above '
                      f'{_esc(subject.product)} ({subject.score}/100).</p>')
@@ -614,7 +618,7 @@ def _alternatives_page(connection, assess, vendor, product, version):
                  'Ask your supplier for other candidates and assess them individually.</p>')
     for reason, count in (skipped or {}).items():
         if count:
-            label = {'gated': 'have purchase blockers', 'unassessable': 'could not receive a favourable assessment',
+            label = {'gated': 'have purchase blockers', 'unassessable': 'need further verification or could not receive a favourable assessment',
                      'no evidence': 'have no published vulnerability evidence to compare'}.get(reason, 'could not be included')
             body += f'<p class="helper">{count} related product(s) are not shown because they {label}.</p>'
     body += ('<details><summary>What this list can and cannot compare</summary>'
@@ -850,6 +854,7 @@ which information is still missing.</p>
 <dt>PREFER — consider for your shortlist</dt><dd>Complete the supplier checks and confirm that the product is suitable before approving a purchase.</dd>
 <dt>CONDITIONAL — review before deciding</dt><dd>Ask your technical team to review the risks and missing information.</dd>
 <dt>AVOID — advised against purchase</dt><dd>A purchase blocker or a low score makes this an unfavourable assessment. Read the stated reasons.</dd>
+<dt>VERIFY — technical checks needed</dt><dd>Resolve missing network, consequence or firmware evidence before choosing. A provisional range shows what remains uncertain.</dd>
 <dt>NOT ASSESSED — more information needed</dt><dd>Confirm the exact product and firmware, then ask for missing evidence.</dd>
 </dl>
 <section class="panel"><h2>How a verdict is reached</h2>
@@ -872,8 +877,14 @@ assumptions are shown with the result.</p></div></li>
 <p><code>S = E^0.60 × P^0.20 × V^0.15 × C^0.05</code>, using scores from 1 to 100.
 E is exposure safety, P is available fixes, V is vendor practices, and C is certification evidence.
 These are the default weights; individual reports show the weights actually used.</p>
+<p><code>Z = T × A × H × U; R = min(1, Z1 + 0.20Z2 + 0.10Z3); E = 100(1 − R)</code>.
+The highest-risk review unit counts fully; only the next two add weight. T uses the maximum of KEV, LEV and EPSS.
+A is 1 for a feasible attack path, 0 for a verified block, or an unresolved range.
+H is the credible operational consequence; U records whether the selected firmware remains affected.
+Network topology is context, not a fractional discount. Missing inputs produce VERIFY and a provisional range.
+Repeated advisories for a CVE count once; distinct CVEs are not proof of independent paths.</p>
 <p>A part with no measurable evidence is excluded and the remaining weights are adjusted.
-Certification can improve the result but cannot lower it. Purchase blockers still override the score.
+Each measured pillar participates in the weighted product. Purchase blockers still override the score.
 An 80/100 score does not mean the product is 80% secure or predict the chance of a compromise.</p></details>
 <h2>Common terms in plain language</h2>
 <dl class="term-list"><dt>Vulnerability / CVE</dt><dd>A known security weakness. A CVE number is its reference ID.</dd>
@@ -943,7 +954,7 @@ def _export_comparison(assess, context, provenance, path, candidates):
     payload = batch.envelope(records, {
         'provenance': provenance, 'weights': context['weights'],
         'bands': context.get('bands'), 'config_source': context.get('config_source', ''),
-        'generated': date.today().isoformat(), 'stability_samples': 300,
+        'generated': date.today().isoformat(), 'requested_stability_samples': 300,
         'warnings': (['Some candidates have firmware specified and others do not. '
                       'Add a version for each to compare on equal terms.']
                      if _comparison_warning(rows) else [])})

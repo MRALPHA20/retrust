@@ -34,7 +34,7 @@ BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
 
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
-SCORING_VERSION = "RT3"
+SCORING_VERSION = "RT4"
 
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
@@ -115,6 +115,13 @@ class Assessment:
     # once three paths are severe enough every worse product reads E = 0, and
     # this is what still separates them.
     worst_risk: float | None = None
+    score_min: float | None = None
+    score_max: float | None = None
+    exposure_min: float | None = None
+    exposure_max: float | None = None
+    provisional: bool = False
+    verification: list = field(default_factory=list)
+    paths: list = field(default_factory=list)
 
 
 def _exploitation(findings):
@@ -393,6 +400,8 @@ def _certification(certificates):
 NETWORK_EXPOSURES = {
     "isolated": ("Isolated", 100.0,
                  "No routed path from enterprise IT or the internet into OT."),
+    "ot_only": ("OT network only", 50.0, "Connected to other industrial equipment."),
+    "remote_vendor": ("Remote vendor access", 50.0, "A supplier can connect remotely."),
     "it_ot": ("IT–OT", 60.0,
               "OT is connected to enterprise IT through a network boundary."),
     "internet_ot": ("Internet–OT", 20.0,
@@ -414,14 +423,15 @@ def _network_exposure(value):
     """Score the operator-reported route into the OT environment."""
     if value is None:
         return Pillar("Network exposure", 50.0, 0.0,
-                      ["network context not supplied; this optional pillar was not scored"],
+                      ["Network context is required to complete the assessment; ask the network owner."],
                       scored=False)
     if value not in NETWORK_EXPOSURES:
         raise ValueError(f"network exposure must be one of {', '.join(NETWORK_EXPOSURES)}")
-    label, result, description = NETWORK_EXPOSURES[value]
+    label, _, description = NETWORK_EXPOSURES[value]
+    result = 50.0  # Context only; topology is not a reachability discount.
     return Pillar("Network exposure", result, 1.0,
                   [f"Operator-reported: {label}. {description}",
-                   "ReTrust has not independently verified the plant network."])
+                   "Context only: actual reachability determines A. ReTrust does not inspect the plant network."], scored=False)
 
 
 def narrows(network_exposure=None, consequence=None, interface="unknown",
@@ -645,8 +655,8 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     vulnerable interface is unreachable, whether this is a purchase or an
     installed asset, and whether a fix is actually on the box. ReTrust supplies
     the vulnerability intelligence; it never asks the operator to score a
-    vendor or guess a percentage. Every one is optional, and an unanswered
-    question stays unresolved rather than quietly becoming a best or worst case.
+    vendor or guess a percentage. Network context and verified reachability are main assessment inputs. Unknown
+    answers produce a provisional range and VERIFY until the material gaps close.
     """
     weights = weights or DEFAULT_WEIGHTS
     declared = dict(
@@ -668,12 +678,13 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     base = first if first else findings
     undecided = [f for f in base if not f.decided]
 
+    exposure = exposure_model.analyse(base, consequence, interface, assessment_type,
+                                     remediation, network_exposure, prerequisites)
     measured = []
     all_pillars = []
     for spec in PILLARS:
         if spec.key == "exposure":
-            pillar = _exposure(base, consequence, interface, assessment_type,
-                               remediation, network_exposure, prerequisites)
+            pillar = Pillar("Exposure", exposure.safety_min, exposure.coverage, exposure.evidence)
         else:
             pillar = spec.measure(base, advisories, certificates, vendor_key)
         measured.append((spec, pillar))
@@ -697,10 +708,10 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     # never scored as a phantom neutral that moves rankings. `scored` is the
     # participation flag every renderer and the sensitivity table read, so
     # the exclusion is visible everywhere the same way.
-    usable = [(spec, pillar) for spec, pillar in measured if pillar.coverage > 0]
-    dropped = [spec.name for spec, pillar in measured if pillar.coverage == 0]
-    for _, pillar in measured:
-        if pillar.coverage == 0:
+    usable = [(spec, pillar) for spec, pillar in measured if pillar.coverage > 0 or (spec.key == "exposure" and base)]
+    dropped = [spec.name for spec, pillar in measured if pillar.coverage == 0 and not (spec.key == "exposure" and base)]
+    for spec, pillar in measured:
+        if pillar.coverage == 0 and not (spec.key == "exposure" and base):
             pillar.scored = False
 
     # Gates run on first-party findings only: a KEV inside a third-party bundle
@@ -732,70 +743,20 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
 
     composite = _composite(usable, weights)
 
-    # Certification is positive evidence only: its ABSENCE is excluded, never a
-    # penalty, so its PRESENCE must not lower the composite either -- otherwise
-    # a vendor holding a mid-tier certificate scores below one holding none,
-    # and the pillar that is meant to reward certification punishes it. It may
-    # lift the score, never drag it. (This asymmetry is unique to
-    # certification; a low patchability or severity SHOULD lower a score.)
-    if any(spec.key == "certification" for spec, _ in usable):
-        others = [(spec, p) for spec, p in usable if spec.key != "certification"]
-        if others:
-            composite = max(composite, _composite(others, weights))
-
-    # A declaration may refine the number; it may never promote the verdict.
-    #
-    # Network exposure and interface reachability are the strongest inputs in
-    # the model and the only ones nobody can check. Measured on 399 corpus
-    # products, ticking "isolated" alone moved 253 from CONDITIONAL to PREFER
-    # and 19 from AVOID to PREFER; "verified blocked" alone moved 19 from AVOID
-    # to PREFER. Worse, because the discount scales each product's own vector
-    # mix it is not a flat shift: it reordered 118 of 119 products in a
-    # comparison. An unverifiable dropdown was deciding procurement.
-    #
-    # So the undeclared score sets the best BAND this product can reach, and
-    # declarations move the score within it. They still rank candidates and
-    # still show in the report. Note that clamping promotion clamps everything
-    # a declaration can currently do: every multiplier in exposure.py is <= 1,
-    # so no answer the operator can give makes a product look worse. The
-    # clamp is written against the band rather than the score so that the one
-    # direction worth keeping open stays open if that ever changes.
-    #
-    # This is the same asymmetry certification already uses above, and it is
-    # uniform across all four declarations deliberately: a per-field carve-out
-    # would need defending field by field, and "no unverified input can
-    # promote a verdict" is a property a reviewer can check in one sentence.
-    clamp_note = None
-    if narrows(network_exposure, consequence, interface, remediation,
-               prerequisites):
-        undeclared = [(spec, _exposure(base) if spec.key == "exposure" else pillar)
-                      for spec, pillar in usable]
-        earned = _composite(undeclared, weights)
-        rows = bands or BANDS
-        reached = next(t for t, _ in rows if earned >= t)
-        better = [t for t, _ in rows if t > reached]
-        if better and composite >= min(better):
-            promoted = next(b for t, b in rows if composite >= t)
-            composite = min(better) - 0.1
-            clamp_note = (
-                f"Your declared deployment scores {_composite(usable, weights):.1f}"
-                f" ({promoted}), but the product earns {earned:.1f} on evidence"
-                " alone. The band shown is the one the evidence earns: a"
-                " verdict that can be improved by an unverified answer is not"
-                " a procurement control. The declared figure still ranks this"
-                " product against the others you are comparing.")
-
+    upper_usable = [(spec, Pillar(p.name, exposure.safety_max, p.coverage, p.evidence)
+                              if spec.key == "exposure" else p) for spec, p in usable]
+    upper = _composite(upper_usable, weights)
     prefer_threshold = (bands or BANDS)[0][0]
     cap_note = None
     unmitigable = sorted({
         f.cve for group in weakness.classify(base)
         if group.name in weakness.UNMITIGABLE
         for f in base if f.cve in group.cves and not f.fixed})
-    if unmitigable and composite >= prefer_threshold:
+    if unmitigable and upper >= prefer_threshold:
         # A credential baked into firmware with no fix shipped is not a
         # weighting question: whatever the other pillars say, this product
         # cannot be preferred while that stands.
-        composite = prefer_threshold - 0.1
+        composite = min(composite, prefer_threshold - 0.1)
         cap_note = (
             "Capped below PREFER: " + ", ".join(unmitigable[:4])
             + (" and more" if len(unmitigable) > 4 else "")
@@ -803,14 +764,21 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             " The operator cannot engineer around them for the life of the"
             " asset, so no weighting can make this product preferred.")
 
-    verdict = "AVOID" if gates else next(b for t, b in (bands or BANDS)
-                                         if composite >= t)
+    if unmitigable:
+        upper = min(upper, prefer_threshold - 0.1)
+    verdict = ("AVOID" if gates else "VERIFY" if exposure.provisional else
+               next(b for t, b in (bands or BANDS) if composite >= t))
 
     notes = []
     if cap_note:
         notes.append(cap_note)
-    if clamp_note:
-        notes.append(clamp_note)
+    if exposure.provisional:
+        notes.append("This is a provisional score range, not a purchase recommendation. "
+                     "Ask a technical owner to resolve the checks listed below. "
+                     "The lower endpoint is the conservative case.")
+    if narrows(network_exposure, consequence, interface, remediation, prerequisites):
+        notes.append("Site answers are operator-reported assertions, not independently verified "
+                     "by ReTrust. Retain supporting evidence for each finding before procurement.")
     if first and third:
         notes.append(
             f"{len({f.cve for f in third})} of the CVEs in scope arrive via"
@@ -845,14 +813,14 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
             " for every pillar, never a phantom neutral score.")
     if consequence is None:
         notes.append(
-            "No process consequence was declared, so exposure is reported at"
-            " full process impact. That is the conservative reading, not a"
-            " measurement: declare the consequence to narrow it.")
+            "No process consequence was established, so exposure includes"
+            " a range from no material effect to full impact. Ask an engineer"
+            " to establish the credible consequence for each finding.")
     if any(f.fixed for f in base) and remediation not in ("applied", "mitigated"):
         notes.append(
             "A fix is available for one or more findings, but exposure still"
             " treats them as applicable until the selected firmware or a"
-            " verified mitigation is established. Fix availability contributes"
+            " verified fix is established. Protective controls affect reachability, not firmware applicability. Fix availability contributes"
             " to patchability, not a second exposure discount.")
 
     # What kind of flaws these are, which is a different question from how many
@@ -871,8 +839,10 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
         undecided_count=len({f.cve for f in undecided}),
         confidence=round(confidence.coverage, 2),
-        worst_risk=exposure_model.worst(base, consequence, interface,
-                                        assessment_type, remediation,
-                                        network_exposure, prerequisites),
+        worst_risk=max((p["z_max"] for p in exposure.paths), default=None),
+        score_min=round(composite, 1), score_max=round(upper, 1),
+        exposure_min=exposure.safety_min, exposure_max=exposure.safety_max,
+        provisional=exposure.provisional, verification=exposure.missing,
+        paths=exposure.paths,
         notes=notes, **declared,
     )

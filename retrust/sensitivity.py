@@ -133,6 +133,10 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
 
     # No pillar had evidence, so there is no score to reweigh: sampling would
     # dress "nothing was measured" up as a robustness figure.
+    if probe.provisional:
+        return Stability(samples=0, verdicts={"VERIFY": 1},
+                         score_min=probe.score_min or 0, score_max=probe.score_max or 0,
+                         score_median=probe.score or 0)
     if probe.score is None:
         return Stability(samples=0, verdicts={probe.verdict: 1}, gated=False,
                          score_min=0.0, score_max=0.0, score_median=0.0)
@@ -158,13 +162,14 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
     )
 
 
-def dominance(a_inputs, b_inputs, samples=500, seed=7):
+def dominance(a_inputs, b_inputs, samples=500, seed=7, a_context=None, b_context=None):
     """How often does candidate A outscore candidate B across weightings?
 
     Each input is the (findings, advisories, certificates, screening_gates)
     tuple for one candidate. Returns the share of weightings where A wins, so
     0.97 means "A beats B under almost any reasonable weighting" and 0.55 means
     "these two are effectively tied; choose on something else".
+    Returns None when material inputs remain unresolved.
     """
     rng = random.Random(seed)
     wins = 0
@@ -172,13 +177,15 @@ def dominance(a_inputs, b_inputs, samples=500, seed=7):
         weights = _random_weights(rng)
         a = assess("a", a_inputs[0], a_inputs[1], weights=weights,
                    certificates=a_inputs[2], screening_gates=a_inputs[3],
-                   vendor_key=a_inputs[4] if len(a_inputs) > 4 else None)
+                   vendor_key=a_inputs[4] if len(a_inputs) > 4 else None, **(a_context or {}))
         b = assess("b", b_inputs[0], b_inputs[1], weights=weights,
                    certificates=b_inputs[2], screening_gates=b_inputs[3],
-                   vendor_key=b_inputs[4] if len(b_inputs) > 4 else None)
+                   vendor_key=b_inputs[4] if len(b_inputs) > 4 else None, **(b_context or {}))
         # A gate decides outright, in A's favour only if B is the gated one.
         if bool(a.gates) != bool(b.gates):
             wins += int(not a.gates)
+        elif a.provisional or b.provisional or a.score is None or b.score is None:
+            return None
         elif a.score > b.score:
             wins += 1
     return wins / samples if samples else 0.0

@@ -102,14 +102,16 @@ def test_template_round_trips(tmp_path):
 
 
 def test_custom_bands_change_the_verdict():
-    """The same evidence yields different verdicts under different policies."""
-    findings = [_finding(cvss=5.0, epss=0.001)]
-    baseline = score.assess("x", findings).score
-
-    lenient = [(10, "PREFER"), (5, "CONDITIONAL"), (0, "AVOID")]
-    strict = [(baseline + 5, "PREFER"), (baseline + 2, "CONDITIONAL"), (0, "AVOID")]
-    assert score.assess("x", findings, bands=lenient).verdict == "PREFER"
-    assert score.assess("x", findings, bands=strict).verdict == "AVOID"
+    findings = [_finding(cvss=5, epss=.12)]
+    findings[0].lev = .6
+    inputs = dict(network_exposure='ot_only', interface='exposed',
+                  prerequisites='satisfiable', consequence='control', remediation='affected')
+    baseline = score.assess('x', findings, **inputs).score
+    lenient = [(10, 'PREFER'), (5, 'CONDITIONAL'), (0, 'AVOID')]
+    strict = [(baseline + 5, 'PREFER'), (baseline + 2, 'CONDITIONAL'), (0, 'AVOID')]
+    assert score.assess('x', findings, bands=lenient, **inputs).verdict == 'PREFER'
+    assert score.assess('x', findings, bands=strict, **inputs).verdict == 'AVOID'
+    assert score.assess('x', findings, bands=lenient).verdict == 'VERIFY'
 
 
 # --- severity must discriminate --------------------------------------------
@@ -187,24 +189,36 @@ def test_gated_product_skips_sampling():
 
 def test_sampling_is_reproducible():
     findings = [_finding(cvss=8.0, epss=0.05)]
-    first = sensitivity.stability(findings, {"A"}, samples=100, seed=42)
-    second = sensitivity.stability(findings, {"A"}, samples=100, seed=42)
+    findings[0].lev = .05
+    context = dict(network_exposure='ot_only', interface='exposed',
+                   prerequisites='satisfiable', consequence='control')
+    first = sensitivity.stability(findings, {"A"}, samples=100, seed=42, **context)
+    second = sensitivity.stability(findings, {"A"}, samples=100, seed=42, **context)
+    assert first.samples == second.samples == 100
     assert first.verdicts == second.verdicts
     assert first.score_median == second.score_median
 
 
 def test_different_seeds_still_agree_on_a_clear_case():
     findings = [_finding(cvss=2.0, epss=0.0001, remediation="vendor_fix")]
-    verdicts = {sensitivity.stability(findings, {"A"}, samples=200, seed=s).dominant
+    findings[0].lev = .0001
+    context = dict(network_exposure='ot_only', interface='exposed',
+                   prerequisites='satisfiable', consequence='control')
+    verdicts = {sensitivity.stability(findings, {"A"}, samples=200, seed=s, **context).dominant
                 for s in (1, 7, 99)}
     assert len(verdicts) == 1
 
 
 def test_dominance_prefers_the_better_candidate():
     good = ([_finding(cvss=4.0, epss=0.001)], {"A"}, (), ())
-    bad = ([_finding(cvss=9.9, epss=0.8, remediation="none_available")], {"B"}, (), ())
-    assert sensitivity.dominance(good, bad, samples=200) > 0.9
-    assert sensitivity.dominance(bad, good, samples=200) < 0.1
+    bad = ([_finding(cvss=8.9, epss=0.8, remediation="none_available")], {"B"}, (), ())
+    for group in (good, bad):
+        group[0][0].lev = group[0][0].epss
+    context = dict(network_exposure='ot_only', interface='exposed',
+                   prerequisites='satisfiable', consequence='control')
+    assert sensitivity.dominance(good, bad, samples=200, a_context=context, b_context=context) > .9
+    assert sensitivity.dominance(bad, good, samples=200, a_context=context, b_context=context) < .1
+    assert sensitivity.dominance(good, bad, samples=20) is None
 
 
 def test_dominance_respects_gates():

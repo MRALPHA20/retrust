@@ -1,5 +1,6 @@
 """Tests for batch automation and screenshot capture."""
 
+import csv
 import json
 
 import pytest
@@ -379,3 +380,29 @@ def test_an_sbom_with_no_usable_components_is_refused(tmp_path):
     path.write_text(json.dumps({"bomFormat": "CycloneDX", "components": []}))
     with pytest.raises(SystemExit, match="no usable"):
         batch.read_candidates(str(path))
+
+
+@pytest.mark.parametrize('suffix', ['csv','json'])
+def test_batch_preserves_main_site_context(tmp_path, suffix):
+    path = tmp_path / ('candidates.' + suffix)
+    row = dict(vendor='Testco', product='PLC', network_exposure='ot_only',
+               interface='exposed', consequence='control', remediation='affected',
+               prerequisites='satisfiable')
+    if suffix == 'json':
+        path.write_text(json.dumps([row]))
+    else:
+        import io
+        handle = io.StringIO()
+        writer = csv.DictWriter(handle, fieldnames=list(row))
+        writer.writeheader()
+        writer.writerow(row)
+        path.write_text(handle.getvalue())
+    loaded = batch.read_candidates(path)[0]
+    assert all(loaded[key] == value for key, value in row.items())
+
+
+def test_batch_refuses_invalid_network_context(tmp_path):
+    path = tmp_path / 'bad.csv'
+    path.write_text('vendor,product,network_exposure\nTestco,PLC,public\n')
+    with pytest.raises(SystemExit, match='invalid network_exposure'):
+        batch.read_candidates(path)

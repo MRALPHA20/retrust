@@ -296,6 +296,10 @@ class Finding:
     # mid-list silently feeds the wrong argument to the wrong name. New fields
     # go at the end.
     lev: float | None = None
+    kev_available: bool = True
+    path_id: str | None = None
+    review: dict = field(default_factory=dict)
+    source_dates: dict = field(default_factory=dict)
 
     @property
     def fixed(self):
@@ -313,6 +317,8 @@ def findings(connection, resolution, version=None):
     if not resolution.resolved:
         return []
 
+    sources = {row["source"]: row["captured"] for row in connection.execute(
+        "SELECT source, captured FROM provenance")}
     out, seen = [], {}
     for match in resolution.matches:
         # Skip products whose range we can read and that clearly exclude this
@@ -359,7 +365,8 @@ def findings(connection, resolution, version=None):
                 cve=row["cve"], advisory_id=match.advisory_id,
                 cvss=row["cvss"], cwe=row["cwe"], epss=row["epss"],
                 in_kev=bool(row["in_kev"]), ransomware=bool(row["ransomware"]),
-                lev=row["lev"],
+                lev=row["lev"], kev_available="CISA KEV" in sources,
+                source_dates=dict(sources),
                 version_range=match.version_range, decided=decided,
                 remediation=row["remediation"] or "unknown",
                 vector=row["vector"],

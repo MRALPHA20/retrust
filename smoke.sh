@@ -91,8 +91,8 @@ check 1 "punctuation-only name is not a vendor"   -- $RETRUST vendor -- -
 
 echo
 echo "== scoring =="
-check 0 "score by order number"                   -- $RETRUST score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
-check 0 "score by vendor and product"             -- $RETRUST score --vendor ABB --product "AC 800M"
+check 2 "order assessment needs deployment checks"                   -- $RETRUST score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
+check 2 "unresolved site evidence returns VERIFY"             -- $RETRUST score --vendor ABB --product "AC 800M"
 check 2 "an unknown product is NOT ASSESSED"      -- $RETRUST score --vendor Nobody --product Nothing
 contains "Known exploited" "KEV forces AVOID"     -- $RETRUST score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 contains "covered list" "a listed vendor is gated" -- $RETRUST score --vendor Hikvision --product "IP Camera"

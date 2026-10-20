@@ -88,7 +88,11 @@ ol.qs pre{margin:1.5mm 0 0;font-size:8.2pt;padding:2.5mm 3mm}
 </style>
 
 <div class="plate">
-  <h1>ReTrust</h1>
+  <h1>ReTrust</h1><p><b>RT4 update, 20 October 2026:</b> Network access is a main assessment input.
+Unknown reachability, OT consequences or firmware status produces VERIFY and a
+provisional range. The current formula is Z=T×A×H×U, R=min(1,Z1+.20Z2+.10Z3),
+E=100(1−R), S=E^.60×P^.20×V^.15×C^.05. Historical benchmark measurements below
+predate RT4. See <a href="explainers/scoring.html">the current scoring explanation</a>.</p>
   <p class="sub">Score OT hardware for cyber risk before you buy it.</p>
   <dl>
     <dt>Guide</dt><dd>How it works, how to run it, how to use it</dd>
@@ -159,7 +163,7 @@ reproducible and a demonstration never depends on the network.</p>
 <h2>2 &nbsp; How it works</h2>
 
 <figure>
-<svg viewBox="0 4 700 152" role="img" aria-label="Five stages: fetch sources, build index, resolve the request, score against evidence pillars and optional network exposure with hard gates, print a verdict with its evidence" style="width:100%;height:auto;display:block">
+<svg viewBox="0 4 700 152" role="img" aria-label="Five stages: fetch sources, build index, resolve the request, score against evidence pillars and required network context and verified reachability with hard gates, print a verdict with its evidence" style="width:100%;height:auto;display:block">
   <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
     <path d="M0 0 L8 4 L0 8 z" fill="currentColor"/></marker></defs>
   <g fill="none" stroke="currentColor" stroke-width="1.2">
@@ -226,8 +230,7 @@ so abstention is a feature rather than a failure.</p>
 
 <p>The weighted result is reported as a band: <span class="v-prefer">PREFER</span>
 at 70 or above, <span class="v-caution">CONDITIONAL</span> at 40 or above,
-<span class="v-avoid">AVOID</span> below. If network exposure is not supplied,
-that pillar is omitted and the five evidence weights are normalized to 100%.
+<span class="v-avoid">AVOID</span> below. If material network, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range. Network context is a main input; topology alone is not a discount.
 Weights and thresholds are yours to change &mdash; run <code>retrust config --init</code>.</p>
 
 <div class="state">
@@ -378,60 +381,28 @@ what you typed.</p>
 
   Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0) (firmware
   3.1.6)
-  AVOID  ·  40.2/100
-  Matched by order_number (confidence 0.98) · 16 advisory product(s) · 477
-  CVE(s)
+  VERIFY  ·  79.6–82.6/100 (provisional range)
+  Matched by order_number (confidence 0.98) · 1 product(s) across 16
+  advisories · 477 CVE(s)
 
-  HARD GATE: Known exploited vulnerability
-    4 CVE(s) appear in CISA&#x27;s KEV catalogue: CVE-2023-44487, CVE-2023-4911,
-    CVE-2025-39964, CVE-2026-31431
-    Source: CISA Known Exploited Vulnerabilities catalogue
+  CAUTION: KEV-listed CVE(s) in third-party component bundles
+    4 CVE(s) with confirmed exploitation and no vendor fix arrive via
+    component bundle advisories: CVE-2023-44487, CVE-2023-4911,
+    CVE-2025-39964, CVE-2026-31431. Whether the affected component is
+    reachable on this device decides the risk -- ask the vendor (the RFQ annex
+    does).
+    Source: CISA KEV against component bundle advisories
+
+  WHAT TO CHECK NEXT ─────────────────────────────────────────────────────────
+  - Ask an operations engineer what exploiting each weakness could do to the
+  process (CVE-2022-38773)
+  - Ask the network owner whether an attacker can reach the weakness and meet
+  its requirements (CVE-2022-38773)
+  - Network context has not been supplied
 
   EVIDENCE BY PILLAR ─────────────────────────────────────────────────────────
 
-  Exploitation  ·  3.0/100  ·  coverage 100%
-    - 4 CVE(s) in CISA KEV (confirmed exploitation)
-    - peak EPSS 1.000
-    - 10 CVE(s) with EPSS &gt;= 0.10
-
-  Severity  ·  44.1/100  ·  coverage 100%
-    - highest CVSS 9.8
-    - 14/502 rated critical (9.0+), 150 high
-    - 62/502 reachable over the network with no credentials and no user action
-    - 4 need physical access to the device
-
-  Patch availability  ·  40.0/100  ·  coverage 100%
-    - 0/502 advisory findings have a vendor fix
-    - 502 offer only a mitigation or workaround
-
-  Vendor practice  ·  100.0/100  ·  coverage 100%
-    - 3 advisories in this assessment
-    - 502/502 advisory findings carry CVSS, 502/502 carry a CWE
-    - runs its own CSAF advisory feed
-
-  Certification  ·  50.0/100  ·  coverage 0%
-    - no IEC 62443 or Common Criteria certificate found for this vendor
-    - absence of certification is not evidence of insecurity
-
-  Evidence quality  ·  100.0/100  ·  coverage 100%
-    - 502/502 version ranges checked against the firmware you gave
-    - 502/502 scored by the vendor, 502/502 covered by EPSS
-
-  ASSESSMENT NOTES ───────────────────────────────────────────────────────────
-  NOTE: 477 distinct CVEs across 502 advisory findings. Pillar coverage and
-  proportions use advisory findings; exploitation counts and gates use
-  distinct CVEs.
-  NOTE: 136 finding(s) are memory safety. The usual firmware class. A patch
-  fixes each instance; a pattern of them says something about how the firmware
-  was built.
-  NOTE: 3 finding(s) are weak cryptography. Traffic or stored secrets are not
-  protected as well as they appear to be, which tends to outlive the device&#x27;s
-  patch cycle.
-  NOTE: 1 finding(s) are command or code injection. A successful attack runs
-  the attacker&#x27;s code on the device, so the consequence is not limited to the
-  function that was flawed.
-  NOTE: Also present, not detailed: path traversal.
-</pre>
+  Full evidence and technical detail continue in the exported report.</pre>
 
 <h3>Comparing candidates for one decision</h3>
 
@@ -441,19 +412,19 @@ what you typed.</p>
 <pre>CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
 ABB AC 800M
-PREFER  ·  70.1/100
-CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
+VERIFY · 68.2–87.7/100
+CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
 
 Schneider Electric Modicon M340
-AVOID  ·  6.0/100
-CVEs 48  ·  ROBUST 51%  ·  WORST FLAW 0.88
+VERIFY · 6.0–69.9/100
+CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 0.88
 
 Hikvision IP Camera
 AVOID  ·  no score
 ROBUST not sampled
 Named on a covered list
 
-AVOID: 2  ·  PREFER: 1</pre>
+AVOID: 1  ·  VERIFY: 2</pre>
 
 <p>The candidate string is pipe-separated: <span class="id">Vendor|Product|Version|OrderNumber</span>,
 and everything after the vendor is optional.</p>
@@ -517,7 +488,7 @@ a gate rather than a report somebody has to read.</p>
     score near 100 and top the comparison. <span class="v-inert">NOT ASSESSED</span>
     sorts below <span class="v-avoid">AVOID</span>.</li>
 <li><b>Missing certification is never a penalty.</b> Most OT products are never
-    submitted, so absence says nothing. A certificate can only add.</li>
+    submitted, so absence says nothing. Missing certificates are excluded. A measured certificate participates in the weighted product.</li>
 <li><b>Unparseable version ranges stay in scope and are flagged</b>, never
     assumed safe.</li>
 <li><b>Sanctions screening never fuzzy-matches.</b> Wrongly flagging a real

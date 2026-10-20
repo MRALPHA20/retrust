@@ -28,7 +28,7 @@ STYLES = {"prefer": "38;5;42", "conditional": "38;5;179", "avoid": "38;5;203",
 # Mirrors report.VERDICT_COLOR, and a test asserts it still does, so terminal and
 # report cannot drift into disagreeing about what a verdict looks like.
 VERDICT_STYLES = {"PREFER": "prefer", "CONDITIONAL": "conditional",
-                  "AVOID": "avoid", "NOT ASSESSED": "faint"}
+                  "VERIFY": "conditional", "AVOID": "avoid", "NOT ASSESSED": "faint"}
 
 ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 _forced_off = False
@@ -129,6 +129,8 @@ def candidates(records):
     for record in records:
         verdict = record["verdict"]
         score = "no score" if record["score"] is None else f"{record['score']}/100"
+        if record.get("provisional"):
+            score = f"{record['score_min']}–{record['score_max']}/100 (provisional range)"
         lines.extend(["", prose(record["product"], style="title"),
                       prose(f"{verdict}  ·  {score}",
                             style=VERDICT_STYLES.get(verdict))])
@@ -231,7 +233,7 @@ START = """\
   retrust shell             the menu, and no flags to learn
   retrust search S7-1500
   retrust score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
-  retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"
+  retrust compare --candidate "Siemens|SIMATIC IPC477E Pro" --candidate "Moxa|EDS-405A"
   retrust batch candidates.csv --html review.html"""
 BUILD = """\
   Build one and every command after it runs offline.

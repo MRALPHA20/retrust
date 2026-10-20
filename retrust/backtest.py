@@ -235,6 +235,12 @@ def interpretation(result):
         return ["Too few products had history before the cutoff to measure anything."]
 
     lines = []
+    provisional = sum(o.verdict == "VERIFY" for o in result.outcomes)
+    if provisional:
+        lines.append(f"{provisional}/{result.cohort} assessments need verification. "
+                     "Historical advisories do not establish site reachability or OT consequences. "
+                     "Correlations use conservative score endpoints, not completed procurement assessments; "
+                     "they do not validate RT4 deployment decisions.")
     if result.rho_future > 0.1:
         lines.append(
             f"A higher score went with MORE later CVEs (rho = {result.rho_future:+.3f}), "

@@ -218,3 +218,19 @@ def test_the_comparison_line_counts_only_genuine_improvements():
                alternatives.Option("Worse", "Worse", "CONDITIONAL", 30.0, "T", [], 3)]
     assert "1 of 2 scored above" in _flat(alternatives.format_report(
         _subject(value=50.0), options, _nothing_skipped()))
+
+
+def test_provisional_sibling_remains_available_for_engineering_review(db):
+    def assess(vendor, product):
+        result = score.not_assessed(f'{vendor} {product}', '')
+        result.verdict, result.score = 'VERIFY', 20
+        result.score_min, result.score_max = 20, 90
+        result.provisional, result.findings_count = True, 1
+        return result, None, []
+    options, skipped = alternatives.find(db, 'Testco', 'TestPLC 9000 Alpha', assess)
+    assert options and options[0].verdict == 'VERIFY'
+    assert options[0].score_min == 20 and options[0].score_max == 90
+    subject, _, _ = assess('Testco', 'TestPLC 9000 Alpha')
+    output = alternatives.format_report(subject, options, skipped)
+    assert '20.0-90.0' in output and 'not recommendations' in output
+    assert 'scored above' not in output

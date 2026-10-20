@@ -199,6 +199,8 @@ def _render_one(assessment, resolution, findings, context=None):
     describing the same result differently.
     """
     score_text = "no score" if assessment.score is None else f"{assessment.score}/100"
+    if assessment.provisional and assessment.score is not None:
+        score_text = f"{assessment.score_min}–{assessment.score_max}/100 (provisional range)"
     lines = [console.heading("Product assessment"), "",
              console.prose(assessment.product, style="title"),
              console.prose(f"{assessment.verdict}  ·  {score_text}",
@@ -222,6 +224,9 @@ def _render_one(assessment, resolution, findings, context=None):
         lines += ["", console.prose(f"CAUTION: {caution['caution']}", style="conditional"),
                   console.prose(caution['detail'], indent="    "),
                   console.prose(f"Source: {caution['source']}", indent="    ", style="label")]
+    if assessment.verification:
+        lines += ["", console.heading("What to check next")]
+        lines += [console.prose("- " + check) for check in assessment.verification]
     if assessment.pillars:
         lines += ["", console.heading("Evidence by pillar")]
     for pillar in assessment.pillars:
@@ -342,7 +347,7 @@ def cmd_score(args):
             [(assessment, resolution, findings)], title=assessment.product,
             weights=context["weights"], config_source=context["config_source"],
             provenance=index.provenance(connection)))
-    return 2 if assessment.verdict == "NOT ASSESSED" else exit_status
+    return 2 if assessment.verdict in ("NOT ASSESSED", "VERIFY") else exit_status
 
 
 def cmd_compare(args):
@@ -360,7 +365,7 @@ def cmd_compare(args):
                                context=context), query))
 
     # NOT ASSESSED ranks below AVOID: an unknown is not a recommendation.
-    rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+    rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
     scored.sort(key=lambda s: (rank.get(s[0][0].verdict, 4), -(s[0][0].score or 0)))
     blocks = [block for block, _ in scored]
 
@@ -379,16 +384,18 @@ def cmd_compare(args):
             displayed.append({
                 "product": assessment.product, "verdict": assessment.verdict,
                 "score": assessment.score, "gates": assessment.gates,
+                "score_min": assessment.score_min, "score_max": assessment.score_max,
+                "provisional": assessment.provisional,
                 "reason": "" if resolution.resolved else resolution.reason,
                 "cves": assessment.findings_count if assessment.score is not None else None,
                 "robust": "not sampled" if st is None else
-                          "gated" if st.gated else f"{st.agreement:.0%}",
+                          "gated" if st.gated else "not sampled" if not st.samples else f"{st.agreement:.0%}",
                 "worst": assessment.worst_risk,
             })
         print(console.candidates(displayed))
 
     unstable = [] if quiet else [p for p, st in stabilities.items()
-                                 if not st.gated and not st.robust]
+                                 if st.samples and not st.gated and not st.robust]
     if unstable:
         print("\nROBUST is the share of random weightings giving the most common verdict.")
         print("Below 90% the choice depends on how you weigh the pillars:")
@@ -461,7 +468,9 @@ def cmd_sensitivity(args):
                                    bands=context["bands"],
                                    **_owner_inputs(args))
     print(f"  {result.summary()}")
-    if not result.gated:
+    if result.verdicts.get("VERIFY"):
+        print("  Resolve the missing evidence before testing weight sensitivity.")
+    if not result.gated and result.samples:
         print(f"  score across {result.samples} random weightings: "
               f"{result.score_min} to {result.score_max} (median {result.score_median})")
         print("\n  verdict distribution:")
@@ -522,18 +531,18 @@ def cmd_batch(args):
     blocks, records, stabilities = [], [], {}
     for row in candidates:
         block = _assess(connection, row["vendor"], row["product"],
-                        row["version"], row["order_number"], context=context)
+                        row["version"], row["order_number"], context=context, **_owner_inputs(row))
         assessment, resolution, _ = block
         stability = None
         if not args.no_sensitivity and getattr(assessment, "inputs", None):
             stability = sensitivity.stability(*assessment.inputs,
                                               samples=args.samples,
-                                              bands=context["bands"])
+                                              bands=context["bands"], **_owner_inputs(row))
             stabilities[assessment.product] = stability
         blocks.append(block)
         records.append(batch.to_record(assessment, resolution, stability, row))
 
-    rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+    rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
     records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
 
     _print_table(records)
@@ -563,8 +572,15 @@ def cmd_batch(args):
     return code
 
 
+# Chosen so the demo spans every outcome the tool can produce -- PREFER,
+# CONDITIONAL, a scored AVOID, a gated AVOID and a screened one -- and so the
+# two that carry a band label sit far enough inside it to survive a data
+# refresh. ABB AC 800M used to lead this list and scored 70.1 against a PREFER
+# threshold of 70.0; a single day of EPSS movement put the live site on the
+# other side of the line from the documentation.
 DEMO_CANDIDATES = [
-    ("ABB", "AC 800M", None, None),
+    ("Siemens", "SIMATIC IPC477E Pro", None, None),
+    ("Johnson Controls", "iSTAR Ultra G2", None, None),
     ("Schneider Electric", "Modicon M340", None, None),
     ("Rockwell Automation", "ControlLogix", None, None),
     ("Moxa", "EDS-405A", None, None),
@@ -604,7 +620,7 @@ def cmd_demo(args):
         for vendor, product, version, order in DEMO_CANDIDATES:
             blocks.append(_assess(connection, vendor, product, version, order,
                                   context=context))
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
         blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
         return f"{len(blocks)} candidates scored"
 
@@ -918,7 +934,7 @@ def _shell_actions(connection, context, args):
         if not blocks:
             return None
         shell.echo_command(["compare"] + [a for n in names for a in ("--candidate", n)])
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
         blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
         records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
         print()
@@ -968,10 +984,10 @@ def _shell_actions(connection, context, args):
         blocks, records = [], []
         for row in rows:
             block = _assess(connection, row["vendor"], row["product"],
-                            row["version"], row["order_number"], context=context)
+                            row["version"], row["order_number"], context=context, **_owner_inputs(row))
             blocks.append(block)
             records.append(batch.to_record(block[0], block[1], query=row))
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "NOT ASSESSED": 3}
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
         records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
         print()
         _print_table(records)
@@ -1504,7 +1520,8 @@ def cmd_alternatives(args):
         written = _emit_json(args.json, batch.envelope(
             [vars(o) for o in options],
             {"subject": {"product": subject.product, "verdict": subject.verdict,
-                         "score": subject.score},
+                         "score": subject.score, "score_min": subject.score_min,
+                         "score_max": subject.score_max, "provisional": subject.provisional},
              "skipped": skipped,
              "caveat": alternatives.CAVEAT,
              "provenance": index.provenance(connection)}))
@@ -1612,7 +1629,7 @@ def cmd_setup(args):
         print(f"  {key.replace('_', ' '):<15} {value:,}")
     print("\nTry:\n"
           "  retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6\n"
-          "  retrust compare --candidate 'ABB|AC 800M' --candidate 'Moxa|EDS-405A'\n"
+          "  retrust compare --candidate 'Siemens|SIMATIC IPC477E Pro' --candidate 'Moxa|EDS-405A'\n"
           "  retrust eval")
     return 0
 
@@ -1852,7 +1869,7 @@ def build_parser():
         worst case silently."""
         parser.add_argument("--network-exposure",
                             choices=list(score.NETWORK_EXPOSURES),
-                            help="where it sits: isolated, it_ot or internet_ot")
+                            help="main network context; unknown context requires verification")
         parser.add_argument("--consequence",
                             choices=list(exposure.CONSEQUENCES),
                             help="what a compromise would cost this process: "
@@ -1868,7 +1885,7 @@ def build_parser():
         parser.add_argument("--remediation",
                             choices=list(exposure.REMEDIATIONS), default="unknown",
                             help="is the fix actually on the box? applied, "
-                                 "mitigated, available, planned or unknown")
+                                 "not_affected, affected, available, planned or unknown")
         parser.add_argument("--prerequisites",
                             choices=list(exposure.PREREQUISITES), default="unknown",
                             help="can an attacker satisfy the privileges, user "

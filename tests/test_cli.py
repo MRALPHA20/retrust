@@ -72,14 +72,14 @@ def test_stats_runs(workspace, capsys):
 
 
 def test_score_by_vendor_and_product(workspace, capsys):
-    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000"]) == 0
+    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000"]) == 2
     out = capsys.readouterr().out
     assert "TestPLC 9000" in out
-    assert any(v in out for v in ("PREFER", "CONDITIONAL", "AVOID"))
+    assert any(v in out for v in ("PREFER", "CONDITIONAL", "AVOID", "VERIFY"))
 
 
 def test_score_by_order_number(workspace, capsys):
-    assert run(["score", "--order-number", "TC-9000-A1"]) == 0
+    assert run(["score", "--order-number", "TC-9000-A1"]) == 2
     assert "Testco" in capsys.readouterr().out
 
 
@@ -93,7 +93,7 @@ def test_score_json_to_stdout_is_parseable(workspace, capsys):
     assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
                 "--json", "-", "--no-sensitivity"]) == 0
     document = json.loads(capsys.readouterr().out)   # raises if prose leaked in
-    assert document["schema"] == 2
+    assert document["schema"] == 3
     assert document["results"][0]["product"].startswith("Testco")
 
 
@@ -179,12 +179,11 @@ def test_score_robustness_holds_owner_choices_fixed(workspace, monkeypatch):
     assert calls[0]["remediation"] == "planned"
 
 
-def test_score_html_output(workspace):
-    assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
-                "--html", "r.html"]) == 0
-    markup = (workspace / "r.html").read_text()
-    assert markup.startswith("<!doctype html>")
-    assert "TestPLC 9000" in markup
+def test_score_html_output(workspace, capsys):
+    assert run(['score', '--vendor', 'Testco', '--product', 'TestPLC 9000', '--html', 'report.html']) == 2
+    markup = (workspace / 'report.html').read_text()
+    assert 'VERIFY' in markup and 'Provisional range' in markup
+    assert 'What to check next' in markup
 
 
 def test_compare_ranks_and_reports(workspace, capsys):
@@ -208,7 +207,7 @@ def test_sensitivity_command(workspace, capsys):
     assert run(["sensitivity", "--vendor", "Testco", "--product", "TestPLC 9000",
                 "--samples", "40"]) == 0
     out = capsys.readouterr().out
-    assert "weighting" in out or "gate" in out
+    assert "VERIFY" in out and "Resolve the missing evidence" in out
     assert "where the points went" in out
 
 
