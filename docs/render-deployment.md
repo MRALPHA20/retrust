@@ -39,12 +39,16 @@ branches drift again, fast-forward the deploy branch:
 
 ```bash
 make deploy      # runs the tests, then pushes main AND the deploy branch
-make live        # prints the live scoring version against the local one
+make live        # prints the live build string against the local one
 ```
 
-`make live` compares the deployed code rather than the data, which is the check
-that actually catches this: index counts move on every build whether or not the
-code changed. The raw equivalent, if you prefer it:
+`make live` reads the `X-ReTrust-Build` header off `/healthz` and prints
+`serve.BUILD` beside it; equal means the deployed code is exactly what you have.
+It compares the source of the deployed code rather than the data *or* the
+scoring version, which is the check that actually catches this — `Makefile:86-88`
+records why: both the index counts and the scoring-version string stayed
+identical across builds three commits apart, so neither could detect a stale
+deploy. The raw equivalent, if you prefer it:
 
 ```bash
 git push origin main:refs/heads/codex/render-deployment
@@ -68,7 +72,7 @@ refreshes the main sources. Automatic deployment is enabled
 redeploys; **Manual Deploy > Deploy latest commit** still forces one on demand.
 
 Because the build runs `setup --force` and `lev --update`, it refetches the
-whole advisory corpus and 67 EPSS snapshots — tens of minutes on the free plan,
+whole advisory corpus and 68 EPSS snapshots — tens of minutes on the free plan,
 and a slow deploy is expected rather than a hang. It also means the live index
 is rebuilt from current sources on every deploy, so hosted figures can differ
 from the ones in these docs. Inspect source dates on **Data & methodology**
@@ -78,7 +82,7 @@ no cold start.
 New deployments return the deployed Git commit in the `X-ReTrust-Revision`
 HTTP response header (from Render's `RENDER_GIT_COMMIT`). Compare that header
 on `/healthz` with `git rev-parse HEAD` to verify the exact code revision;
-the scoring-version string alone cannot distinguish interface fixes within RT2.
+the scoring-version string alone cannot distinguish interface fixes within RT4.
 
 The app has no accounts or saved procurement projects. Hosted assessments are
 processed on Render, and requests pass through Render's infrastructure. Run
@@ -127,6 +131,12 @@ References: [Render web services](https://render.com/docs/web-services),
 - All 67 EPSS history snapshots loaded, with 12,003 exploitation estimates.
 - Twenty-two public HTTPS checks passed: main workflows, HTML/JSON/CSV downloads, health GET/HEAD, missing routes and invalid comparison inputs.
 - Browser checks confirmed order-number search and opening the corresponding assessment. The hosted labels and homepage were visually inspected.
+
+Both sections above are records of what was true on their date, not current
+figures. The feed counts in particular keep moving — 67 snapshots and 12,003
+estimates then, 68 and 12,045 locally on 20 October 2026 — so read them as the
+evidence that the deploy worked, and take live numbers from `retrust doctor`
+or **Data & methodology** instead.
 
 The deployment uses the private GitHub repository; publishing the app did not
 change the repository visibility. Detailed live-check results and the homepage

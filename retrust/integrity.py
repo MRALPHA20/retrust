@@ -40,11 +40,12 @@ BLOCK = 1 << 16
 CISA_PROVIDER_METADATA = (
     "https://www.cisa.gov/sites/default/files/csaf/provider-metadata.json")
 
-# Kept as a fallback only. A keyserver is a weaker source than the publisher's
-# own metadata, and neither is trusted on its own: whatever arrives has to match
-# the fingerprint the signatures name.
-KEYSERVER = "hkps://keys.openpgp.org"
-
+# There is deliberately no keyserver fallback. A keyserver is a weaker source
+# than the publisher's own metadata, and the only two routes in -- a key file
+# the operator already has (import_key_file) and the publisher's advertised key
+# (import_advertised_key) -- are enough. Dropping it also removed this
+# codebase's one unavoidable network dependency outside the data fetch, which
+# matters for a tool that is meant to run on an air-gapped procurement machine.
 _FINGERPRINT = re.compile(r"issuer fpr v4 ([0-9A-F]{40})")
 
 
@@ -287,37 +288,6 @@ def _confirm_fingerprint(keyring, fingerprint, source):
             f"{source} returned a key that is not {fingerprint}; the keyring "
             "has been discarded rather than used")
     return str(keyring)
-
-
-def import_key(keyring, fingerprint, keyserver=KEYSERVER):
-    """Fetch the key the signatures name, and refuse anything else.
-
-    Asking a keyserver for a fingerprint and accepting whatever comes back would
-    make the keyserver the authority. The imported key is checked against the
-    fingerprint the corpus itself names, so the only trust added here is in that
-    fingerprint -- which the caller is told to confirm out of band, because the
-    corpus naming its own signer proves nothing by itself.
-
-    The keyring is a file beside the data, not the user's own trust store:
-    importing a publisher key into somebody's personal GnuPG is a larger thing
-    than this asks for, and a file we own is trivially deleted.
-    """
-    if not have_gpg():
-        raise RuntimeError("gpg is not installed, so a key cannot be imported")
-    keyring = Path(keyring)
-    keyring.parent.mkdir(parents=True, exist_ok=True)
-    finished = subprocess.run(
-        ["gpg", "--batch", "--no-default-keyring", "--keyring", str(keyring),
-         "--keyserver", keyserver, "--recv-keys", fingerprint],
-        capture_output=True, text=True, timeout=120)
-    if finished.returncode:
-        # An empty keybox left behind would make keyring.exists() true and
-        # silence the hint that tells the next run how to fix this.
-        keyring.unlink(missing_ok=True)
-        raise RuntimeError((finished.stderr or finished.stdout).strip()
-                           or f"{keyserver} returned no key for {fingerprint}")
-
-    return _confirm_fingerprint(keyring, fingerprint, keyserver)
 
 
 def format_report(results, root="", keyring_used=False, keys=None):

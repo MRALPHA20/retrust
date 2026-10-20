@@ -7,6 +7,7 @@ be exactly the false assurance the module exists to avoid.
 """
 
 import hashlib
+import subprocess
 
 import pytest
 
@@ -171,3 +172,78 @@ def test_key_material_is_never_fetched_over_http():
 
     with pytest.raises(RuntimeError, match="https"):
         integrity._fetch_key_material("http://www.cisa.gov/key.asc", timeout=5)
+
+
+# --- the gpg verdict tree ----------------------------------------------------
+#
+# Mutation-tested gap: flipping BADSIG to "signed by a key you hold" passed all
+# 947 tests. The whole verdict tree was executed during the suite and never
+# inspected, and smoke.sh only greps for the string "signed by:", which that
+# mutation preserves. For a tool whose pitch is provenance, a forged signature
+# reading as valid is the worst thing the suite could miss.
+
+class _Gpg:
+    """Stand in for the gpg process, returning one canned --status-fd block."""
+
+    def __init__(self, status):
+        self.status = status
+
+    def __call__(self, command, **kwargs):
+        assert command[0] == "gpg" and "--verify" in command
+        return subprocess.CompletedProcess(command, 0, stdout=self.status, stderr="")
+
+
+@pytest.fixture
+def signed(tmp_path):
+    advisory = tmp_path / "icsa-26-000-01.json"
+    advisory.write_text("{}", encoding="utf-8")
+    (tmp_path / "icsa-26-000-01.json.asc").write_text(
+        "-----BEGIN PGP SIGNATURE-----\n", encoding="utf-8")
+    return advisory
+
+
+@pytest.mark.parametrize("status,verdict", [
+    ("[GNUPG:] GOODSIG ABC Signer <x@y>\n[GNUPG:] VALIDSIG ABC\n", True),
+    ("[GNUPG:] VALIDSIG ABC\n", True),
+    # A bad signature is a FAILURE, never an absence and never a pass.
+    ("[GNUPG:] BADSIG ABC Signer <x@y>\n", False),
+    ("[GNUPG:] EXPKEYSIG ABC Signer <x@y>\n", False),
+    # Not holding the key is the absence of an answer, not a failure.
+    ("[GNUPG:] NO_PUBKEY ABC\n", None),
+    ("", None),
+])
+def test_each_gpg_verdict_maps_to_the_right_answer(monkeypatch, signed, status, verdict):
+    monkeypatch.setattr(integrity, "have_gpg", lambda: True)
+    monkeypatch.setattr(integrity.subprocess, "run", _Gpg(status))
+    assert integrity.verify_signature(signed)[0] is verdict
+
+
+def test_a_bad_signature_is_never_reported_as_valid(monkeypatch, signed):
+    """The exact mutation the suite used to miss."""
+    monkeypatch.setattr(integrity, "have_gpg", lambda: True)
+    monkeypatch.setattr(integrity.subprocess, "run",
+                        _Gpg("[GNUPG:] BADSIG ABC Signer <x@y>\n"))
+    ok, why = integrity.verify_signature(signed)
+    assert ok is False
+    assert "does not verify" in why
+    assert "signed by a key you hold" not in why
+
+
+def test_an_unsigned_or_gpg_less_file_abstains(monkeypatch, tmp_path):
+    bare = tmp_path / "icsa-26-000-02.json"
+    bare.write_text("{}", encoding="utf-8")
+    assert integrity.verify_signature(bare) == (None, "no .asc beside it")
+    (tmp_path / "icsa-26-000-02.json.asc").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(integrity, "have_gpg", lambda: False)
+    assert integrity.verify_signature(bare)[0] is None
+
+
+def test_gpg_failing_to_run_abstains_rather_than_passing(monkeypatch, signed):
+    monkeypatch.setattr(integrity, "have_gpg", lambda: True)
+
+    def explode(command, **kwargs):
+        raise OSError("gpg vanished")
+
+    monkeypatch.setattr(integrity.subprocess, "run", explode)
+    ok, why = integrity.verify_signature(signed)
+    assert ok is None and "could not be run" in why

@@ -145,8 +145,8 @@ def test_worst_cvss_is_none_when_no_finding_carried_one(db):
     line = timeline.for_vendor(db, "testco")
     year_2022 = next(b for b in line.years if b.year == 2022)
     assert year_2022.worst_cvss is None
-    row = next(l for l in timeline.format_report("T", line).splitlines()
-               if l.split()[:1] == ["2022"])
+    row = next(printed for printed in timeline.format_report("T", line).splitlines()
+               if printed.split()[:1] == ["2022"])
     assert "--" in row and "0.0" not in row
 
 

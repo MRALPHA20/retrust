@@ -130,6 +130,16 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--rule);
 # escaping, and matching bare id shapes only, so it cannot introduce markup.
 IDENTIFIER = re.compile(r"\b((?:CVE|ICSA|ICSMA|SSA|VDE)-[0-9][0-9A-Z-]*[0-9A-Z])")
 
+# Derived from the one network registry, so a new choice cannot appear here
+# under a name the model does not score.
+NETWORK_LABELS = {key: entry[0] for key, entry in score.NETWORK_EXPOSURES.items()}
+
+# exposure.py writes the "Network context:" evidence line and cannot ask score
+# for the label -- score imports exposure, not the other way round -- so it has
+# only the stored token. "Network context: it_ot" is a database value printed
+# at a buyer: the label is one import away here, so it is substituted here.
+NETWORK_TOKEN = re.compile(r"(?<=Network context: )[a-z_]+")
+
 # Derived from the one pillar registry, so a new pillar shows a weight here
 # without anyone remembering to update a second list.
 PILLAR_KEYS = {spec.name: spec.key for spec in score.PILLARS}
@@ -184,16 +194,20 @@ PILLAR_LABELS = {
     "Exploitation": "Attack activity", "Severity": "Issue severity",
     "Network exposure": "Network access", "Evidence quality": "Evidence completeness",
 }
+# Keyed by the caution name score.py sets, which is the coupling: a lookup miss
+# falls back to the model's own wording silently, so the day somebody writes
+# "CVEs" on one side of this pair and "CVE(s)" on the other, the page loses its
+# plain-language title and nothing fails. _caution_key accepts either spelling.
 CAUTION_HELP = {
-    "KEV-listed CVE(s) in third-party component bundles": (
+    "KEV-listed CVEs in third-party component bundles": (
         "Known exploited weaknesses in included software",
         "CISA has confirmed attacks using weaknesses in software included with this product. "
         "Ask the supplier whether those weaknesses can be reached on this equipment and which fixes apply."),
-    "Ransomware-linked CVE(s) in third-party component bundles": (
+    "Ransomware-linked CVEs in third-party component bundles": (
         "Ransomware-related weaknesses in included software",
         "Public records link weaknesses in included software to ransomware attacks. "
         "Ask the supplier to confirm whether those attack paths exist on this equipment."),
-    "Critical unfixable CVE(s) in third-party component bundles": (
+    "Critical unfixable CVEs in third-party component bundles": (
         "Serious weaknesses in included software may have no fix",
         "Included software has serious vulnerability records without an available remedy. "
         "Ask the supplier whether this product is affected and what protection is possible."),
@@ -221,17 +235,91 @@ def _ids(escaped):
     return IDENTIFIER.sub(r"<code>\1</code>", escaped)
 
 
-def score_label(assessment):
-    """Consistent score display across single-product and comparison views."""
-    if assessment.score is None:
-        return '&mdash;'
-    if assessment.provisional:
-        return f'{assessment.score_min}–{assessment.score_max} (provisional)'
-    return str(assessment.score)
+def _caution_key(name):
+    """A caution name in CAUTION_HELP's spelling, whichever score.py used."""
+    return name.replace("CVE(s)", "CVEs")
+
+
+def _labels(escaped):
+    """Read a stored enum back as the label the form offered for it."""
+    return NETWORK_TOKEN.sub(
+        lambda found: _esc(NETWORK_LABELS.get(found.group(), found.group())), escaped)
+
+
+def plural(count, singular, many=None):
+    """A counted noun that agrees with its count: "1 finding", "2 findings".
+
+    Plain text, no markup, so the terminal and both web surfaces can share it.
+    Counting is the one thing this tool does on every screen, and "1 finding(s)"
+    was on all of them -- a hedge in the one place a reader is being told a
+    number. The regular plural is assumed; `many` carries the irregulars
+    ("advisory", "advisories").
+    """
+    return f"{count:,} {singular if abs(count) == 1 else many or singular + 's'}"
+
+
+def verb(count, singular, many):
+    """The word that agrees with a plural() count: "1 finding is", "2 are".
+
+    Its own helper because the noun alone is not enough: "1 finding(s) are
+    memory safety" was wrong twice on every score page, and a count that reads
+    correctly in front of a verb that does not is no better than before.
+    """
+    return singular if abs(count) == 1 else many
+
+
+# One dash for every score range on every surface. alternatives.py printed an
+# ASCII hyphen while the report, the terminal and the comparison cards printed
+# an en dash, so "6.3-99.2" and "6.3–99.2" were the same range rendered two ways
+# inside a single session -- and the next surface to be added would have had to
+# guess which was house style.
+RANGE_DASH = '–'
+
+
+def _reading(subject, key):
+    """score_label takes an Assessment, an alternatives.Option, or a batch dict."""
+    return (subject.get(key) if isinstance(subject, dict)
+            else getattr(subject, key, None))
+
+
+def score_label(subject, unit='', note=' (provisional)', missing='&mdash;', places=None):
+    """Consistent score display across report, terminal and comparison views.
+
+    Every caller formats the same three fields, so the formatting lives here and
+    only what legitimately differs is a parameter:
+
+      `unit`     follows the number on surfaces that name it ("/100").
+      `note`     follows a provisional range only; the terminal says
+                 "(provisional range)", the report "(provisional)", and the
+                 alternatives table has room for neither.
+      `missing`  stands in for an unscored product: an HTML entity in a page,
+                 a plain word in a terminal.
+      `places`   fixed decimals, for the column-aligned alternatives table.
+    """
+    def shown(value):
+        return str(value) if places is None else f'{value:.{places}f}'
+
+    if _reading(subject, 'score') is None:
+        return missing
+    if _reading(subject, 'provisional'):
+        return (f"{shown(_reading(subject, 'score_min'))}{RANGE_DASH}"
+                f"{shown(_reading(subject, 'score_max'))}{unit}{note}")
+    return f"{shown(_reading(subject, 'score'))}{unit}"
+
+
+def _scroll_hint(text, show=True):
+    """The sideways-scroll affordance, on the surfaces somebody can swipe.
+
+    A downloaded report is a document: emailed, printed, stapled to a purchase
+    order. "Scroll sideways to see all evidence" is an instruction a reader
+    holding paper cannot follow, so render() asks for the same tables without
+    it rather than shipping screen chrome inside the deliverable.
+    """
+    return f'<p class="table-scroll-hint">{text}</p>' if show else ''
 
 
 def _assessment_block(assessment, resolution=None, findings=(), stability=None,
-                      weights=None, tools=''):
+                      weights=None, tools='', hint=True):
     colour = VERDICT_COLOR.get(assessment.verdict, INERT)
     # Declared once on the block. The stripe, the verdict word and every meter
     # fill below all read --vc, so a product cannot end up half one state and
@@ -252,8 +340,9 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         detail = f'{assessment.findings_count} known {noun} included'
         if assessment.undecided_count:
             detail += f' &middot; {assessment.undecided_count} need review'
-        shown_score = (f"{assessment.score_min}–{assessment.score_max}" if assessment.provisional
-                       else str(assessment.score))
+        # The range only; "Provisional range" is said in the detail line below,
+        # so repeating the note beside the number would say it twice.
+        shown_score = score_label(assessment, note='')
         if assessment.provisional:
             detail = "Provisional range · " + detail
         summary = (f'<span class="s">{shown_score}/100</span>'
@@ -310,7 +399,13 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                      'U = affected and unfixed. A range means evidence is missing. '
                      'Repeated advisories for the same CVE count once. Separate CVEs '
                      'are review units; independent attack paths have not been established.</p>'
-                     '<div class="table-scroll"><table><thead><tr><th>Vulnerability</th>'
+                     # .table-scroll had no rule in either stylesheet, so this
+                     # one table computed overflow-x:visible and clipped its U
+                     # and Advisory columns off the right of a phone with no way
+                     # to reach them. .tw is the class that scrolls.
+                     '<div class="tw" tabindex="0" role="region" aria-label="Factor contributions per vulnerability, scroll horizontally for more columns">'
+                     + _scroll_hint('Scroll sideways to see every factor →', hint)
+                     + '<table><thead><tr><th>Vulnerability</th>'
                      '<th>T</th><th>A</th><th>H</th><th>U</th><th>Advisory</th></tr></thead><tbody>'
                      + ''.join(rows) + '</tbody></table></div></details>')
 
@@ -330,9 +425,9 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         if resolution.resolved:
             parts.append(
                 f'<p class="meta">Matched using {_esc(resolution.method.replace("_", " "))} '
-                f'&middot; {resolution.product_count} product(s) across '
-                f'{resolution.advisory_count} advisor'
-                f'{"y" if resolution.advisory_count == 1 else "ies"} (security notices)</p>')
+                f'&middot; {plural(resolution.product_count, "product")} across '
+                f'{plural(resolution.advisory_count, "advisory", "advisories")}'
+                ' (security notices)</p>')
         elif not assessment.gates:
             parts.append(f'<div class="note"><b>Not assessed.</b> '
                          f'{_esc(resolution.reason)}</div>')
@@ -347,7 +442,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     # the warning colour, right where a gate would sit, so it cannot be missed
     # on a page whose headline verdict reads well.
     for caution in getattr(assessment, "cautions", ()):
-        title, explanation = CAUTION_HELP.get(caution['caution'], (caution['caution'], caution['detail']))
+        title, explanation = CAUTION_HELP.get(
+            _caution_key(caution['caution']), (caution['caution'], caution['detail']))
         parts.append(
             f'<div class="caution"><b>Supplier review needed &mdash; {_esc(title)}</b>'
             f'<p>{_esc(explanation)}</p><details><summary>Which vulnerabilities and sources?</summary>'
@@ -364,7 +460,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                      'or a guarantee that the equipment is secure.' + scope + '</p></details>')
 
     if assessment.pillars:
-        parts.append(_pillar_table(assessment, weights))
+        parts.append(_pillar_table(assessment, weights, hint))
 
     for note in assessment.notes:
         parts.append(f'<div class="note">{_ids(_esc(note))}</div>')
@@ -374,12 +470,16 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     if top:
         if len(ranked) > len(top):
             # A capped table must say so: "54 need review" above a silent
-            # 10-row table reads as the whole list.
+            # 10-row table reads as the whole list. And the JSON export caps
+            # at the same 10 and records the remainder in
+            # `findings_truncated` -- claiming it "carries every finding" sent
+            # a buyer to an export described as exhaustive that is not.
             parts.append(f'<p class="tnote">Showing the {len(top)} most'
                          f' significant of {len(ranked)} findings, ranked by'
                          ' exploitation probability and then severity. The'
-                         ' JSON export carries every finding.</p>')
-        parts.append(_cve_table(top))
+                         ' JSON export carries the same selection and records'
+                         ' how many were left out.</p>')
+        parts.append(_cve_table(top, hint))
 
     parts.append('</section>')
     return "".join(parts)
@@ -396,16 +496,16 @@ FEEDS_EXPOSURE = {"Exploitation"}
 CONTEXT_ONLY = {"Network exposure"}
 
 
-def _pillar_table(assessment, weights):
+def _pillar_table(assessment, weights, hint=True):
     active_pillars = [p for p in assessment.pillars
                       if p.name != "Evidence quality" and p.scored]
     parts = ['<div class="tw" tabindex="0" role="region" aria-label="Pillar evidence, scroll horizontally for more columns">'
-             '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
-             '<table><thead><tr><th>Assessment part</th><th class="n">Score / 100</th>'
+             + _scroll_hint('Scroll sideways to see all evidence →', hint)
+             + '<table><thead><tr><th>Assessment part</th><th class="n">Score / 100</th>'
              '<th style="width:18%">&nbsp;</th><th class="n">Influence</th><th class="n">Evidence available</th>'
              '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
-        evidence = "".join(f"<li>{_esc(e)}</li>" for e in pillar.evidence)
+        evidence = "".join(f"<li>{_labels(_esc(e))}</li>" for e in pillar.evidence)
         share = (_weight_share(pillar.name, weights, active_pillars)
                  if pillar.scored else None)
         weight = None if share is None else f"{share:.1%}"
@@ -444,7 +544,7 @@ def _pillar_table(assessment, weights):
     return "".join(parts)
 
 
-def _cve_table(findings):
+def _cve_table(findings, hint=True):
     """The most significant CVEs, worst exploitation probability first.
 
     The affected range is shown because it is what a reader has to check by
@@ -455,8 +555,8 @@ def _cve_table(findings):
              'for a known security weakness. Severity measures possible harm; EPSS estimates '
              'exploitation in the next 30 days. Neither shows that your equipment was attacked.</p>'
              '<div class="tw" tabindex="0" role="region" aria-label="CVE evidence, scroll horizontally for more columns">'
-             '<p class="table-scroll-hint">Scroll sideways to see all evidence →</p>'
-             '<table><thead><tr><th>Vulnerability (CVE)</th>'
+             + _scroll_hint('Scroll sideways to see all evidence →', hint)
+             + '<table><thead><tr><th>Vulnerability (CVE)</th>'
              '<th class="n">Severity / 10 (CVSS)</th><th class="n">30-day estimate (EPSS)</th>'
              '<th>Confirmed exploitation record</th><th>Security notice</th>'
              '<th>Affected firmware range</th></tr></thead><tbody>']
@@ -473,7 +573,7 @@ def _cve_table(findings):
     return "".join(parts)
 
 
-def _summary_table(blocks, stabilities):
+def _summary_table(blocks, stabilities, hint=True):
     """Side-by-side ranking, so the decision is visible without scrolling."""
     rows = []
     for assessment, resolution, _ in blocks:
@@ -496,8 +596,8 @@ def _summary_table(blocks, stabilities):
             f'<td class="n">{robust}</td>'
             f'<td>{_esc(note)}</td></tr>')
     return ('<div class="tw" tabindex="0" role="region" aria-label="Candidate comparison, scroll horizontally for more columns">'
-            '<p class="table-scroll-hint">Scroll sideways to see all candidates’ evidence →</p>'
-            '<table><thead><tr><th>Candidate</th><th>Verdict</th>'
+            + _scroll_hint('Scroll sideways to see all candidates’ evidence →', hint)
+            + '<table><thead><tr><th>Candidate</th><th>Verdict</th>'
             '<th class="n">Score</th><th class="n">Vulnerabilities</th><th class="n">Verdict stability</th><th>Main reason</th>'
             '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>'
             '<p class="tnote">Verdict stability shows how often the most common verdict '

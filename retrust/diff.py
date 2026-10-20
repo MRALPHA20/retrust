@@ -20,10 +20,22 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Worse is a longer fall down this list. NOT ASSESSED sits outside it: losing
-# the ability to assess something is a different event from it getting riskier,
-# and averaging the two would hide both.
-RANK = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2}
+from . import score
+
+# Worse is a longer fall down this list. NOT ASSESSED and VERIFY sit outside it:
+# losing the ability to assess something, or newly needing a technical check, is
+# a different event from it getting riskier, and averaging the two would hide
+# both. `Change.kind` returns before it reaches RANK for either of them.
+#
+# Derived from score.VERDICT_RANK rather than written out again, because the
+# omissions are the only thing that makes this a lookup it is safe to subscript.
+# RANK[self.now] is an unguarded subscript: it stays a KeyError only as long as
+# `kind` filters every absent verdict out first. Adding a sixth verdict to
+# VERDICT_RANK therefore needs this set extended AND a matching early return in
+# `kind` -- a comprehension over the shared map makes that one decision in one
+# place instead of two lists that drift.
+RANK = {verdict: position for verdict, position in score.VERDICT_RANK.items()
+        if verdict in ("PREFER", "CONDITIONAL", "AVOID")}
 
 # Below this a score move is noise from a rounding change, not a finding.
 MOVED = 1.0

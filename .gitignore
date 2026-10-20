@@ -4,6 +4,10 @@
 data/CSAF/
 data/retrust.db
 data/screening.json
+# Derived from screening.json: the built screening index, so a 7.5 MB list
+# is parsed once per refresh instead of once per command. Rebuilt whenever the
+# source file changes.
+data/screening-index.db
 data/certifications.json
 data/kev.json
 data/epss.csv

@@ -231,6 +231,10 @@ was built, kept for the record. Its figures are the ones measured at the time an
 several have since moved, most because walking CSAF product relationships
 recovered 1,717 products the first ingest had lost. For current numbers run
 <code>retrust eval</code>, or see the <a href="benchmark-report.md">current benchmark report</a> and <a href="ReTrust-Guide.pdf">PDF overview</a>.
+Its plan for the repository has also been superseded: where the text below reads
+that the repo must be public and runnable by a submission date, that was the
+Arsenal assumption of 27 September 2026, not a live instruction. The repository
+is deliberately private and stays private until the owner decides otherwise.
 </p>
 
   <p class="standfirst">A verified feasibility assessment and 10-day build plan for an open-source OT hardware cyber-risk scoring and procurement decision tool — with the measured accuracy budget it can honestly claim.</p>
@@ -283,7 +287,7 @@ recovered 1,717 products the first ingest had lost. For current numbers run
       <thead><tr><th>Source</th><th>Access</th><th>Measured today</th><th>Effort</th></tr></thead>
       <tbody>
         <tr><td><strong>CISA ICS advisories (CSAF 2.0)</strong></td><td><code>git clone cisagov/CSAF</code></td><td>3,937 advisories, 134 MB, 100% carry a CVE, 99.9% carry CVSS</td><td>Low</td></tr>
-        <tr><td><strong>CISA KEV</strong></td><td>JSON feed</td><td>1,726 CVEs; 117 are OT; 25 ransomware-linked</td><td>Low</td></tr>
+        <tr><td><strong>CISA KEV</strong></td><td>JSON feed</td><td>1,748 CVEs; 114 are OT; 24 ransomware-linked <span class="mono" style="font-size:.8em;opacity:.7">(re-measured 20 Oct 2026; was 1,726 / 117 / 25)</span></td><td>Low</td></tr>
         <tr><td><strong>EPSS</strong></td><td>Daily gzip CSV</td><td>379,842 CVEs; covers <strong>99.74%</strong> of OT CVEs</td><td>Low</td></tr>
         <tr><td><strong>Siemens ProductCERT CSAF</strong></td><td>ROLIE feed</td><td>841 advisories, each with SHA-512 + PGP signature</td><td>Low</td></tr>
         <tr><td><strong>Schneider, ABB, Hitachi Energy, SICK, KUNBUS</strong></td><td>BSI CSAF aggregator</td><td>Discoverable from one <code>aggregator.json</code></td><td>Medium</td></tr>

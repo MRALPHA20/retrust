@@ -85,7 +85,7 @@ def read_candidates(path):
         # candidates, so `retrust batch bom.json` works without reshaping.
         if isinstance(document, dict) and (
                 document.get("bomFormat") == "CycloneDX"
-                or "components" in document and "specVersion" in document):
+                or ("components" in document and "specVersion" in document)):
             return _cyclonedx_candidates(source, document)
 
         raw = document if isinstance(document, list) else document.get("candidates", [])
@@ -345,6 +345,10 @@ def dumps_csv(records, include_queries=False):
             row = dict(record)
             row["verification"] = "; ".join(record.get("verification") or [])
             row["gates"] = "; ".join(record.get("gates") or [])
+            # Same join as its neighbours: without it the cell rendered a
+            # Python list repr into a file that exists to be read by a
+            # spreadsheet.
+            row["assertions"] = "; ".join(record.get("assertions") or [])
             for name in pillar_names:
                 row[f"pillar_{name.lower().replace(' ', '_')}"] = \
                     record.get("pillars", {}).get(name)

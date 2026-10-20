@@ -11,6 +11,22 @@ def esc(value):
     return html.escape(str(value or ""), quote=True)
 
 
+# The repository is private. Linking it from the hosted site advertised the
+# exact private path and handed every visitor a 404 -- which made the
+# keep-private decision read as a broken link rather than a choice. A hosted
+# deployment says where the source stands; a local one, where the operator
+# already has a clone, keeps the link.
+SOURCE_URL = "https://github.com/MRALPHA20/retrust"
+
+
+def source_note(hosted=None):
+    """Either a link to the source or an honest sentence about its absence."""
+    if os.environ.get("RETRUST_HOSTED") == "1" if hosted is None else hosted:
+        return "Source code is not public yet."
+    return f'<a href="{SOURCE_URL}">Source code on GitHub</a>'
+
+
+
 NAVIGATION = (
     ("Workspace", (("/", "Explore", "01"), ("/score", "Assess a product", "02"),
                    ("/compare", "Compare candidates", "03"))),
@@ -65,8 +81,7 @@ def page(title, body, subtitle="", active=None):
         f'<main id="main" class="wrap"><div class="page-meta"><span>RETRUST / {esc(current).upper()}</span>'
         f'<span>{esc(subtitle) + " · " if subtitle else ""}{date.today().isoformat()}</span></div>'
         + body + '<footer><span>ReTrust <span class="muted">/</span> Evidence before commitment.</span>'
-        '<span><a href="https://github.com/MRALPHA20/retrust">Source code on'
-        ' GitHub</a> <span class="muted">&middot;</span>'
+        f'<span>{source_note()} <span class="muted">&middot;</span>'
         ' Decision support, not a certification.</span></footer></main></div></body></html>')
 
 

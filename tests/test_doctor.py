@@ -1,6 +1,5 @@
 """The installation health check: right states, right fixes, no false calm."""
 
-import sqlite3
 import time
 
 from retrust import doctor, index

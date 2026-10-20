@@ -32,6 +32,19 @@ from . import cvss, exposure as exposure_model, weakness
 
 BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
 
+# Best first, for every surface that ranks a shortlist. One definition because
+# there were eight: five copies in cli.py, one in serve.py, and two deliberate
+# subsets in alternatives.py and diff.py. The RT4 release shipped with AVOID
+# above VERIFY in some of them, so a KEV-gated product listed ahead of the only
+# candidate a buyer could actually pursue -- the sort of disagreement that is
+# invisible until two surfaces are read side by side.
+#
+# A hard-disqualified AVOID never outranks a VERIFY that merely needs checks,
+# and NOT ASSESSED ranks below AVOID: an unknown is not a recommendation, and a
+# blocked product is not a candidate.
+VERDICT_RANK = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2,
+                "AVOID": 3, "NOT ASSESSED": 4}
+
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
 SCORING_VERSION = "RT4"
@@ -442,22 +455,37 @@ def narrows(network_exposure=None, consequence=None, interface="unknown",
             remediation="unknown", prerequisites="unknown"):
     """Did the operator supply anything that can narrow exposure?
 
-    `assessment_type` is absent on purpose: it is recorded, never scored, so it
-    cannot move a number and must not trip the clamp below.
+    `assessment_type` is absent on purpose: it is recorded, never scored, so
+    answering it is not evidence that narrows anything. Counting it here would
+    let "this is an installed asset" alone lift a product out of the provisional
+    range it belongs in. (The RT3 clamp this used to mention went in RT4; the
+    reason for the omission did not.)
     """
     return bool(network_exposure) or consequence is not None \
         or interface != "unknown" or remediation != "unknown" \
         or prerequisites != "unknown"
 
 
-def _exposure(findings, consequence=None, interface="unknown",
-              assessment_type="purchase", remediation="unknown", network=None,
-              prerequisites="unknown"):
-    """The E term: concentrated exposure, as a Pillar."""
-    score, coverage, evidence = exposure_model.measure(
-        findings, consequence, interface, assessment_type, remediation, network,
-        prerequisites)
-    return Pillar("Exposure", score, coverage, evidence)
+def _exposure_needs_context(*_args, **_kwargs):
+    """Exposure is not measurable from a PillarSpec.measure call. See assess().
+
+    The other three pillars are a pure function of findings, advisories,
+    certificates and the vendor key. Exposure additionally needs the six facts
+    only the asset owner has -- consequence, interface, assessment type,
+    remediation, network and prerequisites -- and none of them reach this
+    signature, so assess() special-cases the key and calls the exposure model
+    with them directly.
+
+    This raises rather than falling back to a context-free measurement. The
+    entry it replaces called `_exposure(findings)`, which silently discarded
+    every operator answer and still labelled the result "Exposure": a blocked
+    interface and an internet-exposed one would have produced the same pillar.
+    Any future caller that iterates PILLARS generically should fail loudly here
+    instead of publishing that number.
+    """
+    raise AssertionError(
+        "exposure is measured in assess(), which holds the operator context; "
+        "PillarSpec.measure cannot reach it")
 
 
 # Pillars enter the product as 1-100, never 0: a single zero would annihilate
@@ -502,17 +530,17 @@ PILLARS = [
     # Exposure subsumes what exploitation and severity used to score separately:
     # threat, reachability, process consequence and applicability are the four
     # terms of one per-finding risk, concentrated on the worst few.
-    PillarSpec("exposure", "Exposure", 0.60,
-               lambda findings, advisories, certificates, vendor_key:
-                   _exposure(findings)),
+    PillarSpec("exposure", "Exposure", 0.60, _exposure_needs_context),
+    # The measure signature is uniform so that PILLARS can be iterated; the
+    # underscored arguments are the ones a given pillar does not read.
     PillarSpec("patchability", "Patch availability", 0.20,
-               lambda findings, advisories, certificates, vendor_key:
+               lambda findings, _advisories, _certificates, _vendor_key:
                    _patchability(findings)),
     PillarSpec("vendor_practice", "Vendor practice", 0.15,
-               lambda findings, advisories, certificates, vendor_key:
+               lambda findings, advisories, _certificates, vendor_key:
                    _vendor_practice(findings, advisories, vendor_key)),
     PillarSpec("certification", "Certification", 0.05,
-               lambda findings, advisories, certificates, vendor_key:
+               lambda _findings, _advisories, certificates, _vendor_key:
                    _certification(certificates)),
 ]
 
@@ -573,11 +601,24 @@ def _cautions(third_party):
     return cautions
 
 
-def check_gates(findings, vendor, screening_gates=()):
-    """Facts that end the assessment regardless of everything else."""
+def check_gates(findings, screening_gates=()):
+    """Facts that end the assessment regardless of everything else.
+
+    Screening gates arrive already decided, from the vendor name alone; this
+    function only adds the ones the findings themselves force. There was a
+    second parameter named `vendor` between the two, read by nothing -- and the
+    production caller was passing `product_label` into it, so the name was
+    wrong as well as unused.
+    """
     gates = list(screening_gates)
 
-    unpatched_kev = {f.cve for f in findings if f.in_kev}
+    # `not f.fixed` is the whole point of the name: a KEV CVE the vendor has
+    # already patched is not a purchase blocker, it is a reason to buy current
+    # firmware. Without this clause the gate printed "AVOID 99.2/100" over a
+    # product whose patch availability read 100/100, and 172 corpus products
+    # were disqualified for flaws their vendor had already fixed. The
+    # third-party twin in `_cautions` has always had the clause.
+    unpatched_kev = {f.cve for f in findings if f.in_kev and not f.fixed}
     if unpatched_kev:
         gates.append({
             "gate": "Known exploited vulnerability",
@@ -647,7 +688,7 @@ def not_assessed(product_label, reason):
     )
 
 
-def assess(product_label, findings, advisories=(), weights=None, today_year=2026,
+def assess(product_label, findings, advisories=(), weights=None,
            certificates=(), screening_gates=(), bands=None, vendor_key=None,
            network_exposure=None, consequence=None, interface="unknown",
            assessment_type="purchase", remediation="unknown", version=None,
@@ -733,7 +774,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     # the exact inversion this tool exists to prevent (found live: a product
     # with no findings and one vendor certificate rendered PREFER 85.0).
     risk_usable = [(spec, p) for spec, p in usable if spec.key != "certification"]
-    gates = check_gates(first, product_label, screening_gates)
+    gates = check_gates(first, screening_gates)
     cautions = _cautions(third)
 
     if not risk_usable:
@@ -830,13 +871,23 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         notes.append("Site answers are operator-reported assertions, not independently verified "
                      "by ReTrust. Retain supporting evidence for each finding before procurement.")
     if first and third:
+        # Count on ONE basis and name it. The header counts bundle CVEs
+        # excluding those also named first-party; this note used to count all
+        # of them, so a product with 13 CVEs in both sets reported 888 in one
+        # place and 901 in another, and the two could not be reconciled by a
+        # reader. Both numbers were right; neither said what it was counting.
+        first_cves = {f.cve for f in first}
+        third_cves = {f.cve for f in third}
+        shared = third_cves & first_cves
         notes.append(
-            f"{len({f.cve for f in third})} of the CVEs in scope arrive via"
-            f" third-party component bundle advisories; the pillars above"
-            f" measure the {len({f.cve for f in first})} first-party CVE(s)."
-            " A bundle establishes the component ships on the device, not"
-            " that each of its CVEs is reachable there -- the cautions below"
-            " say what still needs a human.")
+            f"{len(third_cves - first_cves)} of the CVEs in scope arrive only"
+            " via third-party component bundle advisories"
+            + (f", and {len(shared)} more appear in both the vendor's own"
+               " advisories and a bundle" if shared else "")
+            + f"; the pillars above measure the {len(first_cves)} first-party"
+            " CVE(s). A bundle establishes the component ships on the device,"
+            " not that each of its CVEs is reachable there -- the cautions"
+            " below say what still needs a human.")
     if not first and third:
         notes.append(
             "Every finding arrives via component bundles, so the pillars were"
@@ -856,8 +907,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         )
     if dropped:
         notes.append(
-            ", ".join(dropped) + (" had" if len(dropped) > 1 else " had")
-            + " no evidence to measure, so "
+            ", ".join(dropped) + " had no evidence to measure, so "
             + ("their exponents were" if len(dropped) > 1 else "its exponent was")
             + " excluded and the remaining pillars renormalized -- one rule"
             " for every pillar, never a phantom neutral score.")

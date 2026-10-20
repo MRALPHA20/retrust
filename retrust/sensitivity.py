@@ -87,9 +87,15 @@ def _random_weights(rng):
 
     Normalising uniform draws does NOT sample the simplex uniformly -- it
     clusters near the centroid and never visits the corners, so extreme
-    weightings go untested and every verdict looks steadier than it is. With
-    six pillars it puts the chance of any pillar carrying over half the weight
-    at 19%; when network exposure is omitted, the other five remain normalized.
+    weightings go untested and every verdict looks steadier than it is. Over
+    the four weighted pillars in PILLAR_KEYS, a uniform simplex puts the chance
+    of some pillar carrying more than half the weight at 50% (n/2^(n-1) for
+    n = 4); clustered draws would almost never produce one, which is exactly
+    the case a robustness figure has to be able to visit.
+
+    Network exposure is not one of the four. It is recorded and reported as a
+    diagnostic, never weighted, so it never enters this vector and there is
+    nothing to renormalize when it is unanswered.
 
     Normalised exponentials give Dirichlet(1,...,1), which is uniform.
     """
@@ -131,12 +137,15 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
                          score_min=probe.score or 0.0, score_max=probe.score or 0.0,
                          score_median=probe.score or 0.0)
 
-    # No pillar had evidence, so there is no score to reweigh: sampling would
-    # dress "nothing was measured" up as a robustness figure.
+    # A provisional product has an unresolved exposure factor, so its score is
+    # a range and the verdict is VERIFY whatever the weights say. Reweighting
+    # would report agreement on a verdict the weights never decided.
     if probe.provisional:
         return Stability(samples=0, verdicts={"VERIFY": 1},
                          score_min=probe.score_min or 0, score_max=probe.score_max or 0,
                          score_median=probe.score or 0)
+    # No pillar had evidence, so there is no score to reweigh: sampling would
+    # dress "nothing was measured" up as a robustness figure.
     if probe.score is None:
         return Stability(samples=0, verdicts={probe.verdict: 1}, gated=False,
                          score_min=0.0, score_max=0.0, score_median=0.0)

@@ -95,7 +95,7 @@ def test_all_zero_weights_rejected(tmp_path):
 
 def test_template_round_trips(tmp_path):
     written = config.write_template(tmp_path / "c.json")
-    weights, bands, _ = config.load(written)
+    weights, _, _ = config.load(written)
     assert weights == score.DEFAULT_WEIGHTS
     with pytest.raises(SystemExit, match="already exists"):
         config.write_template(written)
@@ -179,8 +179,14 @@ def test_vendor_practice_discriminates_on_csaf_publishing():
 
 
 def test_gated_product_skips_sampling():
-    """A hard gate decides outright, so reporting a sampled agreement would lie."""
-    findings = [_finding(kev=True)]
+    """A hard gate decides outright, so reporting a sampled agreement would lie.
+
+    The KEV finding must be UNFIXED to gate. This fixture used the helper's
+    `vendor_fix` default and so asserted that a KEV CVE the vendor had already
+    patched still disqualified the product -- which is the defect that printed
+    "AVOID 99.2/100" beside a patch-availability score of 100.
+    """
+    findings = [_finding(kev=True, remediation="none_available")]
     result = sensitivity.stability(findings, {"A"}, samples=200)
     assert result.gated
     assert result.samples == 0
@@ -431,11 +437,18 @@ def test_a_new_pillar_needs_only_one_entry(monkeypatch):
 
 
 def test_every_pillar_spec_is_wired_correctly():
-    """Each spec's measure() must return a Pillar whose name matches the spec."""
+    """Each spec's measure() must return a Pillar whose name matches the spec.
+
+    Exposure is the exception and is checked below: it needs the operator
+    context, which this signature cannot carry, so assess() measures it and the
+    spec entry refuses rather than answering from findings alone.
+    """
     from retrust import score
 
     findings = [_finding()]
     for spec in score.PILLARS:
+        if spec.key == "exposure":
+            continue
         pillar = spec.measure(findings, {"A"}, (), "siemens")
         assert isinstance(pillar, score.Pillar)
         assert pillar.name == spec.name, (
@@ -443,3 +456,25 @@ def test_every_pillar_spec_is_wired_correctly():
             "the report looks its weight up by name, so these must agree")
         assert 0.0 <= pillar.score <= 100.0
         assert 0.0 <= pillar.coverage <= 1.0
+
+
+def test_the_exposure_spec_refuses_to_measure_without_operator_context():
+    """It used to answer `_exposure(findings)` -- every operator answer ignored.
+
+    The entry is unreachable through assess(), which special-cases the key, so a
+    context-free fallback would only ever be reached by a generic caller and
+    would hand it a pillar labelled "Exposure" that a blocked interface and an
+    internet-exposed one scored identically.
+    """
+    import pytest
+
+    from retrust import score
+
+    spec = next(s for s in score.PILLARS if s.key == "exposure")
+    with pytest.raises(AssertionError, match="assess"):
+        spec.measure([_finding()], {"A"}, (), "siemens")
+
+    # And the pillar assess() does produce still carries the spec's label, which
+    # is what the report looks the weight up by.
+    produced = score.assess("probe", [_finding()], {"A"}, interface="blocked")
+    assert any(p.name == spec.name for p in produced.pillars)

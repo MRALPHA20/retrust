@@ -8,7 +8,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from . import index
+from . import index, report
 
 # ANSI SGR parameters, 256-colour so that PREFER is the same green on every
 # terminal instead of whatever that terminal's theme happens to call green.
@@ -128,9 +128,10 @@ def candidates(records):
     lines = [heading("Candidate comparison")]
     for record in records:
         verdict = record["verdict"]
-        score = "no score" if record["score"] is None else f"{record['score']}/100"
-        if record.get("provisional"):
-            score = f"{record['score_min']}–{record['score_max']}/100 (provisional range)"
+        # Same formatter the report and `retrust score` use, fed the record dict
+        # rather than an Assessment, so the three cannot drift apart again.
+        score = report.score_label(record, unit="/100", missing="no score",
+                                   note=" (provisional range)")
         lines.extend(["", prose(record["product"], style="title"),
                       prose(f"{verdict}  ·  {score}",
                             style=VERDICT_STYLES.get(verdict))])
@@ -172,7 +173,6 @@ def candidates(records):
 # rules that do not line up read as two panels rather than one instrument.
 WIDTH = 76
 KEYS = 5       # the narrow left cell the interactive menu keeps its keys in
-LABEL = 24     # the menu's label cell, before its description
 FIELD = 10     # the legend column of a status strip
 NAME = "ReTrust"
 TAG = "OT hardware cyber-risk, before you buy"

@@ -20,6 +20,7 @@ evidence of safety. Those are counted and reported, not offered.
 
 from dataclasses import dataclass
 
+from . import report, score
 from .index import normalize_name, normalize_vendor
 from .match import boundary_key, prefix_matches
 
@@ -27,8 +28,13 @@ from .match import boundary_key, prefix_matches
 # the family is narrowed first and only the closest names are assessed.
 CONSIDER = 40
 
-# Verdicts good enough to be worth a buyer's time, best first.
-RANK = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2}
+# Verdicts good enough to be worth a buyer's time, best first. A derived subset
+# of score.VERDICT_RANK, not a second hand-written copy: membership is also the
+# filter below ("verdict not in RANK" means "not worth showing"), so AVOID and
+# NOT ASSESSED are left out deliberately. Suggesting a disqualified product as
+# an alternative to a disqualified product is not an answer.
+RANK = {verdict: position for verdict, position in score.VERDICT_RANK.items()
+        if verdict in ("PREFER", "CONDITIONAL", "VERIFY")}
 
 
 @dataclass
@@ -130,7 +136,7 @@ def find(connection, vendor, product, assess, limit=8, exclude=()):
     options = []
     skipped = {"unassessable": 0, "gated": 0, "no evidence": 0}
     for name, depth in family(connection, vendor, product, exclude=exclude):
-        assessment, resolution, _ = assess(vendor, name)
+        assessment, _, _ = assess(vendor, name)
         if assessment.gates:
             # Disqualified, which is a decision and not an absence of one.
             # Reporting these as "could not be assessed" told the buyer to go
@@ -200,8 +206,11 @@ def format_report(subject, options, skipped, considered=0, version=None):
                   "not recommendations or proof that they are safer.", ""]
     lines.append(f"{'CANDIDATE':<44}  {'VERDICT':<12} SCORE  CVES  SHARED NAME")
     for option in options:
-        shown = (f"{option.score_min:.1f}-{option.score_max:.1f}" if option.provisional
-                 else f"{option.score:.1f}")
+        # No unit and no note: the column is headed SCORE and the paragraph
+        # above already says the ranges are provisional. One decimal keeps the
+        # column aligned. The dash comes from report, which is the point --
+        # this table used to print an ASCII hyphen on its own.
+        shown = report.score_label(option, note='', places=1)
         lines.append(f"{option.product[:44]:<44}  {option.verdict:<12} "
                      f"{shown:>5}  {option.cves:>4}  {option.shared}")
 

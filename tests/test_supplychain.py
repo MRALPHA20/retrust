@@ -7,6 +7,8 @@ the false-positive cases below are the point of the file.
 
 import json
 
+import os
+import stat
 import pytest
 
 from retrust import certification, score, supplychain
@@ -325,3 +327,127 @@ def test_no_false_positives_across_the_whole_corpus():
     # anything new appearing here needs a human to confirm before it ships.
     known_listed = {"Dahua Technology Co, Ltd", "Hikvision", "Planet Technology"}
     assert blocked <= known_listed, f"new hard-AVOID vendors to verify: {blocked - known_listed}"
+
+
+# --- the screening cache -----------------------------------------------------
+#
+# Building the index parses a 7.5 MB list into ~32,000 keys and cost 1.3 s on
+# EVERY CLI invocation, against an assessment that itself takes 3 ms. It is now
+# built once per refresh and cached; these tests pin that the cache can never
+# answer differently from the build it came from, and that every way it can go
+# wrong degrades to the slow-but-correct path rather than to a wrong screen.
+
+def _listed(directory, names):
+    """A screening source holding the given entity names."""
+    (directory / "screening.json").write_text(json.dumps(
+        [{"name": name, "type": "Entity", "country": "", "programs": "", "url": "",
+          "source": "Entity List (EL) - Bureau of Industry and Security"}
+         for name in names]), encoding="utf-8")
+
+
+VENDORS = ("Acme Precision Instruments Limited", "Beta Controls GmbH",
+           "Hikvision", "Siemens", "", "Nobody At All")
+
+
+def test_the_cache_answers_exactly_as_the_build_it_came_from(tmp_path):
+    """Read THROUGH the cache, not past it.
+
+    The first load builds in memory and writes the cache as a side effect, so
+    a single load never exercises the SQL read path at all -- a cache that
+    returned nothing on every hit passed this file until this test loaded
+    twice.
+    """
+    _listed(tmp_path, VENDORS[:2])
+    built = supplychain.build_index(tmp_path)          # straight from JSON
+    supplychain.screen(supplychain.load(str(tmp_path)), "x")   # writes the cache
+    assert (tmp_path / supplychain.CACHE_NAME).exists(), "no cache was written"
+
+    cached = supplychain.load(str(tmp_path))           # second load: reads it
+    for vendor in VENDORS:
+        assert supplychain.screen(built, vendor) == supplychain.screen(cached, vendor), vendor
+    assert len(cached) == len(built)
+
+
+def test_a_cached_read_finds_the_same_listed_vendor(tmp_path):
+    """The mutation this pins: a cache hit silently returning nothing."""
+    _listed(tmp_path, ["Acme Precision Instruments Limited"])
+    supplychain.screen(supplychain.load(str(tmp_path)), "x")   # build + write
+    second = supplychain.load(str(tmp_path))
+    assert second.get(supplychain.screening_key("Acme Precision Instruments Limited"))
+    assert supplychain.screen(second, "Acme Precision Instruments Limited")[0]
+
+
+def test_a_changed_source_list_is_not_answered_from_the_old_cache(tmp_path):
+    """The failure that would matter: screening a vendor against yesterday's list."""
+    _listed(tmp_path, ["Acme Precision Instruments Limited"])
+    assert supplychain.screen(supplychain.load(str(tmp_path)),
+                              "Acme Precision Instruments Limited")[0]
+    os.utime(tmp_path / "screening.json", (0, 0))      # a different stamp
+    _listed(tmp_path, ["Beta Controls GmbH"])
+    fresh = supplychain.load(str(tmp_path))
+    assert not supplychain.screen(fresh, "Acme Precision Instruments Limited")[0]
+    assert supplychain.screen(fresh, "Beta Controls GmbH")[0]
+
+
+def test_a_corrupt_cache_is_rebuilt_rather_than_trusted(tmp_path):
+    _listed(tmp_path, ["Acme Precision Instruments Limited"])
+    supplychain.load(str(tmp_path)).get("x")           # build the cache
+    (tmp_path / supplychain.CACHE_NAME).write_bytes(b"not a database at all")
+    assert supplychain.screen(supplychain.load(str(tmp_path)),
+                              "Acme Precision Instruments Limited")[0]
+
+
+def test_an_unwritable_data_directory_still_screens_correctly(tmp_path):
+    """A read-only clone loses the cache, never the answer."""
+    _listed(tmp_path, ["Acme Precision Instruments Limited"])
+    tmp_path.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        assert supplychain.screen(supplychain.load(str(tmp_path)),
+                                  "Acme Precision Instruments Limited")[0]
+        assert not (tmp_path / supplychain.CACHE_NAME).exists()
+    finally:
+        tmp_path.chmod(stat.S_IRWXU)
+
+
+def test_nothing_is_read_until_a_vendor_is_actually_screened(tmp_path):
+    """Commands that never screen must not pay for the list at all."""
+    _listed(tmp_path, ["Acme Precision Instruments Limited"])
+    index = supplychain.load(str(tmp_path))
+    assert not (tmp_path / supplychain.CACHE_NAME).exists()
+    supplychain.screen(index, "Acme Precision Instruments Limited")
+    assert (tmp_path / supplychain.CACHE_NAME).exists()
+
+
+def test_the_curated_covered_list_survives_with_no_downloaded_source(tmp_path):
+    index = supplychain.load(str(tmp_path))
+    assert supplychain.screen(index, "Hikvision")[0]
+    assert not index.screening_list_loaded, "ten curated entries are not a screen"
+
+
+def test_certificates_are_not_read_until_one_is_looked_up(tmp_path):
+    """Loading both evidence lists cost 1.3 s on every run; now it costs nothing.
+
+    `_context` builds the screening and certificate indexes for every command,
+    including the many that never score a product. Both are now deferred, so
+    the cost lands only on the commands that actually screen or certify.
+    """
+    (tmp_path / "certifications.json").write_text(json.dumps(
+        [{"vendor": "Acme Controls", "scheme": "IEC 62443-4-2", "product": "PLC-1",
+          "detail": "", "source": ""}]), encoding="utf-8")
+    index = certification.load(str(tmp_path))
+    assert index._index is None, "nothing should be parsed by load() alone"
+    assert certification.certificates_for(index, "Acme Controls")
+    assert index._index is not None
+
+
+def test_the_deferred_certificate_index_matches_a_direct_build(tmp_path):
+    (tmp_path / "certifications.json").write_text(json.dumps(
+        [{"vendor": "Acme Controls", "scheme": "IEC 62443-4-2", "product": "PLC-1",
+          "detail": "", "source": ""},
+         {"vendor": "Acme Controls Inc.", "scheme": "IEC 62443-4-1", "product": "",
+          "detail": "", "source": ""}]), encoding="utf-8")
+    built, lazy = certification.build_index(tmp_path), certification.load(str(tmp_path))
+    for vendor in ("Acme Controls", "Acme Controls Inc.", "Nobody", ""):
+        assert (certification.certificates_for(built, vendor)
+                == certification.certificates_for(lazy, vendor)), vendor
+    assert len(built) == len(lazy)

@@ -232,5 +232,7 @@ def test_provisional_sibling_remains_available_for_engineering_review(db):
     assert options[0].score_min == 20 and options[0].score_max == 90
     subject, _, _ = assess('Testco', 'TestPLC 9000 Alpha')
     output = alternatives.format_report(subject, options, skipped)
-    assert '20.0-90.0' in output and 'not recommendations' in output
+    # En-dash: every surface now renders ranges through report.score_label,
+    # and this file used to be the one printing an ASCII hyphen.
+    assert '20.0\u201390.0' in output and 'not recommendations' in output
     assert 'scored above' not in output

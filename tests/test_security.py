@@ -49,7 +49,9 @@ def test_redirect_to_private_host_is_refused_before_connecting():
     class Target(http.server.BaseHTTPRequestHandler):
         def do_GET(self):                      # the "internal" host records a hit
             hit["target"] = True
-            self.send_response(200); self.end_headers(); self.wfile.write(b"x")
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"x")
         def log_message(self, *a): pass
 
     class Redirector(http.server.BaseHTTPRequestHandler):
@@ -70,7 +72,8 @@ def test_redirect_to_private_host_is_refused_before_connecting():
                 f"http://127.0.0.1:{redirector.server_address[1]}/", timeout=5)
         assert hit["target"] is False      # the internal target was never reached
     finally:
-        target.shutdown(); redirector.shutdown()
+        target.shutdown()
+        redirector.shutdown()
 
 
 # --- ReDoS: the fix-text scan is bounded, not quadratic on hostile prose ---

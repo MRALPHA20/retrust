@@ -31,9 +31,9 @@ def test_a_fix_for_one_variant_does_not_clear_another_variants_gate(tmp_path):
     unfixed = match.findings(connection, resolved, version='2.5')
     family = match.findings(connection, resolved)
     assert fixed[0].remediation == 'vendor_fix'
-    assert not score.check_gates(fixed, 'Testco')
+    assert not score.check_gates(fixed)
     assert unfixed[0].remediation == 'none_available'
-    assert score.check_gates(unfixed, 'Testco')[0]['gate'] == 'Critical vulnerability with no available fix'
+    assert score.check_gates(unfixed)[0]['gate'] == 'Critical vulnerability with no available fix'
     assert family[0].remediation == 'none_available'
     connection.close()
 

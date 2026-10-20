@@ -15,11 +15,12 @@ from retrust.match import Finding
 
 def _finding(cve="CVE-2026-0001", cvss=9.8, epss=0.01, in_kev=False,
              ransomware=False, remediation="none_available", vector=None,
-             fix_text=False, lev=None):
+             fix_text=False, lev=None, version_supplied=False, decided=True):
     return Finding(cve=cve, advisory_id="A", cvss=cvss, cwe="CWE-787",
                    epss=epss, in_kev=in_kev, ransomware=ransomware,
-                   version_range="", decided=True, remediation=remediation,
-                   vector=vector, fix_text=fix_text, lev=lev)
+                   version_range="", decided=decided, remediation=remediation,
+                   vector=vector, fix_text=fix_text, lev=lev,
+                   version_supplied=version_supplied)
 
 
 # --- T: four signals, the strongest wins -------------------------------------
@@ -102,7 +103,11 @@ def test_a_fix_that_exists_is_not_a_fix_that_is_installed():
     installed = exposure.applicability(fixed, "installed")
     assert purchase == installed == 1.0
     assert exposure.applicability(fixed, "purchase", "available") == 1.0
-    assert exposure.applicability(fixed, "installed", "applied") == 0.0
+    # "Applied" is a claim about a SELECTED firmware, so it resolves only when
+    # one was named -- and this fixture names none.
+    assert exposure.applicability(fixed, "installed", "applied") == 1.0
+    named = _finding(remediation="vendor_fix", version_supplied=True, decided=False)
+    assert exposure.applicability(named, "installed", "applied") == 0.0
     assert exposure.applicability(fixed, "purchase", "planned") == 1.0
 
 

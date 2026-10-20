@@ -15,7 +15,8 @@ def flaw(**overrides):
     values = dict(cve='CVE-2026-0001', advisory_id='A', cvss=9.8,
                   cwe='CWE-787', epss=.12, lev=.6, in_kev=False,
                   ransomware=False, version_range='<2.0', decided=True,
-                  remediation='vendor_fix', vector=VECTOR)
+                  remediation='vendor_fix', vector=VECTOR,
+                  version_supplied=False)
     values.update(overrides)
     return match.Finding(**values)
 
@@ -85,20 +86,39 @@ def test_a_firewall_does_not_patch_firmware():
     assert exposure.applicability_bounds(f, remediation='available').values() == [1,1]
 
 
-def test_a_verified_fix_needs_a_named_firmware():
-    """The spec's U table zeroes a SELECTED version verified patched.
+def test_a_verified_fix_needs_a_named_firmware_and_no_contradiction():
+    """The spec zeroes U for a SELECTED version verified patched or not affected.
 
-    "Fix verified present on this firmware" with no firmware supplied names
-    nothing, so the dropdown alone must not zero U for every finding -- it
-    stays unresolved and the U verification item asks for the version. With a
-    checked version the verified claim resolves to 0 as the spec maps it.
+    Three cases, and the middle one is the bug this pins. `decided` does NOT
+    mean "a version was checked": match.findings drops every finding whose
+    range EXCLUDES the supplied version, so a surviving decided finding is one
+    the range check says IS affected. Gating the claim on it made the proof of
+    affectedness the licence for believing the device was patched -- an
+    internet-exposed, safety-critical, CVSS 10.0, confirmed-affected product
+    read PREFER 99.2/100.
     """
-    unnamed = flaw(decided=False)
-    assert exposure.applicability_bounds(unnamed, remediation='applied').values() == [0, 1]
-    assert exposure.applicability_bounds(unnamed, remediation='not_affected').values() == [0, 1]
-    named = flaw(decided=True)
-    assert exposure.applicability_bounds(named, remediation='applied').values() == [0, 0]
-    assert exposure.applicability_bounds(named, remediation='not_affected').values() == [0, 0]
+    for claim in ('applied', 'not_affected'):
+        # no firmware named: the claim is about nothing
+        unnamed = flaw(version_supplied=False, decided=False)
+        assert exposure.applicability_bounds(
+            unnamed, remediation=claim).values() == [0, 1]
+        # named, but our own range check says this firmware IS affected
+        disputed = flaw(version_supplied=True, decided=True)
+        assert exposure.applicability_bounds(
+            disputed, remediation=claim).values() == [0, 1]
+        # named, and nothing contradicts the claim
+        named = flaw(version_supplied=True, decided=False)
+        assert exposure.applicability_bounds(
+            named, remediation=claim).values() == [0, 0]
+
+
+def test_a_contradicted_fix_claim_says_so():
+    """A claim the tool quietly declines to honour would be worse than none."""
+    disputed = flaw(version_supplied=True, decided=True)
+    result = exposure.analyse([disputed], network='ot_only', interface='exposed',
+                              consequence='control', remediation='applied')
+    assert result.provisional
+    assert any('contradicts' in item for item in result.missing)
 
 
 def test_duplicate_advisories_do_not_invent_three_paths():

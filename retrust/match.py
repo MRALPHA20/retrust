@@ -177,7 +177,7 @@ def resolve(connection, vendor=None, product=None, order_number=None):
         # A product name was given too, so it has to agree. It named the
         # S7-1200 while the order number named the S7-1500, and the report
         # carried the typed name above the other product's 1,063 CVEs.
-        if rows and product and (wanted_name := normalize_name(product)):
+        if rows and product and normalize_name(product):
             wanted_boundary = boundary_key(product)
             agreeing = [r for r in rows
                         if prefix_matches(wanted_boundary, boundary_key(r["name"]))]
@@ -296,6 +296,13 @@ class Finding:
     # mid-list silently feeds the wrong argument to the wrong name. New fields
     # go at the end.
     lev: float | None = None
+    # Whether the caller supplied a firmware version at all -- which is NOT
+    # what `decided` means. `decided` says the range was evaluated and this
+    # finding survived it, and findings whose range EXCLUDES the version are
+    # dropped before they get here, so `decided` really means "the range check
+    # says this firmware IS affected". A claim about a selected firmware needs
+    # only to know that a firmware was selected.
+    version_supplied: bool = False
     kev_available: bool = True
     path_id: str | None = None
     review: dict = field(default_factory=dict)
@@ -366,6 +373,7 @@ def findings(connection, resolution, version=None):
                 cvss=row["cvss"], cwe=row["cwe"], epss=row["epss"],
                 in_kev=bool(row["in_kev"]), ransomware=bool(row["ransomware"]),
                 lev=row["lev"], kev_available="CISA KEV" in sources,
+                version_supplied=bool(version),
                 source_dates=dict(sources),
                 version_range=match.version_range, decided=decided,
                 remediation=row["remediation"] or "unknown",

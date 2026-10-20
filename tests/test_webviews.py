@@ -128,3 +128,66 @@ def test_verdict_keeps_supplier_verification_and_score_scope_visible():
     assert result.index('What this score covers') < result.index('Save this assessment')
     assert 'Evidence completeness for scored findings: <b>100%</b>' in result
     assert 'it does not confirm the applicability or safety of bundled software' in result
+
+
+# --- the findings table, rendered rather than called directly ----------------
+#
+# Mutation-tested gap: report.py had 98.9% line coverage and FOUR mutations
+# survived -- the disclosure could be deleted, the cap silently dropped from 10
+# to 3, the ranking inverted so the LEAST significant findings showed, and the
+# table emptied entirely. Every one passed 947 tests, because the only test
+# touching the table called the private _cve_table directly and never exercised
+# the wiring in _findings_section. These tests render the real section.
+
+def _many(count):
+    """A finding set larger than the table cap, with a clear significance order."""
+    return [Finding(cve=f"CVE-2026-{i:04d}", advisory_id="A", cvss=4.0 + i * 0.2,
+                    cwe="CWE-125", epss=i / 100.0, in_kev=False, ransomware=False,
+                    version_range="", decided=True, remediation="none_available",
+                    vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
+            for i in range(1, count + 1)]
+
+
+def _section(findings):
+    """Render through the public renderer, so the wiring is exercised too."""
+    from retrust.match import Resolution
+    assessment = score.assess("Example", findings, {"A"})
+    resolution = Resolution(query="x", abstained=False, reason="")
+    return report.body([(assessment, resolution, findings)])
+
+
+def test_a_capped_findings_table_discloses_the_cap():
+    html = _section(_many(25))
+    assert "most significant of 25 findings" in html
+    assert "records how many were left out" in html
+
+
+def test_an_uncapped_findings_table_makes_no_claim_about_a_cap():
+    html = _section(_many(4))
+    assert "most significant of" not in html
+
+
+def _reviewed(html):
+    """The CVEs inside the capped "Vulnerabilities to review" table only.
+
+    The page also renders an uncapped per-vulnerability contributions table,
+    so a whole-page search cannot tell the capped table from the full one.
+    """
+    import re
+    start = html.index("<h3>Vulnerabilities to review</h3>")
+    end = html.find("</table>", start)
+    return set(re.findall(r"CVE-\d{4}-\d{4,}", html[start:end]))
+
+
+def test_the_table_shows_the_worst_findings_not_the_mildest():
+    """Inverting the ranking silently showed the least significant findings."""
+    shown = _reviewed(_section(_many(25)))
+    assert "CVE-2026-0025" in shown, "the highest-EPSS finding must be shown"
+    assert "CVE-2026-0001" not in shown, "the lowest-EPSS finding must not be"
+
+
+def test_the_table_is_not_empty_and_shows_exactly_the_cap():
+    shown = _reviewed(_section(_many(25)))
+    assert len(shown) == 10, f"expected the 10-row cap, rendered {len(shown)}"
+    # the ten worst, nothing else
+    assert shown == {f"CVE-2026-{i:04d}" for i in range(16, 26)}

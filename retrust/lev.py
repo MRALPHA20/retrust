@@ -24,7 +24,7 @@ KEV, not replace it: a high LEV on a CVE absent from KEV is a prompt to go and
 look, not a finding that it was exploited.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 # EPSS scores the probability of exploitation over the following 30 days, which

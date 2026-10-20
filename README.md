@@ -182,11 +182,12 @@ not count every extra match. Version coverage measures whether a range can be
 parsed, not accuracy against independently labelled firmware cases.
 
 The historical backtest at the 2022-01-01 cutoff
-(`retrust backtest --cutoff 2022-01-01 --permutations 100`) scores 5,848
+(`retrust backtest --cutoff 2022-01-01 --permutations 1000`) scores 5,848
 products on pre-cutoff advisories only and gives score versus later CVE
-disclosure rho +0.484 (p = 0.010 at 100 permutations). Compared only within
+disclosure rho +0.484 (p = 0.001 at 1,000 permutations). Compared only within
 vendors — 3,796 products across 19 vendors — the pooled rho is +0.340
-(p = 0.010), falling to +0.110 when Siemens is excluded: the correlation
+(p = 0.001 at the same 1,000 permutations), falling to +0.110 when Siemens is
+excluded: the correlation
 attenuates sharply without Siemens, because that vendor bundles hundreds of
 upstream CVEs into single advisories, but it stays positive.
 These diagnostics measure later disclosure volume, not compromise, and do not
@@ -208,8 +209,12 @@ Gates still apply.
 
 ## Honest by design
 
-- **Hard gates sit outside the weighted score** — a KEV hit or a covered-list
-  match cannot be averaged away by good scores elsewhere.
+- **Hard gates sit outside the weighted score** — an *unfixed* KEV hit or a
+  covered-list match cannot be averaged away by good scores elsewhere. The KEV
+  gate reads the finding's fix status, because a catalogued CVE the vendor has
+  already patched is a reason to buy current firmware rather than a reason to
+  refuse the purchase: gating on it alone printed AVOID beside a patch
+  availability pillar reading 100/100.
 - **The score is a product, not a mean** — `E^0.60 × P^0.20 × V^0.15 × C^0.05`,
   so dangerous exposure cannot be bought back with a good vendor record and a
   certificate. Exposure itself is concentrated on the worst findings rather than
@@ -222,6 +227,12 @@ Gates still apply.
   news, so an unresolved product gets "needs review", not 100.
 - **Unparseable version ranges stay in scope** — "could not decide" is never
   read as "not affected".
+- **A claimed fix has to be about a firmware** — `--remediation applied` or
+  `not_affected` clears applicability only when a firmware version was supplied
+  *and* the tool's own range check does not contradict the claim; where it does,
+  the contradiction is named as a verification item instead. Reading the range
+  check's "this firmware is affected" as licence for the claim let an
+  internet-exposed, safety-critical, confirmed-affected device report PREFER.
 - **`retrust sensitivity` attacks the weights** — a verdict that survives
   fewer than 90% of random reweightings is flagged as a judgement call.
 - **`retrust verify` checks the inputs** — SHA-512 digests and PGP signatures
@@ -273,8 +284,14 @@ branch; `make live` checks which build is actually serving.
 - **[The manual](docs/manual.md)** — the scoring maths, the resolution ladder,
   the back-test design, the web UI's security posture, SSVC and LEV, and every
   design decision with the measurement that justified it.
-- **[ReTrust-Guide.pdf](docs/ReTrust-Guide.pdf)** — a 9-page printable user
-  guide that opens on a three-step quick start.
+- **[ReTrust-Guide.pdf](docs/ReTrust-Guide.pdf)** — *ReTrust — Overview,
+  Benchmarks and Tool Comparison*, nine printable pages. Page 1 is a cover
+  stating the decision it supports and why it is useful; the commands arrive on
+  page 8, under "Operate, reproduce and improve".
+- **[docs/user-guide.html](docs/user-guide.html)** — the same ground as a
+  printable guide for somebody who wants to use the tool rather than evaluate
+  it: it opens on a three-step quick start — install, search, score — and ends
+  on the accuracy table.
 - **[ReTrust-Scoring-Explained.pdf](docs/ReTrust-Scoring-Explained.pdf)** — a
   three-page sheet deriving the score: the `T × A × H × U` exposure rule, a
   worked calculation on illustrative inputs, the pillar product, an example

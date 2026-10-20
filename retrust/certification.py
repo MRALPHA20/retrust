@@ -184,15 +184,60 @@ CURATED = [
 ]
 
 
-def load(data_dir="data"):
-    """Load the cached certificates plus the curated layer, keyed by vendor."""
+def build_index(data_dir="data"):
+    """The cached certificates plus the curated layer, keyed by vendor."""
     path = Path(data_dir) / "certifications.json"
     records = (json.loads(path.read_text(encoding="utf-8"))
                if path.exists() else [])
     by_vendor = {}
+    # 2,272 records share 484 distinct vendors, and normalize_vendor runs three
+    # regexes per call, so normalising each record cost more than parsing the
+    # whole file. Memoised here rather than on the function itself, which is
+    # shared with matching and has no reason to hold a cache for this.
+    seen = {}
     for record in records + CURATED:
-        by_vendor.setdefault(normalize_vendor(record["vendor"]), []).append(record)
+        name = record["vendor"]
+        key = seen.get(name)
+        if key is None:
+            key = seen[name] = normalize_vendor(name)
+        by_vendor.setdefault(key, []).append(record)
     return by_vendor
+
+
+class Index:
+    """Certificates by vendor, read only if a certificate is ever looked up.
+
+    Exposes the `.get(key, default)` that `certificates_for` uses, so callers
+    cannot tell it from the dict it replaces. Most commands never score a
+    product and so never touch this at all.
+    """
+
+    def __init__(self, data_dir="data"):
+        self._dir = data_dir
+        self._index = None
+
+    def _load(self):
+        if self._index is None:
+            self._index = build_index(self._dir)
+        return self._index
+
+    def get(self, key, default=None):
+        return self._load().get(key, default)
+
+    def __bool__(self):
+        # Always true: the curated layer ships in this module, so there is
+        # always something to look up. Answered without reading the file,
+        # because `dossier.build` tests truthiness before it knows whether a
+        # certificate will be wanted.
+        return True
+
+    def __len__(self):
+        return len(self._load())
+
+
+def load(data_dir="data"):
+    """The certificate index. Reads nothing until a vendor is looked up."""
+    return Index(data_dir)
 
 
 def certificates_for(by_vendor, vendor, product=None):

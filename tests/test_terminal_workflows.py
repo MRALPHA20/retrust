@@ -31,7 +31,7 @@ def test_duplicate_advisories_do_not_multiply_exploitation_counts():
     repeated = score._exploitation([finding, duplicate])
     assert repeated.score == single.score
     assert repeated.evidence == single.evidence
-    gates = score.check_gates([finding, duplicate], 'Testco')
+    gates = score.check_gates([finding, duplicate])
     assert all(gate['detail'].startswith('1 CVE(s)') for gate in gates)
     assessment = score.assess('Testco', [finding, duplicate])
     assert assessment.findings_count == 1
@@ -71,7 +71,7 @@ def test_invalid_command_input_returns_to_menu(capsys):
 def test_malformed_batch_shapes_are_reported_without_tracebacks(tmp_path, document):
     path = tmp_path / 'bad.json'
     path.write_text(document)
-    with pytest.raises(SystemExit, match='expected a JSON|must be a JSON list'):
+    with pytest.raises(SystemExit, match=r'expected a JSON|must be a JSON list'):
         batch.read_candidates(path)
 
 

@@ -291,7 +291,7 @@ def format_report(result):
         f"  products scored on pre-cutoff data only {result.cohort:>9,}",
     ]
     if result.cohort < 3:
-        return "\n".join(lines + [""] + [f"  {l}" for l in interpretation(result)])
+        return "\n".join(lines + [""] + [f"  {note}" for note in interpretation(result)])
 
     lines += [
         "",

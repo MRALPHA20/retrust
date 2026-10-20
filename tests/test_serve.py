@@ -628,7 +628,7 @@ def test_order_only_comparison_and_legacy_links(comparison_handler):
 
 
 def test_comparison_download_preserves_ranked_queries_and_stability(comparison_handler):
-    handler, calls = comparison_handler
+    handler, _ = comparison_handler
     query = '?product_0=Same&order_number_0=SECOND&product_1=Same&order_number_1=BEST&version_1=2.5'
     _, headers, body = _get(handler, '/compare.json' + query)
     payload = json.loads(body)

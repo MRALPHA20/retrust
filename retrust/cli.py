@@ -198,9 +198,8 @@ def _render_one(assessment, resolution, findings, context=None):
     Shared by `score` and the interactive menu, so the two cannot drift into
     describing the same result differently.
     """
-    score_text = "no score" if assessment.score is None else f"{assessment.score}/100"
-    if assessment.provisional and assessment.score is not None:
-        score_text = f"{assessment.score_min}–{assessment.score_max}/100 (provisional range)"
+    score_text = report.score_label(assessment, unit="/100", missing="no score",
+                                    note=" (provisional range)")
     lines = [console.heading("Product assessment"), "",
              console.prose(assessment.product, style="title"),
              console.prose(f"{assessment.verdict}  ·  {score_text}",
@@ -356,6 +355,28 @@ def cmd_score(args):
     return 2 if assessment.verdict in ("NOT ASSESSED", "VERIFY") else exit_status
 
 
+def _best_first(of=None):
+    """Sort key putting the best candidate first, by score.VERDICT_RANK.
+
+    `of` pulls the assessment out of whatever is being sorted: a (block, query)
+    pair, a block, or nothing at all for the flat record dicts `batch` produces.
+
+    This file carried five hand-written copies of the rank map and serve.py a
+    sixth, which is five more chances to disagree about what "best" means --
+    and they did, with AVOID above VERIFY, so a disqualified product listed
+    ahead of the only candidate a buyer could actually pursue.
+    """
+    def key(item):
+        subject = of(item) if of else item
+        verdict = subject["verdict"] if isinstance(subject, dict) else subject.verdict
+        value = subject["score"] if isinstance(subject, dict) else subject.score
+        # An unrecognised verdict sorts last rather than raising. Ranking is
+        # presentation, and it must never be what ends a scoring run.
+        return (score.VERDICT_RANK.get(verdict, len(score.VERDICT_RANK)),
+                -(value or 0))
+    return key
+
+
 def cmd_compare(args):
     connection = _open(args.db)
     context = _context(config_path=args.config)
@@ -370,11 +391,8 @@ def cmd_compare(args):
                                query.get("version"), query.get("order_number"),
                                context=context), query))
 
-    # A hard-disqualified AVOID never outranks a VERIFY that merely needs
-    # checks, and NOT ASSESSED ranks below AVOID: an unknown is not a
-    # recommendation, and a blocked product is not a candidate.
-    rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
-    scored.sort(key=lambda s: (rank.get(s[0][0].verdict, 4), -(s[0][0].score or 0)))
+    # One ranking for every surface; score.VERDICT_RANK carries the reasoning.
+    scored.sort(key=_best_first(lambda s: s[0][0]))
     blocks = [block for block, _ in scored]
 
     stabilities = {}
@@ -550,8 +568,7 @@ def cmd_batch(args):
         blocks.append(block)
         records.append(batch.to_record(assessment, resolution, stability, row))
 
-    rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
-    records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
+    records.sort(key=_best_first())
 
     _print_table(records)
 
@@ -628,8 +645,7 @@ def cmd_demo(args):
         for vendor, product, version, order in DEMO_CANDIDATES:
             blocks.append(_assess(connection, vendor, product, version, order,
                                   context=context))
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
-        blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
+        blocks.sort(key=_best_first(lambda block: block[0]))
         return f"{len(blocks)} candidates scored"
 
     def measure_stability():
@@ -942,9 +958,8 @@ def _shell_actions(connection, context, args):
         if not blocks:
             return None
         shell.echo_command(["compare"] + [a for n in names for a in ("--candidate", n)])
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
-        blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
-        records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
+        blocks.sort(key=_best_first(lambda block: block[0]))
+        records.sort(key=_best_first())
         print()
         _print_table(records)
         return shell.Result(kind="compare", blocks=blocks, records=records,
@@ -995,8 +1010,7 @@ def _shell_actions(connection, context, args):
                             row["version"], row["order_number"], context=context, **_owner_inputs(row))
             blocks.append(block)
             records.append(batch.to_record(block[0], block[1], query=row))
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
-        records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
+        records.sort(key=_best_first())
         print()
         _print_table(records)
         return shell.Result(kind="batch", blocks=blocks, records=records,

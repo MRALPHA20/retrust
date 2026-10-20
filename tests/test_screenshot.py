@@ -9,8 +9,6 @@ documentation shot into a mile of dead canvas again.
 import struct
 import zlib
 
-import pytest
-
 from retrust import screenshot
 
 

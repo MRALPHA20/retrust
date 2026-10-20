@@ -24,6 +24,7 @@ Two kinds of list:
 import csv
 import json
 import re
+import sqlite3
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -156,7 +157,7 @@ def refresh(data_dir="data", timeout=120):
     return {"entities": len(entries), "cached_to": str(path)}
 
 
-def load(data_dir="data"):
+def build_index(data_dir="data"):
     """Build the exact-match index used for screening.
 
     Keyed on the identity-preserving name and each alias, so "Schneider
@@ -219,6 +220,122 @@ def load(data_dir="data"):
                 })
 
     return index
+
+
+# The built index is ~32,000 keys parsed out of a 7.5 MB screening list. That
+# cost 1.3 s and was paid on EVERY CLI invocation -- against an assessment that
+# itself takes 3 ms, so 99.8% of a `retrust score` run was rebuilding a table
+# that had not changed. It is now built once per refresh and cached beside the
+# JSON, where a single-vendor lookup costs 0.4 ms.
+CACHE_NAME = "screening-index.db"
+
+
+def _stamp(path):
+    """What makes a cache stale: the source file's size and modification time."""
+    try:
+        info = path.stat()
+    except OSError:
+        return "absent"
+    return f"{info.st_size}:{info.st_mtime_ns}"
+
+
+def _write_cache(path, index, stamp):
+    """Build the cache atomically, or give up quietly and stay in memory.
+
+    A read-only or full data directory is not an error worth failing a scan
+    for -- the caller still has a correct index, just an uncached one.
+    """
+    temporary = path.with_suffix(".tmp")
+    try:
+        temporary.unlink(missing_ok=True)
+        connection = sqlite3.connect(temporary)
+        with connection:
+            connection.execute("CREATE TABLE meta(stamp TEXT)")
+            connection.execute(
+                "CREATE TABLE screen(key TEXT PRIMARY KEY, hits TEXT) WITHOUT ROWID")
+            connection.execute("INSERT INTO meta VALUES (?)", (stamp,))
+            connection.executemany(
+                "INSERT INTO screen VALUES (?,?)",
+                ((key, json.dumps(hits, separators=(",", ":")))
+                 for key, hits in index.items()))
+        connection.close()
+        temporary.replace(path)
+    except (OSError, sqlite3.Error):
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+class Index:
+    """The screening index, read one vendor at a time from a cache.
+
+    Exposes exactly the `.get(key, default)` that `screen` uses, so callers
+    cannot tell it from the dict it replaces, and nothing is read until a
+    vendor is actually screened.
+    """
+
+    def __init__(self, data_dir="data"):
+        self._dir = Path(data_dir)
+        self._source = self._dir / "screening.json"
+        self._cache = None
+        self._memory = None
+        self._opened = False
+
+    def _open(self):
+        """Attach to a fresh cache, rebuilding it if the source list moved on."""
+        if self._opened:
+            return
+        self._opened = True
+        stamp = _stamp(self._source)
+        path = self._dir / CACHE_NAME
+        try:
+            connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            if connection.execute("SELECT stamp FROM meta").fetchone()[0] == stamp:
+                self._cache = connection
+                return
+            connection.close()
+        except (sqlite3.Error, TypeError, IndexError):
+            pass
+        self._memory = build_index(self._dir)
+        _write_cache(path, self._memory, stamp)
+
+    def get(self, key, default=None):
+        self._open()
+        if self._memory is not None:
+            return self._memory.get(key, default)
+        row = self._cache.execute(
+            "SELECT hits FROM screen WHERE key=?", (key,)).fetchone()
+        return json.loads(row[0]) if row else default
+
+    def __bool__(self):
+        # Always true: the curated covered list ships in this module, so an
+        # index is never empty even with no screening.json downloaded. Answered
+        # without opening anything, because `dossier.build` tests truthiness on
+        # the common path where no vendor is ever screened.
+        return True
+
+    def __len__(self):
+        self._open()
+        if self._memory is not None:
+            return len(self._memory)
+        return self._cache.execute("SELECT count(*) FROM screen").fetchone()[0]
+
+    @property
+    def screening_list_loaded(self):
+        """Did a real screening list load, or only the curated covered list?
+
+        A clean result from the ten hand-curated covered-list entries must not
+        pass for a sanctions screen. `dossier` used to answer this by scanning
+        every record in the index; the source file either exists or it does
+        not, so it is a stat call.
+        """
+        return self._source.exists()
+
+
+def load(data_dir="data"):
+    """The screening index. Reads nothing until a vendor is screened."""
+    return Index(data_dir)
 
 
 def screen(index, vendor):

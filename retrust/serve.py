@@ -25,6 +25,7 @@ import urllib.parse
 from datetime import date
 
 from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline, webviews
+from . import webui
 from .webui import page as _page
 from . import index as index_module
 from .index import normalize_name
@@ -498,9 +499,10 @@ def _comparison_results(assess, context, rows):
                      bands=context.get('bands'), network_exposure=network, **owner)
                      if assessment.inputs else None)
         entries.append((block, query, stability))
-    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'VERIFY': 2, 'AVOID': 3, 'NOT ASSESSED': 4}
-    entries.sort(key=lambda entry: (rank.get(entry[0][0].verdict, 4),
-                                   -(entry[0][0].score or 0)))
+    # The same ranking the CLI uses, from the same map. This was a seventh copy.
+    entries.sort(key=lambda entry: (
+        score.VERDICT_RANK.get(entry[0][0].verdict, len(score.VERDICT_RANK)),
+        -(entry[0][0].score or 0)))
     return entries
 
 
@@ -518,7 +520,6 @@ def _compare_page(assess, context, candidates, submitted=False):
         row = filled[i] if i < len(filled) else [''] * len(COMPARISON_FIELDS)
         vendor, product, version, order_number = row[:4]
         network, owner = _candidate_context(row)
-        saved = network or any(owner[key] != default for key, default in UNDECLARED.items())
         boxes += (f'<fieldset><legend>Candidate {i + 1}</legend><div class="candidate-grid">'
                   + _field(f'co{i}', f'order_number_{i}', 'Manufacturer order number', order_number,
                            'e.g. 6ES7518-4AX00-1AB0')
@@ -907,8 +908,7 @@ An 80/100 score does not mean the product is 80% secure or predict the chance of
 small curated layer for IEC 62443 certificates issued outside those directories
 (each curated entry names its source and says to verify with the certifying body).
 Supplier screening uses the trade.gov Consolidated Screening List and the FCC
-Covered List. <a href="https://github.com/MRALPHA20/retrust">Source code on
-GitHub</a>.</p>
+Covered List. {webui.source_note()}.</p>
 <h2>What this server does and does not do</h2>
 <p>The website displays assessments and downloads. It does not scan devices,
 apply patches or change equipment.</p>
@@ -1007,62 +1007,82 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
         return name in LOOPBACK_NAMES
 
     def page_for(path, params):
-        first = lambda key: (params.get(key) or [""])[0][:MAX_QUERY].strip()
-        if path == "/healthz":
+        """Dispatch one request. The table below is the entire routing surface.
+
+        A dict keyed on the exact path, looked up once, so a request can only
+        ever reach a function named here and an unknown path is a plain miss
+        (None, which the caller turns into a 404). This used to be a 57-line
+        if-chain under a comment claiming it was a dict -- same behaviour, but
+        the claim a reader was relying on, that the routes are enumerable in one
+        place, could only be checked by reading all 57 lines.
+
+        Values are thunks rather than calls, so only the matched route runs; the
+        arguments of the other seventeen are never evaluated.
+        """
+        def first(key):
+            return (params.get(key) or [""])[0][:MAX_QUERY].strip()
+
+        def health():
             connection.execute("SELECT 1 FROM advisory LIMIT 1").fetchone()
             return PlainText("ok\n")
-        if path == "/robots.txt":
-            return PlainText("User-agent: *\nDisallow: /\n")
-        if path == "/demo":
-            return _demo_page()
-        if path in ("/export.html", "/export.json"):
+
+        def export():
             return _export(assess, context, provenance, path,
                            first("vendor"), first("product"), first("version"),
                            first("order_number"), first("network_exposure"),
                            _owner_from(first))
-        if path in ("/compare.html", "/compare.json", "/compare.csv"):
-            return _export_comparison(assess, context, provenance, path, _candidate_rows(params))
-        if path == "/":
-            return _search_page(connection, stats, first("q"))
-        if path == "/score":
+
+        def export_comparison():
+            return _export_comparison(assess, context, provenance, path,
+                                      _candidate_rows(params))
+
+        def score_page():
             return _score_page(connection, assess, context, first("vendor"),
                                first("product"), first("version"), first("order_number"),
                                submitted=any(key in params for key in
                                              ("vendor", "product", "version", "order_number")),
                                network_exposure=first("network_exposure"),
                                owner=_owner_from(first))
-        if path == "/compare":
-            return _compare_page(assess, context,
-                                 _candidate_rows(params),
+
+        def compare_page():
+            return _compare_page(assess, context, _candidate_rows(params),
                                  submitted=any(key == "c" or key.startswith(
-                                     ("vendor_", "product_", "version_", "order_number_")) for key in params))
-        if path == "/alternatives":
-            return _alternatives_page(connection, assess, first("vendor"),
-                                      first("product"), first("version"))
-        if path == "/timeline":
-            return _timeline_page(connection, first("vendor"), first("product"))
-        if path == "/annex":
-            return _annex_page(connection, assess, dossier, context,
-                               first("vendor"), first("product"),
-                               first("version"))
-        if path == "/annex.txt":
-            return PlainText(_annex_text(connection, assess, dossier, context,
-                                         first("vendor"), first("product"),
-                                         first("version")))
-        if path == "/ssvc":
-            return _ssvc_page(connection, assess, first("vendor"),
-                              first("product"), first("version"),
-                              first("exposure") or "controlled",
-                              first("automatable") or "yes",
-                              first("impact") or "medium")
-        if path == "/lev":
-            return _lev_page(connection, assess, first("vendor"),
-                             first("product"))
-        if path == "/vendor":
-            return _vendor_page(connection, dossier, context, first("name"))
-        if path == "/about":
-            return _about_page(stats, provenance, host, port)
-        return None
+                                     ("vendor_", "product_", "version_", "order_number_"))
+                                     for key in params))
+
+        routes = {
+            "/": lambda: _search_page(connection, stats, first("q")),
+            "/healthz": health,
+            "/robots.txt": lambda: PlainText("User-agent: *\nDisallow: /\n"),
+            "/demo": _demo_page,
+            "/about": lambda: _about_page(stats, provenance, host, port),
+            "/score": score_page,
+            "/export.html": export,
+            "/export.json": export,
+            "/compare": compare_page,
+            "/compare.html": export_comparison,
+            "/compare.json": export_comparison,
+            "/compare.csv": export_comparison,
+            "/alternatives": lambda: _alternatives_page(
+                connection, assess, first("vendor"), first("product"), first("version")),
+            "/timeline": lambda: _timeline_page(
+                connection, first("vendor"), first("product")),
+            "/annex": lambda: _annex_page(
+                connection, assess, dossier, context,
+                first("vendor"), first("product"), first("version")),
+            "/annex.txt": lambda: PlainText(_annex_text(
+                connection, assess, dossier, context,
+                first("vendor"), first("product"), first("version"))),
+            "/ssvc": lambda: _ssvc_page(
+                connection, assess, first("vendor"), first("product"), first("version"),
+                first("exposure") or "controlled", first("automatable") or "yes",
+                first("impact") or "medium"),
+            "/lev": lambda: _lev_page(
+                connection, assess, first("vendor"), first("product")),
+            "/vendor": lambda: _vendor_page(connection, dossier, context, first("name")),
+        }
+        route = routes.get(path)
+        return route() if route else None
 
     class Handler(http.server.BaseHTTPRequestHandler):
         server_version = "ReTrust"

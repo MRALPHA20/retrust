@@ -266,7 +266,6 @@ def load_epss_history(connection, paths, progress=None):
     corpus first turns 250,000 rows a day into about 12,000, which is what makes
     keeping five years of history a 40 MB table instead of a 4 GB one.
     """
-    import csv
     import re
 
     wanted = {row[0] for row in connection.execute("SELECT DISTINCT cve FROM affected")}
@@ -349,11 +348,23 @@ def epss_history(connection, cves):
 
 def has_epss_history(connection):
     """Whether any history has been loaded, so callers can abstain rather than
-    report a LEV of zero from a table nobody filled."""
+    report a LEV of zero from a table nobody filled.
+
+    The bare `except Exception` this narrows was fail-open. A malformed
+    database file (DatabaseError) or a connection already closed
+    (ProgrammingError) both became "no history", and /lev then served HTTP 200
+    saying "Historical attack estimates are not available in this workspace" --
+    a confident claim about the workspace assembled out of an error nobody saw.
+    Those now propagate to the 500 handler, where a broken database belongs.
+
+    OperationalError is still swallowed because that is the one this question
+    genuinely has: an index built before the epss_history table existed raises
+    it, and "the table is not there" is exactly the False answer.
+    """
     try:
         return connection.execute(
             "SELECT 1 FROM epss_history LIMIT 1").fetchone() is not None
-    except Exception:                 # an index built before the table existed
+    except sqlite3.OperationalError:  # an index built before the table existed
         return False
 
 
@@ -409,7 +420,9 @@ def load_exploitation(connection, kev_path=None, epss_path=None):
 
 def stats(connection):
     """Counts shown by `retrust stats`."""
-    one = lambda sql: connection.execute(sql).fetchone()[0]
+    def one(sql):
+        return connection.execute(sql).fetchone()[0]
+
     return {
         "advisories": one("SELECT COUNT(*) FROM advisory"),
         "products": one("SELECT COUNT(*) FROM product"),

@@ -111,7 +111,7 @@
     <p class="group-purpose">The whole day-one workflow is four commands (plus a one-time setup).</p>
     <ol class="path">
       <li><code>setup</code><span class="d">— once: fetch the public sources and build your local index.</span></li>
-      <li><code>search moxa</code><span class="d">— find the exact product (misspellings are fine).</span></li>
+      <li><code>search moxa</code><span class="d">— find the exact product (shorthand and re-ordered words are fine; spell the name right).</span></li>
       <li><code>score …</code><span class="d">— assess one product: verdict, pillars, evidence.</span></li>
       <li><code>compare …</code><span class="d">— put a shortlist on equal terms and rank it.</span></li>
     </ol>
@@ -126,16 +126,39 @@
     <p class="group-purpose">The core loop: name a product, get a verdict.</p>
     <div class="cmd"><div class="name">search</div><div class="body">
       <p class="what">Find a vendor, product or order number in the index.</p>
-      <p class="when">Use it first, when you don’t know the exact spelling — misspellings and shorthand still return a shortlist.</p>
+      <p class="when">Use it first, when you don’t know the exact model. Shorthand and re-ordered words
+        still land — <code>--vendor ABB --product "800M AC"</code> reaches <em>AC 800M</em>, because every
+        word of what you typed appears in the name. A <em>misspelling</em> does not:
+        <code>retrust search Siemems</code> prints <em>No product in the corpus matches 'Siemems'</em> and exits 1,
+        and <code>score --vendor Siemems …</code> returns NOT ASSESSED with no shortlist. That is deliberate —
+        guessing which manufacturer you meant would put a report under the wrong company's advisories, so
+        ReTrust abstains and <code>retrust eval</code> counts the abstention as a pass. Only
+        <code>retrust vendor Siemems</code> offers near-name suggestions (<em>Siemens, similar 0.86</em>);
+        for a product, reach for the order number instead.</p>
       <p class="ex"><b>retrust</b> search "simatic s7-1500"</p></div></div>
     <div class="cmd"><div class="name">score</div><div class="body">
       <p class="what">Assess one product — the verdict, the four pillars, and the evidence behind each.</p>
       <p class="when">Your main command. Add <code>--version</code> to narrow it to the firmware you’d actually buy.</p>
       <p class="ex"><b>retrust</b> score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6</p>
-      <p class="when" style="margin-top:.45rem">Describe where it will live and the score sharpens:
-        <code>--consequence</code>, <code>--network-exposure</code>, <code>--interface</code>,
-        <code>--remediation</code>, <code>--assessment-type</code>. Leave any out and it stays
-        unresolved rather than guessed.</p></div></div>
+      <p class="when" style="margin-top:.45rem">Four answers narrow the range, and each one can only narrow it:
+        <code>--consequence</code> (what a compromise costs this process),
+        <code>--interface</code> (have you verified the vulnerable interface is unreachable),
+        <code>--prerequisites</code> (can an attacker meet the privileges, interaction and conditions the CVSS
+        vector demands) and <code>--remediation</code> (is the fix actually on the box).
+        <code>--assessment-type</code> says whether this is a purchase or an installed asset.
+        Leave any out and it stays unresolved rather than guessed — ABB AC 800M bare is
+        <em>VERIFY 68.0–87.7</em>; <code>--consequence control</code> lifts the floor to 72.2, and
+        <code>--interface blocked</code> collapses the range to a single 87.7.</p>
+      <p class="when" style="margin-top:.45rem"><code>--prerequisites</code> is the one that settles
+        reachability for <em>every</em> attack vector. <code>--interface exposed</code> answers a network
+        question, so on its own it resolves only a remotely-reachable flaw; a local or physical flaw also needs
+        execution on the box or hands on the cabinet, and the network answer says nothing about either.
+        Without that distinction an AV:P flaw would score exactly like an unauthenticated remote one.</p>
+      <p class="when" style="margin-top:.45rem"><code>--network-exposure</code> is recorded as context and
+        <em>never</em> scored: topology is not a reachability discount, so <code>isolated</code>,
+        <code>it_ot</code> and <code>internet_ot</code> all return the same 68.0–87.7 on that product.
+        It is still worth declaring — it goes into the assessment vector and the record — but an unanswered
+        one leaves a verification item rather than moving the number.</p></div></div>
     <div class="cmd"><div class="name">compare</div><div class="body">
       <p class="what">Rank several candidates for one decision, on equal terms.</p>
       <p class="when">When you have a shortlist and need to say which one goes on the purchase order.</p>
@@ -207,9 +230,14 @@
       <p class="when">For a full equipment list, or a build pipeline that should fail on a gated part.</p>
       <p class="ex"><b>retrust</b> batch components.csv --json out.json</p></div></div>
     <div class="cmd"><div class="name">vex</div><div class="body">
-      <p class="what">Write the assessment as a CycloneDX VEX document: SBOM in, VEX out.</p>
-      <p class="when">When a customer or regulator asks for machine-readable exploitability statements.</p>
-      <p class="ex"><b>retrust</b> vex sbom.json --output vex.json</p></div></div>
+      <p class="what">Write one product's assessment as a CycloneDX VEX document: a product query in,
+        one statement per CVE out.</p>
+      <p class="when">When a customer or regulator asks for machine-readable exploitability statements.
+        It takes the same identity flags as <code>score</code> — not an SBOM path; feed an SBOM to
+        <code>batch</code>, which reads CycloneDX. Statements cover only the CVEs this index's advisories
+        name for the matched rows: a CVE absent here was never assessed, which is a different fact from
+        not affected.</p>
+      <p class="ex"><b>retrust</b> vex --vendor Moxa --product EDS-405A --out vex.json</p></div></div>
     <div class="cmd"><div class="name">diff</div><div class="body">
       <p class="what">Re-score a stored result and show what changed since you saved it.</p>
       <p class="when">To see whether a product got better or worse between two reviews.</p>
@@ -274,8 +302,11 @@
     <p class="group-purpose">Nice-to-haves you’ll reach for occasionally.</p>
     <div class="cmd"><div class="name">screenshot</div><div class="body">
       <p class="what">Render an HTML report to a PNG image.</p>
-      <p class="when">For a slide or a document, when a picture of the report is easier to share than the file.</p>
-      <p class="ex"><b>retrust</b> screenshot report.html --out report.png</p></div></div>
+      <p class="when">For a slide or a document, when a picture of the report is easier to share than the file.
+        The flag names a <em>directory</em>, not a file. Write <code>--out-dir</code> in full: argparse accepts
+        <code>--out</code> as an abbreviation of it, so <code>--out report.png</code> succeeds and quietly
+        creates a folder called <code>report.png</code> with the image inside.</p>
+      <p class="ex"><b>retrust</b> screenshot report.html --out-dir shots/</p></div></div>
     <div class="cmd"><div class="name">completion</div><div class="body">
       <p class="what">Print a shell tab-completion script for bash or zsh.</p>
       <p class="when">One-time convenience so the shell completes commands and flags for you.</p>
@@ -299,9 +330,10 @@
   </div>
 
   <footer>
-    <span class="mono">ReTrust</span>
+    <span class="mono">ReTrust RT4 · 20 October 2026</span>
     <span>One program, many verbs.</span>
     <span>Apache-2.0 · runs offline after <span class="mono">setup</span></span>
+    <span><a href="overview.html">Overview</a> · <a href="scoring.html">Scoring</a></span>
   </footer>
 </div>
 

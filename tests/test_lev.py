@@ -6,6 +6,7 @@ measured, or a model allowed to talk down something KEV actually recorded.
 """
 
 from datetime import date, timedelta
+from itertools import pairwise
 
 from retrust import lev
 
@@ -114,7 +115,7 @@ def test_expected_count_is_the_sum_of_the_probabilities():
 def test_sample_days_are_thirty_apart_and_start_where_epss_does():
     days = lev.sample_days(end=date(2021, 7, 13))
     assert days[0] == lev.FIRST_EPSS_DAY
-    assert all((b - a).days == 30 for a, b in zip(days, days[1:]))
+    assert all((b - a).days == 30 for a, b in pairwise(days))
     assert days[-1] <= date(2021, 7, 13)
 
 

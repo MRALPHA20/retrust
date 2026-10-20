@@ -117,9 +117,14 @@ def build(connection, vendor, screening=None, certificates=None):
         profile.screening_notes = supplychain.notes_for(screening, profile.vendor)
         # supplychain.load returns the hand-curated covered list even when no
         # screening.json was ever downloaded, and a clean result from those ten
-        # entries alone must not pass for a sanctions screen.
-        profile.sanctions_checked = any(hit["kind"] == "screening_list"
-                                       for hits in screening.values() for hit in hits)
+        # entries alone must not pass for a sanctions screen. Asking the index
+        # beats scanning it: a plain dict (as the tests pass) still answers by
+        # inspection, but the real index answers with a stat call.
+        profile.sanctions_checked = (
+            screening.screening_list_loaded
+            if hasattr(screening, "screening_list_loaded") else
+            any(hit["kind"] == "screening_list"
+                for hits in screening.values() for hit in hits))
     if certificates:
         profile.certificates = certification.certificates_for(certificates, profile.vendor)
     return profile

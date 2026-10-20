@@ -38,7 +38,10 @@ A conflicting product name is refused rather than silently ignored.
 
 ### 3. Explain the evidence (one minute)
 
-Open the ABB AC 800M example. Walk through the four scored parts -- exposure
+On `/demo`, step 2 is **Assess Siemens SIMATIC IPC477E Pro** -- open that.
+(The ABB AC 800M below is reached from step 3's **Open example comparison**,
+or from the CLI line in this step; `/demo` has no ABB example of its own.)
+Walk through the four scored parts -- exposure
 safety, available fixes, vendor security practices and certification evidence --
 and point out that attack activity and issue severity are shown beside them but
 feed exposure rather than scoring twice. Evidence completeness is reported
@@ -182,12 +185,40 @@ Enough to know if you last presented an earlier build.
   advisory findings, with only a vendor certificate behind it, used to score
   well enough to come out PREFER. Absence of evidence is no longer treated as
   evidence.
+- **The KEV gate requires an unfixed CVE.** A catalogued CVE the vendor has
+  already patched is a reason to buy current firmware, not a reason to refuse
+  the purchase, so it no longer disqualifies. Expect some formerly gated
+  products to carry a score now. Siemens "S7-1500 (when HTTPS active)" is the
+  clean illustration: its one KEV CVE is CVE-2014-0160, filed with a vendor
+  fix, and it used to print AVOID above a patch availability pillar reading
+  100.0/100. It now reads `VERIFY · 6.3–99.2/100`. The demo's Siemens SIMATIC
+  S7-1500 at firmware 3.1.6 still gates, because its KEV CVEs are offered
+  mitigations only.
+- **A claimed fix has to name a firmware.** `--remediation applied` and
+  `not_affected` clear firmware applicability only when a version was supplied
+  *and* the tool's own range check does not contradict the claim. Where it
+  does, the verdict stays VERIFY and the contradiction is listed as a check:
+
+  ```
+  - The firmware you gave is inside the affected range published for
+  CVE-2014-0160, which contradicts "Fix verified present on this firmware".
+  Re-check the version, or ask the vendor to confirm the fix in writing
+  ```
+
+  Previously the claim was honoured whenever the range check had *decided* --
+  which means "this firmware IS affected" -- so the proof of affectedness
+  licensed the claim of patchedness, and the product above read PREFER 99.2
+  with internet exposure, safety consequence and confirmed affectedness all
+  declared. It now reads `VERIFY · 6.3–99.2/100`.
 - **Ranking puts AVOID below VERIFY.** A disqualified part cannot outrank one
   that merely still needs checks: PREFER, CONDITIONAL, VERIFY, AVOID, NOT
   ASSESSED.
 - **CVE tables disclose truncation.** A report showing ten of a thousand
-  findings says so, says how they were ranked, and points at the JSON export
-  that carries all of them.
+  findings says so and says how they were ranked -- exploitation probability,
+  then severity. It no longer offers the JSON export as the complete list,
+  because the export caps at the same ten; it says the export carries the same
+  selection and records how many were left out. Sending a buyer to a file
+  described as exhaustive that is not was the worse failure of the two.
 - **Reachability reads the flaw's own attack vector.** A verified-exposed
   interface now settles reachability only for a remotely reachable flaw
   (network or adjacent). For a local or physical flaw the network answer does

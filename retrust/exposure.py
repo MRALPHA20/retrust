@@ -158,12 +158,23 @@ def applicability_bounds(finding, assessment_type='purchase', remediation='unkno
     if remediation not in REMEDIATIONS:
         raise ValueError('Unknown firmware applicability status')
     if remediation in ('applied', 'not_affected'):
-        # "Fix verified present on THIS firmware" needs a firmware: the spec's
-        # U table zeroes only a SELECTED version verified patched or not
-        # affected. Without a version check the claim names no firmware, so it
-        # stays unresolved and the U verification item asks for one -- a
-        # dropdown alone must not zero applicability for every finding.
-        return Bounds(0, 0) if finding.decided else Bounds(0, 1)
+        # The spec's U table zeroes a SELECTED version verified patched or
+        # not affected, so the claim needs a selected firmware -- and
+        # `decided` is emphatically not that test. `match.findings` drops
+        # every finding whose range excludes the supplied version, so a
+        # surviving finding with decided=True is one the range check says IS
+        # affected. Gating the claim on it made the proof of affectedness the
+        # licence for believing the device was patched: an internet-exposed,
+        # safety-critical, CVSS 10.0, confirmed-affected device read PREFER
+        # 99.2. The honest test is whether a firmware was named at all.
+        # Three cases, and only one of them resolves:
+        #   no firmware named        -> the claim is about nothing; unresolved
+        #   named, range says AFFECTED -> our own evidence contradicts the
+        #                               claim; refuse to pick a side silently
+        #   named, range not decided -> nothing contradicts it; honour it
+        if finding.version_supplied and not finding.decided:
+            return Bounds(0, 0)
+        return Bounds(0, 1)
     if remediation in ('affected', 'available') or finding.decided:
         return Bounds(1, 1)
     return Bounds(0, 1)
@@ -256,6 +267,16 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
         'H': 'Ask an operations engineer what exploiting each weakness could do to the process',
         'U': 'Confirm the exact firmware and whether the published fixes are installed',
     }
+    if remediation in ('applied', 'not_affected'):
+        disputed = sorted({f.cve for f in findings
+                           if f.version_supplied and f.decided})
+        if disputed:
+            sample = ', '.join(disputed[:3])
+            more = f' and {len(disputed)-3} more' if len(disputed) > 3 else ''
+            missing.add(
+                'The firmware you gave is inside the affected range published '
+                f'for {sample}{more}, which contradicts "{REMEDIATIONS[remediation][0]}". '
+                'Re-check the version, or ask the vendor to confirm the fix in writing')
     for name, cves in unresolved.items():
         if cves:
             sample = ', '.join(sorted(cves)[:3])

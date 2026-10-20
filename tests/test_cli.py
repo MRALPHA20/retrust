@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from retrust import index, report
+from retrust import alternatives, cli, diff, index, report, score
 from retrust.cli import main
 
 ADVISORY = {
@@ -59,6 +59,14 @@ def run(argv):
 
 
 # --- the commands, one by one ----------------------------------------------
+
+
+class _Ranked:
+    """A minimal stand-in carrying only what the ranking key reads."""
+
+    def __init__(self, verdict, score):
+        self.verdict, self.score = verdict, score
+
 
 def test_ingest_builds_an_index(workspace):
     assert (workspace / "data" / "retrust.db").exists()
@@ -376,17 +384,40 @@ def test_no_empty_pillar_table_is_rendered():
     assert "<th>Pillar</th>" not in markup
 
 
-def test_a_disqualified_product_never_outranks_one_needing_checks(tmp_path, capsys):
-    """Best-first comparison order: PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED.
+def test_a_disqualified_product_never_outranks_one_needing_checks():
+    """Best-first order: PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED.
 
-    The RT4 release ranked AVOID above VERIFY, so a KEV-gated product listed
-    ahead of the only candidate a buyer could actually pursue.
+    RT4 ranked AVOID above VERIFY, so a KEV-gated product listed ahead of the
+    only candidate a buyer could actually pursue.
+
+    This replaces a test that opened retrust/cli.py as TEXT and asserted the
+    substring '"VERIFY": 2, "AVOID": 3'. Mutation testing showed it worthless:
+    deleting the sort call outright passed it, and reformatting the dict across
+    two lines failed it with no behaviour change. The input below is
+    deliberately in the WORST order, so a missing sort cannot pass by accident.
     """
-    from retrust import cli
-    rank_lines = [l for l in open('retrust/cli.py') if '"PREFER": 0' in l]
-    assert rank_lines, 'rank maps moved; update this test'
-    for line in rank_lines:
-        assert '"VERIFY": 2, "AVOID": 3' in line
-    serve_rank = [l for l in open('retrust/serve.py') if "'PREFER': 0" in l]
-    for line in serve_rank:
-        assert "'VERIFY': 2, 'AVOID': 3" in line
+    worst_first = [_Ranked("NOT ASSESSED", None), _Ranked("AVOID", 95.0),
+                   _Ranked("VERIFY", 10.0), _Ranked("CONDITIONAL", 50.0),
+                   _Ranked("PREFER", 71.0)]
+    ranked = sorted(worst_first, key=cli._best_first())
+    assert [c.verdict for c in ranked] == [
+        "PREFER", "CONDITIONAL", "VERIFY", "AVOID", "NOT ASSESSED"]
+    # A high-scoring disqualification still ranks below a low-scoring VERIFY.
+    assert ranked.index(worst_first[1]) > ranked.index(worst_first[2])
+
+
+def test_ranking_breaks_ties_on_score_and_never_raises():
+    """Within one verdict the higher score wins; an unknown verdict sorts last.
+
+    Ranking is presentation: an unrecognised verdict must not end a scoring run.
+    """
+    rows = [_Ranked("VERIFY", 10.0), _Ranked("WAT", 99.0), _Ranked("VERIFY", 80.0)]
+    assert [c.score for c in sorted(rows, key=cli._best_first())] == [80.0, 10.0, 99.0]
+
+
+def test_every_surface_ranks_through_one_table():
+    """Six hand-written copies disagreed; there is now one."""
+    assert list(score.VERDICT_RANK) == [
+        "PREFER", "CONDITIONAL", "VERIFY", "AVOID", "NOT ASSESSED"]
+    assert set(alternatives.RANK) <= set(score.VERDICT_RANK)
+    assert set(diff.RANK) <= set(score.VERDICT_RANK)
