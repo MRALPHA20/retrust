@@ -374,3 +374,19 @@ def test_no_empty_pillar_table_is_rendered():
     from retrust import report, score
     markup = report.render([_blocked()], weights=score.DEFAULT_WEIGHTS)
     assert "<th>Pillar</th>" not in markup
+
+
+def test_a_disqualified_product_never_outranks_one_needing_checks(tmp_path, capsys):
+    """Best-first comparison order: PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED.
+
+    The RT4 release ranked AVOID above VERIFY, so a KEV-gated product listed
+    ahead of the only candidate a buyer could actually pursue.
+    """
+    from retrust import cli
+    rank_lines = [l for l in open('retrust/cli.py') if '"PREFER": 0' in l]
+    assert rank_lines, 'rank maps moved; update this test'
+    for line in rank_lines:
+        assert '"VERIFY": 2, "AVOID": 3' in line
+    serve_rank = [l for l in open('retrust/serve.py') if "'PREFER': 0" in l]
+    for line in serve_rank:
+        assert "'VERIFY': 2, 'AVOID': 3" in line

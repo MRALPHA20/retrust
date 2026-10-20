@@ -498,7 +498,7 @@ def _comparison_results(assess, context, rows):
                      bands=context.get('bands'), network_exposure=network, **owner)
                      if assessment.inputs else None)
         entries.append((block, query, stability))
-    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'AVOID': 2, 'VERIFY': 3, 'NOT ASSESSED': 4}
+    rank = {'PREFER': 0, 'CONDITIONAL': 1, 'VERIFY': 2, 'AVOID': 3, 'NOT ASSESSED': 4}
     entries.sort(key=lambda entry: (rank.get(entry[0][0].verdict, 4),
                                    -(entry[0][0].score or 0)))
     return entries
@@ -1119,6 +1119,11 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
+            # Behind the hosting proxy only: HSTS on a plain-HTTP localhost
+            # response would poison the developer's browser for localhost.
+            if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+                self.send_header("Strict-Transport-Security",
+                                 "max-age=31536000; includeSubDomains")
             # Verdicts and sanctions screening have no business sitting in a
             # browser cache after the tab closes.
             self.send_header("Cache-Control", "no-store")

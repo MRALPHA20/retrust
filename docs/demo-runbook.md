@@ -41,17 +41,72 @@ A conflicting product name is refused rather than silently ignored.
 Open the ABB AC 800M example. Walk through the four scored parts -- exposure
 safety, available fixes, vendor security practices and certification evidence --
 and point out that attack activity and issue severity are shown beside them but
-feed exposure rather than scoring twice. Declare a deployment context to narrow
-reachability: isolated, IT–OT or Internet–OT. Evidence completeness is reported
+feed exposure rather than scoring twice. Evidence completeness is reported
 separately and never scored. Higher scores are better; low
 coverage still needs review. A missing firmware version leaves all known
 affected versions in scope.
+
+On the published evidence alone the verdict stays provisional, and the open
+questions are listed with it (the browser and the CLI share the scoring code):
+
+```bash
+python3 -m retrust.cli score --vendor ABB --product 'AC 800M'
+```
+
+```
+  ABB AC 800M
+  VERIFY  ·  68.2–87.7/100 (provisional range)
+
+  WHAT TO CHECK NEXT ─────────────────────────────────────────────────────────
+  - Ask an operations engineer what exploiting each weakness could do to the
+  process (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7 more)
+  - Ask the network owner whether an attacker can reach the weakness and meet
+  its requirements (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7 more)
+  - Confirm the exact firmware and whether the published fixes are installed
+  (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7 more)
+  - Network context has not been supplied
+```
+
+Network context (isolated, IT–OT or Internet–OT) is required before a banded
+verdict is possible, but it is context only and never moves the number. The
+questions that actually resolve reachability are the interface and
+prerequisites ones; consequence and remediation close the rest. Answer them
+all and the verdict bands:
+
+```bash
+python3 -m retrust.cli score --vendor ABB --product 'AC 800M' \
+  --network-exposure it_ot --interface exposed --consequence control \
+  --prerequisites satisfiable --remediation affected
+```
+
+```
+  ABB AC 800M
+  PREFER  ·  72.4/100
+```
+
+with this note attached:
+
+```
+  NOTE: This PREFER rests on operator assertions ReTrust cannot verify: attack
+  reachability: Reachable; exploitation prerequisites: An attacker can satisfy
+  them; operational consequence: Major loss of process control; firmware
+  remediation: Confirmed affected, not fixed. On the published evidence alone
+  this product is VERIFY, 68.2-87.7/100. Retain supporting evidence for each
+  answer before procurement.
+```
+
+Presenter note: that attribution note is the feature, not an apology -- read
+it aloud. The tool reaches a verdict only on the operator's answers, says
+which answers, and keeps the published-evidence range in view. The same
+questions appear on the score page's edit panel.
 
 ### 4. Compare candidates (one minute)
 
 Open the guided demo's comparison. Order number, vendor, model, and firmware each have their
 own field; edit the shortlist without learning command syntax. Known-exploited
 vulnerabilities can trigger an AVOID gate regardless of the weighted score.
+The ranking runs PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED: a
+disqualified product never outranks one that still needs checks.
 
 The supplied demo includes different equipment classes to show different
 assessment outcomes. It is **not a list of functionally interchangeable
@@ -65,9 +120,11 @@ queries. The report includes evidence and provenance; CSV is ready for spreadshe
 review. Downloads recompute against the current local index.
 
 On an assessment, use **Download report** for a self-contained HTML document
-or **Download JSON** for the structured evidence. Open **Prepare supplier
-questions** to produce the RFQ annex, then follow the plain-text link for
-copying into a requisition.
+or **Technical data (JSON)** for the structured evidence. A verdict reached through
+operator answers carries them into the record: JSON and CSV exports include an
+"assertions" field, so the file shows what was asserted rather than verified.
+Open **Prepare supplier questions** to produce the RFQ annex, then follow the
+plain-text link for copying into a requisition.
 
 ### 6. State the limits (30 seconds)
 
@@ -85,6 +142,9 @@ Keep these distinctions in the presentation.
 - Run `python3 -m pytest -q` and `python3 -m retrust.cli doctor`.
 - Exercise the examples using the exact snapshot you will present; verdicts
   and counts may change after a data refresh.
+- If you script the checks, know the exit codes: a plain-terminal `score`
+  exits 2 on VERIFY or NOT ASSESSED, while the default with `--json` is 0. An
+  explicit `--fail-on` wins identically in both modes.
 - If refresh is needed, do it before the event, then verify the corpus with
   `python3 -m retrust.cli verify` and review its signature status. Add
   `--strict` to make "not established" (no keyring, no shipped digest) a
@@ -118,6 +178,8 @@ using the exploitation-history demonstration.
 ## Documentation and benchmark snapshot
 
 The [PDF overview](ReTrust-Guide.pdf), [benchmark report](benchmark-report.md) and
-[tool comparison](tool-comparison.md) were refreshed on 28 September 2026.
+[tool comparison](tool-comparison.md) were refreshed on 28 September 2026; the
+benchmark report's accuracy and coverage figures were re-checked unchanged on
+20 October 2026 under the RT4 scoring model.
 Benchmark JSON/text is retained in `docs/benchmarks/`. The nine-page PDF was
 rendered and every page inspected for layout, readability and overflow.

@@ -335,10 +335,11 @@ def cmd_score(args):
         # Quiet on stdout when JSON went there, so the output stays parseable.
         if written:
             print(f"JSON written to {written}")
-        return batch.exit_code([detail], args.fail_on)
+        return batch.exit_code([detail], args.fail_on or "never")
 
     exit_status = batch.exit_code(
-        [batch.to_record(assessment, resolution, query=_query(args))], args.fail_on)
+        [batch.to_record(assessment, resolution, query=_query(args))],
+        args.fail_on or "never")
 
     print(_render_one(assessment, resolution, findings))
 
@@ -347,6 +348,11 @@ def cmd_score(args):
             [(assessment, resolution, findings)], title=assessment.product,
             weights=context["weights"], config_source=context["config_source"],
             provenance=index.provenance(connection)))
+    # An explicit --fail-on wins, identically to the --json path. With no flag
+    # the terminal keeps its historical signal: exit 2 says "this verdict needs
+    # a human", which smoke and operator habits both rely on.
+    if args.fail_on:
+        return exit_status
     return 2 if assessment.verdict in ("NOT ASSESSED", "VERIFY") else exit_status
 
 
@@ -364,8 +370,10 @@ def cmd_compare(args):
                                query.get("version"), query.get("order_number"),
                                context=context), query))
 
-    # NOT ASSESSED ranks below AVOID: an unknown is not a recommendation.
-    rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
+    # A hard-disqualified AVOID never outranks a VERIFY that merely needs
+    # checks, and NOT ASSESSED ranks below AVOID: an unknown is not a
+    # recommendation, and a blocked product is not a candidate.
+    rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
     scored.sort(key=lambda s: (rank.get(s[0][0].verdict, 4), -(s[0][0].score or 0)))
     blocks = [block for block, _ in scored]
 
@@ -542,7 +550,7 @@ def cmd_batch(args):
         blocks.append(block)
         records.append(batch.to_record(assessment, resolution, stability, row))
 
-    rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
+    rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
     records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
 
     _print_table(records)
@@ -620,7 +628,7 @@ def cmd_demo(args):
         for vendor, product, version, order in DEMO_CANDIDATES:
             blocks.append(_assess(connection, vendor, product, version, order,
                                   context=context))
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
         blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
         return f"{len(blocks)} candidates scored"
 
@@ -934,7 +942,7 @@ def _shell_actions(connection, context, args):
         if not blocks:
             return None
         shell.echo_command(["compare"] + [a for n in names for a in ("--candidate", n)])
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
         blocks.sort(key=lambda b: (rank.get(b[0].verdict, 4), -(b[0].score or 0)))
         records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
         print()
@@ -987,7 +995,7 @@ def _shell_actions(connection, context, args):
                             row["version"], row["order_number"], context=context, **_owner_inputs(row))
             blocks.append(block)
             records.append(batch.to_record(block[0], block[1], query=row))
-        rank = {"PREFER": 0, "CONDITIONAL": 1, "AVOID": 2, "VERIFY": 3, "NOT ASSESSED": 4}
+        rank = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2, "AVOID": 3, "NOT ASSESSED": 4}
         records.sort(key=lambda r: (rank.get(r["verdict"], 4), -(r["score"] or 0)))
         print()
         _print_table(records)
@@ -1688,7 +1696,10 @@ def _scoring_args(parser, samples=300, fail_on="never"):
     """Options shared by every command that scores something.
 
     `fail_on` defaults to "never" for the interactive commands and "avoid" for
-    batch, which exists to gate a pipeline.
+    batch, which exists to gate a pipeline. `score` passes None: its default
+    exit signals a VERIFY or NOT ASSESSED verdict with status 2 on the terminal
+    while --json stays a quiet pipeline citizen -- but an EXPLICIT --fail-on
+    wins over both, identically in both output modes.
     """
     parser.add_argument("--config", help=f"scoring weights (default {config.DEFAULT_PATH})")
     parser.add_argument("--samples", type=int, default=samples,
@@ -1697,7 +1708,9 @@ def _scoring_args(parser, samples=300, fail_on="never"):
                         help="skip the weight-robustness check (faster)")
     parser.add_argument("--fail-on", choices=["avoid", "unassessed", "never"],
                         default=fail_on,
-                        help=f"what makes the exit code non-zero (default: {fail_on})")
+                        help="what makes the exit code non-zero (default: "
+                             + (f"{fail_on})" if fail_on else
+                                "exit 2 on VERIFY or NOT ASSESSED, 0 with --json)"))
 
 
 def build_parser():
@@ -1899,7 +1912,7 @@ def build_parser():
     p.add_argument("--html", help="also write an HTML report here")
     p.add_argument("--json", metavar="FILE",
                    help='write the full assessment as JSON; "-" for stdout')
-    _scoring_args(p)
+    _scoring_args(p, fail_on=None)
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("compare", help="rank candidate products for one decision")

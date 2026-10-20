@@ -63,7 +63,7 @@ def build():
     story += page('ReTrust','OT procurement intelligence / 0.1.0')
     story += [p('Cyber-risk evidence before the purchase order','H1'),Spacer(1,13),
         p('What the tool does, how it works, measured benchmarks, and where it fits alongside other security tools.'),
-        Spacer(1,13),note('The decision it supports','A procurement team has a shortlist of industrial controllers, switches or other OT products. ReTrust collects the public security evidence for each named candidate and turns it into a traceable review: PREFER, CONDITIONAL, AVOID, VERIFY or NOT ASSESSED. VERIFY means material site or firmware evidence remains unresolved.'),Spacer(1,18),
+        Spacer(1,13),note('The decision it supports','A procurement team has a shortlist of industrial controllers, switches or other OT products. ReTrust collects the public security evidence for each named candidate and turns it into a traceable review: PREFER, CONDITIONAL, VERIFY, AVOID or NOT ASSESSED. VERIFY means material site or firmware evidence remains unresolved.'),Spacer(1,18),
         p('Why it is useful','H2'),
         p('A requisition often arrives with a manufacturer, model, order number and proposed firmware, before there is a device to inspect. Reviewing advisories, exploitation signals, fixes and supplier restrictions separately makes it hard to compare candidates consistently.'),
         p('ReTrust brings that work into one local workflow. It helps buyers find disqualifying evidence early, ask the supplier specific questions, and preserve the rationale with the procurement record.'),
@@ -116,7 +116,7 @@ def build():
         p(f"Environment: Python {escape(latency['python'])}; {escape(latency['cpu'])}; {latency['logical_cpus']} logical CPUs reported. Database: {latency['database_bytes']/1024/1024:.1f} MiB. Full environment details and raw summaries are in docs/benchmarks/latency.json.",'Small'),Spacer(1,10),
         p('Does a higher score predict fewer later vulnerabilities?','H2'),
         p('The retained pre-RT4 backtest does not establish that and does not validate RT4. At a 2022-01-01 cutoff, 5,848 products are scored on pre-cutoff advisories and compared with later CVE disclosure. The diagnostic uses 1,000 seeded permutations.'),
-        table(['COMPARISON','SPEARMAN RHO'],[['Score vs later CVE count, pooled',f"{bt['rho_score_vs_future_cves']:+.3f}"],['Within vendor, 3,822 products',f"{matched['rho_within_vendor']:+.3f}"],['Within vendor, excluding Siemens',f"{matched['rho_excluding_largest_vendor']:+.3f}"]],[362,137]),Spacer(1,12),
+        table(['COMPARISON','SPEARMAN RHO'],[['Score vs later CVE count, pooled',f"{bt['rho_score_vs_future_cves']:+.3f}"],[f"Within vendor, {matched['products']:,} products",f"{matched['rho_within_vendor']:+.3f}"],['Within vendor, excluding Siemens',f"{matched['rho_excluding_largest_vendor']:+.3f}"]],[362,137]),Spacer(1,12),
         p('The positive association weakens when vendor effects are controlled. This is consistent with disclosure and research-exposure effects; it does not prove a causal explanation. Only two products across two vendors qualify for the later-KEV outcome, too few for an exploitation-rate claim.'),
         note('A defensible boundary','Use the score to organize current evidence and questions. This backtest does not validate the score as a predictor of real-world compromise.'),PageBreak()]
 
@@ -148,7 +148,7 @@ def build():
         p('Setup needs network access to obtain sources. Once populated, assessments run locally. The browser workspace defaults to 127.0.0.1:8765. The core package requires Python 3.10+ and no third-party Python runtime packages; some setup, signature and screenshot commands use external tools.'),
         p('Reproduce the measurements','H2'),
         p('python3 -m retrust.cli eval --sample 4000 --json eval.json<br/>python3 -m retrust.cli backtest --permutations 1000<br/>python3 -m pytest -q<br/>bash smoke.sh','Code'),
-        p('Local verification: 868 automated tests passed; 94 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases, including guards against injection, SSRF and decompression-bomb inputs. They do not constitute an independent security audit.'),
+        p('Local verification: 943 automated tests passed; 94 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases, including guards against injection, SSRF and decompression-bomb inputs. They do not constitute an independent security audit.'),
         p('Know the remaining gaps','H2'),
         p('<b>Evidence coverage:</b> absent advisories, missing certification or uncertain ranges are not proof of safety. Family-level queries can collect several variants; prefer precise identifiers.'),
         p('<b>Scoring:</b> weights and gates encode a review policy. Certification may be vendor-level, screening requires scope confirmation, and raw disclosure volume is not a risk ground truth.'),

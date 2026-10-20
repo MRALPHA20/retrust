@@ -82,9 +82,23 @@ def test_a_firewall_does_not_patch_firmware():
     f = flaw(decided=False)
     assert exposure.applicability_bounds(f, remediation='mitigated').values() == [0,1]
     assert exposure.reach_bounds(f, interface='blocked').values() == [0,0]
-    assert exposure.applicability_bounds(f, remediation='applied').values() == [0,0]
-    assert exposure.applicability_bounds(f, remediation='not_affected').values() == [0,0]
     assert exposure.applicability_bounds(f, remediation='available').values() == [1,1]
+
+
+def test_a_verified_fix_needs_a_named_firmware():
+    """The spec's U table zeroes a SELECTED version verified patched.
+
+    "Fix verified present on this firmware" with no firmware supplied names
+    nothing, so the dropdown alone must not zero U for every finding -- it
+    stays unresolved and the U verification item asks for the version. With a
+    checked version the verified claim resolves to 0 as the spec maps it.
+    """
+    unnamed = flaw(decided=False)
+    assert exposure.applicability_bounds(unnamed, remediation='applied').values() == [0, 1]
+    assert exposure.applicability_bounds(unnamed, remediation='not_affected').values() == [0, 1]
+    named = flaw(decided=True)
+    assert exposure.applicability_bounds(named, remediation='applied').values() == [0, 0]
+    assert exposure.applicability_bounds(named, remediation='not_affected').values() == [0, 0]
 
 
 def test_duplicate_advisories_do_not_invent_three_paths():
@@ -169,3 +183,37 @@ def test_comparison_sensitivity_keeps_each_candidates_site_context():
     result = serve._comparison_results(assess, {'bands':score.BANDS}, [row])[0]
     assert result[0][0].verdict != 'VERIFY'
     assert result[2].samples == 300 and result[2].dominant != 'VERIFY'
+
+
+def test_a_certificate_alone_never_bands_a_verdict():
+    """Zero advisory findings + one certificate must not read as PREFER.
+
+    Found live: a product with no findings and a vendor IEC 62443 certificate
+    rendered a confident, non-provisional PREFER 85.0 banded on the
+    Certification pillar alone, on the same page as "absence is not proof of
+    safety". Certification is assurance, not risk evidence; with nothing to
+    weigh it against the product is NOT ASSESSED.
+    """
+    certs = [{"scheme": "IEC 62443-4-2", "matches_product": True}]
+    a = score.assess('Ghost', [], certificates=certs)
+    assert a.verdict == 'NOT ASSESSED' and a.score is None
+    assert any('certificate' in n.lower() for n in a.notes)
+    # and without the certificate, identical outcome
+    bare = score.assess('Ghost', [])
+    assert bare.verdict == 'NOT ASSESSED' and bare.score is None
+
+
+def test_a_partially_reviewed_cve_still_forms_one_unit():
+    """A path_id on SOME records of a CVE must not split it into two units.
+
+    Grouping by "path_id or cve" alone let one flaw enter R twice as
+    Z1 + 0.20*Z2 when a reviewer tagged only one of its advisory records.
+    """
+    a = flaw()
+    b = replace(a, advisory_id='B')
+    b.path_id = 'logic-write'
+    result = exposure.analyse([a, b], network='ot_only', interface='exposed',
+                              consequence='control')
+    assert len(result.paths) == 1
+    assert result.paths[0]['grouping'] == 'reviewed path'
+    assert sorted(result.paths[0]['advisories']) == ['A', 'B']

@@ -93,4 +93,34 @@ def test_verified_block_narrows_the_range_without_changing_firmware_status():
     result = score.assess('PLC', [f], network_exposure='it_ot', interface='blocked')
     assert result.exposure_min == result.exposure_max == 100
     assert result.paths[0]['inputs'][0]['factors']['U'] == [0, 1]
-    assert any('operator-reported' in note for note in result.notes)
+    # The block resolved every z, so this verdict is banded -- and a banded
+    # verdict that rests on a dropdown must say so on its face, naming the
+    # assertion and what the evidence said alone.
+    assert result.verdict not in ("VERIFY", "NOT ASSESSED")
+    assert result.assertions == [
+        'attack reachability: Verified blocked across all relevant paths']
+    strong = next(n for n in result.notes if 'rests on operator assertions' in n)
+    assert 'On the published evidence alone' in strong
+
+
+def test_an_assertion_banded_verdict_names_its_assertions():
+    """The RT3 clamp is gone by design; attribution is what replaced it.
+
+    Measured before the clamp was removed: favourable declarations promoted
+    96% of VERIFY products straight to PREFER. The verdict may band on an
+    operator's answers -- the spec says a verified block is A=0 -- but the
+    dependency must be visible in the assessment itself, with the
+    evidence-only range beside it, so no reviewer has to diff two runs to
+    discover a dropdown decided the band.
+    """
+    f = finding(decided=False)
+    banded = score.assess('PLC', [f], network_exposure='it_ot', interface='blocked')
+    assert banded.assertions and any('rests on' in n for n in banded.notes)
+    # Evidence-only assessments carry no assertion attribution.
+    alone = score.assess('PLC', [f], network_exposure='it_ot')
+    assert alone.verdict == 'VERIFY' and alone.assertions == []
+    # VERIFY with declarations keeps the soft note, not the strong one.
+    partial = score.assess('PLC', [f], consequence='control')
+    assert partial.verdict == 'VERIFY'
+    assert any('operator-reported' in n for n in partial.notes)
+    assert not any('rests on operator assertions' in n for n in partial.notes)

@@ -140,7 +140,12 @@ def applicability_bounds(finding, assessment_type='purchase', remediation='unkno
     if remediation not in REMEDIATIONS:
         raise ValueError('Unknown firmware applicability status')
     if remediation in ('applied', 'not_affected'):
-        return Bounds(0, 0)
+        # "Fix verified present on THIS firmware" needs a firmware: the spec's
+        # U table zeroes only a SELECTED version verified patched or not
+        # affected. Without a version check the claim names no firmware, so it
+        # stays unresolved and the U verification item asks for one -- a
+        # dropdown alone must not zero applicability for every finding.
+        return Bounds(0, 0) if finding.decided else Bounds(0, 1)
     if remediation in ('affected', 'available') or finding.decided:
         return Bounds(1, 1)
     return Bounds(0, 1)
@@ -197,11 +202,16 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     missing = set()
     unresolved = {name: set() for name in ('T', 'A', 'H', 'U')}
     measured = total = 0
+    # A reviewed path id must claim EVERY record of its CVEs: grouping by
+    # "path_id or cve" alone would split one CVE into two units when a reviewer
+    # tagged only some of its advisory records, and the same flaw would then
+    # enter R twice as Z1 + 0.20 Z2.
+    reviewed = {f.cve: f.path_id for f in findings if getattr(f, 'path_id', None)}
     for finding in findings:
         values = factors(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
         z = risk_bounds(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
-        key = getattr(finding, 'path_id', None) or finding.cve
-        group = groups.setdefault(key, {'path_id': key, 'grouping': 'reviewed path' if getattr(finding, 'path_id', None) else 'CVE review unit',
+        key = getattr(finding, 'path_id', None) or reviewed.get(finding.cve) or finding.cve
+        group = groups.setdefault(key, {'path_id': key, 'grouping': 'reviewed path' if key != finding.cve else 'CVE review unit',
                                        'cves': set(), 'advisories': set(), 'z_min': 0, 'z_max': 0, 'inputs': []})
         group['cves'].add(finding.cve)
         group['advisories'].add(finding.advisory_id)

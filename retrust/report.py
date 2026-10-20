@@ -299,8 +299,10 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         rows = []
         for path in assessment.paths:
             for entry in path['inputs']:
-                cells = ''.join('<td>' + _esc(f"{bounds[0]:.3g}–{bounds[1]:.3g}") + '</td>'
-                                for bounds in entry['factors'].values())
+                cells = ''.join(
+                    '<td>' + _esc(f"{bounds[0]:.3g}" if bounds[0] == bounds[1]
+                                  else f"{bounds[0]:.3g}–{bounds[1]:.3g}") + '</td>'
+                    for bounds in entry['factors'].values())
                 rows.append('<tr><td>' + _esc(entry['cve']) + '</td>' + cells
                             + '<td>' + _esc(entry['advisory']) + '</td></tr>')
         parts.append('<details><summary>How each vulnerability contributes</summary>'
@@ -367,8 +369,16 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     for note in assessment.notes:
         parts.append(f'<div class="note">{_ids(_esc(note))}</div>')
 
-    top = sorted(findings, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))[:10]
+    ranked = sorted(findings, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))
+    top = ranked[:10]
     if top:
+        if len(ranked) > len(top):
+            # A capped table must say so: "54 need review" above a silent
+            # 10-row table reads as the whole list.
+            parts.append(f'<p class="tnote">Showing the {len(top)} most'
+                         f' significant of {len(ranked)} findings, ranked by'
+                         ' exploitation probability and then severity. The'
+                         ' JSON export carries every finding.</p>')
         parts.append(_cve_table(top))
 
     parts.append('</section>')
@@ -459,7 +469,9 @@ def _summary_table(blocks, stabilities):
             "Not tested" if not st.samples else f"{st.agreement:.0%}")
         note = (assessment.gates[0]["gate"] if assessment.gates
                 else 'Supplier verification required' if assessment.cautions or assessment.third_party_count
-                else "" if resolution.resolved else resolution.reason)
+                else (f"Needs verification: {len(assessment.verification)} open"
+                      f" check(s)" if assessment.provisional and assessment.verification else "")
+                if resolution.resolved else resolution.reason)
         rows.append(
             f'<tr class="cand" style="--vc:{colour}">'
             f'<td><b>{_esc(assessment.product)}</b></td>'

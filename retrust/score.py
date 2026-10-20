@@ -111,6 +111,10 @@ class Assessment:
     interface: str = "unknown"
     remediation: str = "unknown"
     prerequisites: str = "unknown"
+    # The operator answers a banded verdict rests on, in the vocab tables'
+    # own words. Empty for evidence-only verdicts. A reviewer reads this to
+    # see exactly which unverifiable claims the band depends on.
+    assertions: list = field(default_factory=list)
     # The highest single z behind this score. Reported because R clips at 1:
     # once three paths are severe enough every worse product reads E = 0, and
     # this is what still separates them.
@@ -723,14 +727,25 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     # Network exposure is a deployment ASSUMPTION, not vulnerability evidence,
     # so it can no longer make a blank product scoreable: it is an input to
     # Exposure, and Exposure has coverage 0 when there are no findings.
-    risk_usable = usable
+    # Certification is assurance, not risk evidence: a certificate with ZERO
+    # advisory findings must not produce a confident verdict banded on the
+    # Certification pillar alone -- that is "absence of data reads as safety",
+    # the exact inversion this tool exists to prevent (found live: a product
+    # with no findings and one vendor certificate rendered PREFER 85.0).
+    risk_usable = [(spec, p) for spec, p in usable if spec.key != "certification"]
     gates = check_gates(first, product_label, screening_gates)
     cautions = _cautions(third)
 
     if not risk_usable:
-        notes = ["No pillar had measurable evidence, so no score is computed."
-                 " Absence of findings is not a clean bill of health: nobody"
-                 " may have published about this product."]
+        notes = ["No pillar had measurable risk evidence, so no score is"
+                 " computed. Absence of findings is not a clean bill of"
+                 " health: nobody may have published about this product."]
+        if any(pillar.coverage > 0 for spec, pillar in measured
+               if spec.key == "certification"):
+            notes.append(
+                "A certificate is on file, but assurance with no advisory"
+                " record to weigh it against is not scored -- a certificate"
+                " cannot stand in for the missing risk evidence.")
         if gates:
             notes.insert(0, "Screening gates still apply without a score.")
         return Assessment(
@@ -760,14 +775,47 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         cap_note = (
             "Capped below PREFER: " + ", ".join(unmitigable[:4])
             + (" and more" if len(unmitigable) > 4 else "")
-            + " are hardcoded-credential class flaws with no vendor fix."
-            " The operator cannot engineer around them for the life of the"
-            " asset, so no weighting can make this product preferred.")
+            + (" are hardcoded-credential class flaws" if len(unmitigable) > 1
+               else " is a hardcoded-credential class flaw")
+            + " with no vendor fix. The operator cannot engineer around"
+            + (" them" if len(unmitigable) > 1 else " it")
+            + " for the life of the asset, so no weighting can make this"
+            " product preferred.")
 
     if unmitigable:
         upper = min(upper, prefer_threshold - 0.1)
     verdict = ("AVOID" if gates else "VERIFY" if exposure.provisional else
                next(b for t, b in (bands or BANDS) if composite >= t))
+
+    # When declared answers carried a verdict out of VERIFY, say which answers
+    # it rests on and what the evidence said alone. The answers are assertions
+    # ReTrust cannot check, so a banded verdict that depends on them must carry
+    # that dependency on its face -- a reviewer should never have to diff two
+    # assessments to discover that a dropdown decided the band.
+    assertions = []
+    if interface != "unknown":
+        assertions.append(f"attack reachability: {INTERFACES[interface][0]}")
+    if prerequisites != "unknown":
+        assertions.append(
+            f"exploitation prerequisites: {PREREQUISITES[prerequisites][0]}")
+    if consequence is not None:
+        assertions.append(f"operational consequence: {CONSEQUENCES[consequence][0]}")
+    if remediation != "unknown":
+        assertions.append(f"firmware remediation: {REMEDIATIONS[remediation][0]}")
+    assertion_note = None
+    if assertions and verdict not in ("VERIFY", "NOT ASSESSED") and not gates:
+        alone = exposure_model.analyse(base)
+        eo_low = _composite([(spec, Pillar(pl.name, alone.safety_min, pl.coverage,
+                                           pl.evidence) if spec.key == "exposure"
+                              else pl) for spec, pl in usable], weights)
+        eo_high = _composite([(spec, Pillar(pl.name, alone.safety_max, pl.coverage,
+                                            pl.evidence) if spec.key == "exposure"
+                               else pl) for spec, pl in usable], weights)
+        assertion_note = (
+            f"This {verdict} rests on operator assertions ReTrust cannot"
+            " verify: " + "; ".join(assertions) + ". On the published evidence"
+            f" alone this product is VERIFY, {eo_low:.1f}-{eo_high:.1f}/100."
+            " Retain supporting evidence for each answer before procurement.")
 
     notes = []
     if cap_note:
@@ -776,7 +824,9 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         notes.append("This is a provisional score range, not a purchase recommendation. "
                      "Ask a technical owner to resolve the checks listed below. "
                      "The lower endpoint is the conservative case.")
-    if narrows(network_exposure, consequence, interface, remediation, prerequisites):
+    if assertion_note:
+        notes.append(assertion_note)
+    elif narrows(network_exposure, consequence, interface, remediation, prerequisites):
         notes.append("Site answers are operator-reported assertions, not independently verified "
                      "by ReTrust. Retain supporting evidence for each finding before procurement.")
     if first and third:
@@ -839,6 +889,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
         undecided_count=len({f.cve for f in undecided}),
         confidence=round(confidence.coverage, 2),
+        assertions=assertions if assertion_note else [],
         worst_risk=max((p["z_max"] for p in exposure.paths), default=None),
         score_min=round(composite, 1), score_max=round(upper, 1),
         exposure_min=exposure.safety_min, exposure_max=exposure.safety_max,

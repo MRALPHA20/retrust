@@ -18,24 +18,24 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY · 68.2–87.7/100
-  CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
-
-  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID · 5.6–89.4/100
-  CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
-  Known exploited vulnerability
+  VERIFY  ·  68.2–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
 
   Moxa EDS-405A
-  VERIFY · 5.9–92.8/100
-  CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.96
+
+  Siemens SIMATIC S7-1500 (firmware 3.1.6)
+  AVOID  ·  5.6–89.4/100 (provisional range)
+  CVEs 942  ·  ROBUST gated  ·  WORST FLAW 1.00
+  Known exploited vulnerability
 
   Hikvision IP Camera
   AVOID  ·  no score
   ROBUST not sampled
   Named on a covered list
 
-  AVOID: 3  ·  PREFER: 1
+  AVOID: 2  ·  VERIFY: 2
 ```
 
 ## How it works
@@ -53,7 +53,7 @@ flowchart LR
     MATCH --> GATE{"Hard gates<br/>KEV, covered list,<br/>sanctions"}
     GATE -->|tripped| AVOID["AVOID<br/>cannot be averaged away"]
     GATE -->|clear| SCORE["Concentrated exposure<br/>× patch × vendor × cert"]
-    SCORE --> OUT["PREFER / CONDITIONAL / AVOID<br/>terminal, HTML report, JSON, web UI"]
+    SCORE --> OUT["PREFER / CONDITIONAL / VERIFY /<br/>AVOID / NOT ASSESSED<br/>terminal, HTML report, JSON, web UI"]
     IDX -.->|"retrust eval, backtest"| PROOF["Reproducible evaluation results"]
 ```
 
@@ -176,9 +176,16 @@ The round-trip measures whether the originating advisory is returned; it does
 not count every extra match. Version coverage measures whether a range can be
 parsed, not accuracy against independently labelled firmware cases.
 
-The current historical backtest gives score versus later CVE disclosure rho
-+0.342, falling to +0.212 within vendors and to -0.108 when Siemens is excluded.
-These diagnostics do not validate prediction of compromise. See the
+The historical backtest at the 2022-01-01 cutoff
+(`retrust backtest --cutoff 2022-01-01 --permutations 100`) scores 5,848
+products on pre-cutoff advisories only and gives score versus later CVE
+disclosure rho +0.484 (p = 0.010 at 100 permutations). Compared only within
+vendors — 3,796 products across 19 vendors — the pooled rho is +0.340
+(p = 0.010), falling to +0.110 when Siemens is excluded: the correlation
+attenuates sharply without Siemens, because that vendor bundles hundreds of
+upstream CVEs into single advisories, but it stays positive.
+These diagnostics measure later disclosure volume, not compromise, and do not
+validate prediction of compromise. See the
 [benchmark report](docs/benchmark-report.md) for methods and limitations and the
 [tool comparison](docs/tool-comparison.md) for official-source capability summaries.
 
@@ -190,8 +197,9 @@ after installing the optional documentation dependencies: `pip install -e '.[doc
 
 RT4 replaces the earlier network discounts, threat floor and CVSS-derived OT
 impact with the proposed V1 rules. Results from earlier versions need reassessment.
-Historical backtests and latency tables retained below were measured before RT4;
-they do not validate the new model or its procurement accuracy. Gates still apply.
+The backtest above has been re-run under RT4; it diagnoses disclosure
+correlation and does not validate the new model or its procurement accuracy.
+Gates still apply.
 
 ## Honest by design
 
@@ -260,11 +268,13 @@ branch; `make live` checks which build is actually serving.
 - **[The manual](docs/manual.md)** — the scoring maths, the resolution ladder,
   the back-test design, the web UI's security posture, SSVC and LEV, and every
   design decision with the measurement that justified it.
-- **[ReTrust-Guide.pdf](docs/ReTrust-Guide.pdf)** — an 11-page printable user
+- **[ReTrust-Guide.pdf](docs/ReTrust-Guide.pdf)** — a 9-page printable user
   guide that opens on a three-step quick start.
 - **[ReTrust-Scoring-Explained.pdf](docs/ReTrust-Scoring-Explained.pdf)** — a
-  three-page sheet deriving the score: the formula, a worked example taken from
-  a live assessment, and the four places it departs from the reference model.
+  three-page sheet deriving the score: the `T × A × H × U` exposure rule, a
+  worked calculation on illustrative inputs, the pillar product, an example
+  from the local index, and the decision bands including VERIFY and
+  NOT ASSESSED.
 - **[docs/explainers/](docs/explainers/)** — three self-contained pages for
   explaining the tool to somebody else: [what it is and how it
   works](docs/explainers/overview.html), [every command by the job it

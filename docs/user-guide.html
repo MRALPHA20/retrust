@@ -127,6 +127,7 @@ $ retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</pre></l
     <tr>
       <td><span class="v-prefer">PREFER</span> &ge;70</td>
       <td><span class="v-caution">CONDITIONAL</span> &ge;40</td>
+      <td><span class="v-caution">VERIFY</span> evidence gaps</td>
       <td><span class="v-avoid">AVOID</span> below, or gated</td>
       <td><span class="v-inert">NOT ASSESSED</span> unresolved</td>
     </tr>
@@ -230,7 +231,7 @@ so abstention is a feature rather than a failure.</p>
 
 <p>The weighted result is reported as a band: <span class="v-prefer">PREFER</span>
 at 70 or above, <span class="v-caution">CONDITIONAL</span> at 40 or above,
-<span class="v-avoid">AVOID</span> below. If material network, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range. Network context is a main input; topology alone is not a discount.
+<span class="v-avoid">AVOID</span> below. If material network, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range; a product that cannot be resolved at all is NOT ASSESSED and gets no score. Network context is a main input; topology alone is not a discount.
 Weights and thresholds are yours to change &mdash; run <code>retrust config --init</code>.</p>
 
 <div class="state">
@@ -409,22 +410,22 @@ what you typed.</p>
 <pre class="cmd">$ retrust compare --candidate "ABB|AC 800M" \
       --candidate "Schneider Electric|Modicon M340" \
       --candidate "Hikvision|IP Camera" --html decision.html</pre>
-<pre>CANDIDATE COMPARISON ───────────────────────────────────────────────────────
+<pre>  CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-ABB AC 800M
-VERIFY · 68.2–87.7/100
-CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
+  ABB AC 800M
+  VERIFY  ·  68.2–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
 
-Schneider Electric Modicon M340
-VERIFY · 6.0–69.9/100
-CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 0.88
+  Schneider Electric Modicon M340
+  VERIFY  ·  6.0–69.9/100 (provisional range)
+  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 1.00
 
-Hikvision IP Camera
-AVOID  ·  no score
-ROBUST not sampled
-Named on a covered list
+  Hikvision IP Camera
+  AVOID  ·  no score
+  ROBUST not sampled
+  Named on a covered list
 
-AVOID: 1  ·  VERIFY: 2</pre>
+  AVOID: 1  ·  VERIFY: 2</pre>
 
 <p>The candidate string is pipe-separated: <span class="id">Vendor|Product|Version|OrderNumber</span>,
 and everything after the vendor is optional.</p>
@@ -442,22 +443,29 @@ local index. A warning appears when only some candidates specify firmware.</p>
 <table>
   <thead><tr><th>Column</th><th>What it means</th></tr></thead>
   <tbody>
-    <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;70, <span class="v-caution">CONDITIONAL</span> &ge;40, <span class="v-avoid">AVOID</span> below, <span class="v-inert">NOT ASSESSED</span> when it could not resolve the product</td></tr>
+    <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;70, <span class="v-caution">CONDITIONAL</span> &ge;40, <span class="v-avoid">AVOID</span> below, <span class="v-caution">VERIFY</span> with a provisional range while material evidence is unknown, <span class="v-inert">NOT ASSESSED</span> when it could not resolve the product</td></tr>
     <tr><td>SCORE</td><td>The weighted composite, 0&ndash;100, higher is better</td></tr>
     <tr><td>CVES</td><td>Distinct CVEs in scope. Raw total volume is not a scoring penalty</td></tr>
-    <tr><td>ROBUST</td><td>The share of sampled weightings supporting the most common verdict; not ranking stability</td></tr>
+    <tr><td>ROBUST</td><td>The share of sampled weightings supporting the most common verdict; not ranking stability. Shows "not sampled" while a product is VERIFY: resolve the missing evidence first</td></tr>
     <tr><td>NOTES</td><td>The gate that decided it, if one did</td></tr>
   </tbody>
 </table>
 
+<p>Comparisons rank PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED. AVOID
+ranks below VERIFY because a disqualified product is not a candidate; one that
+still needs checks is.</p>
+
 <div class="state caution">
   <b>ROBUST is the column most worth reading</b>
   The usual objection to any composite score is that its weights were invented.
-  ReTrust measures that rather than arguing about it: it samples hundreds of
-  weightings from across the whole simplex and reports how often the verdict
-  survives. A verdict holding under 91% of weightings is a result. One holding
-  under 77% is a judgement call, and the tool says so instead of handing you a
-  false precision.
+  ReTrust measures that rather than arguing about it: once the material evidence
+  gaps are closed, it samples hundreds of weightings from across the whole
+  simplex and reports how often the verdict survives. While a product is still
+  VERIFY the column reads "not sampled", because reweighing missing evidence
+  would dress a gap up as a robustness figure. A verdict that holds under at
+  least 90% of weightings does not hinge on them. Below 90% agreement it is
+  flagged a judgement call, and the tool says so instead of handing you a false
+  precision.
 </div>
 
 <h3>A whole bill of materials</h3>

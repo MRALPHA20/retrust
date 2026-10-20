@@ -1,6 +1,6 @@
 # ReTrust: Arsenal submission draft
 
-Updated 17 October 2026. Target: Black Hat Arsenal. Confirm the chosen event's current submission deadline, eligibility, required fields and demonstration rules before submitting. This document does not indicate acceptance or submission.
+Updated 20 October 2026. Target: Black Hat Arsenal. Confirm the chosen event's current submission deadline, eligibility, required fields and demonstration rules before submitting. This document does not indicate acceptance or submission.
 
 ## Title
 
@@ -27,9 +27,9 @@ Relative to prior art: CISA's advisory pages answer one advisory at a time with 
 ## Demonstration, approximately five minutes
 
 1. Explain the requisition: vendor, model, order number and firmware. Resolve Siemens order `6ES7518-4AX00-1AB0` to show order-number identification off a requisition.
-2. Compare ABB AC 800M and Moxa EDS-405A: both carry ten CVEs, and they split PREFER against CONDITIONAL. The instructive part is that Moxa scores *lower* while having shipped every fix -- patch availability 100 against ABB's 52 -- because the flaws themselves are worse: three CVSS 9.8s with measurable exploitation probability against ABB's 8.4 and 7.8 at near-zero EPSS. Concentrated exposure carries 60% of the result, so a complete patch record cannot buy back a dangerous one. This is the clearest demonstration that the tool is not counting CVEs or counting fixes.
-3. Assess `Siemens` / `SIMATIC S7-1500` at firmware `3.1.6` and explain the known-exploitation gate: the composite is mid-table, and the gate overrides it anyway.
-4. Declare a deployment context on the same product -- isolated, consequence negligible -- and show the score rise while the gate still holds. A declared fact narrows risk; it cannot un-disqualify a part.
+2. Compare ABB AC 800M and Moxa EDS-405A: both carry ten CVEs, and on the published evidence alone both are VERIFY -- the tool refuses a confident verdict while the material questions are open. The provisional ranges already separate the candidates: ABB at 68.2–87.7, Moxa at 5.9–92.8, so ABB's floor sits above Moxa's. Declaring the site context on each candidate (`--network-exposure it_ot --interface exposed --consequence control --prerequisites satisfiable --remediation affected`) produces banded verdicts, and they split PREFER 72.4 against AVOID 23.7. The instructive part is that Moxa lands at AVOID while having shipped every fix -- patch availability 100 against ABB's 52 -- because the flaws themselves are worse: four CVSS 9.8s at peak EPSS 0.050 against ABB's 8.4 and 7.8s at peak EPSS 0.008. Concentrated exposure carries 60% of the result, so a complete patch record cannot buy back a dangerous one. Each banded verdict names the operator assertions it rests on and what the product would be without them. This is the clearest demonstration that the tool is not counting CVEs or counting fixes.
+3. Assess `Siemens` / `SIMATIC S7-1500` at firmware `3.1.6` and explain the known-exploitation gate: with no context declared the composite is only a wide provisional range, and the gate disqualifies the part anyway -- AVOID before a single question is answered.
+4. Declare a deployment context on the same product -- isolated, consequence negligible -- and show the range resolve to a single higher score while the gate still holds. A declared fact narrows risk; it cannot un-disqualify a part.
 5. Show an unresolved query, a firmware-range uncertainty, and the third-party bundle caution on the 1,034-CVE MFP.
 6. Export evidence and supplier questions; show the assessment vector, evaluation and provenance.
 
@@ -40,8 +40,8 @@ Verify every step against the loaded snapshot on the day: scores move with the d
 - 3,937 advisories, 28,951 product entries, 12,061 distinct CVEs in the measured local index.
 - Version-range coverage: 94.91%; eligible-range coverage: 96.80%.
 - Authored buyer queries: 20/21. This is a small internal set.
-- Latest functionality verification: 874 automated tests and 94 real-data smoke checks passed, including property scans over all 11,322 scorable products and regression guards against injection, SSRF and decompression-bomb inputs.
-- Median assessment time: approximately 505 ms end-to-end per CLI invocation for ABB AC 800M, of which about 2 ms is the assessment itself; the remainder is interpreter start-up and opening the index. Shared-machine conditions apply.
+- Latest functionality verification: 943 automated tests and 94 real-data smoke checks passed, including regression guards against injection, SSRF and decompression-bomb inputs.
+- Median assessment time: approximately 505 ms end-to-end per CLI invocation for ABB AC 800M, of which about 2 ms is the assessment itself; the remainder is interpreter start-up and opening the index. Measured 28 September 2026 under shared-machine conditions.
 - [Methods and raw measurements](benchmark-report.md), [official-source tool comparison](tool-comparison.md), [PDF overview](ReTrust-Guide.pdf), [QA review](qa-review.md).
 - Three self-contained explainer pages for reviewers who want the model without the code: [what it is](explainers/overview.html), [every command](explainers/commands.html), [the scoring methodology](explainers/scoring.html) with the formula worked through on a real result.
 

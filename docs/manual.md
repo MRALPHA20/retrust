@@ -24,32 +24,32 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY · 68.2–87.7/100
-  CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
-
-  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID · 5.6–89.4/100
-  CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
-  Known exploited vulnerability
+  VERIFY  ·  68.2–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
 
   Schneider Electric Modicon M340
-  VERIFY · 6.0–69.9/100
-  CVEs 48  ·  ROBUST 51%  ·  WORST FLAW 0.88
+  VERIFY  ·  6.0–69.9/100 (provisional range)
+  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 1.00
+
+  Rockwell Automation ControlLogix
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 35  ·  ROBUST not sampled  ·  WORST FLAW 1.00
 
   Moxa EDS-405A
-  VERIFY · 5.9–92.8/100
-  CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.96
 
-  Rockwell ControlLogix
-  VERIFY · 5.9–92.8/100
-  CVEs 35  ·  ROBUST 51%  ·  WORST FLAW 0.88
+  Siemens SIMATIC S7-1500 (firmware 3.1.6)
+  AVOID  ·  5.6–89.4/100 (provisional range)
+  CVEs 942  ·  ROBUST gated  ·  WORST FLAW 1.00
+  Known exploited vulnerability
 
   Hikvision IP Camera
   AVOID  ·  no score
   ROBUST not sampled
   Named on a covered list
 
-  AVOID: 5  ·  PREFER: 1
+  AVOID: 2  ·  VERIFY: 4
 ```
 
 ---
@@ -338,13 +338,15 @@ needs the spelling the advisory used. `retrust search` is how you get it.
 ```
 $ retrust search S7-1500
 
-4 products matching 'S7-1500', strongest match first:
+20 products matching 'S7-1500', strongest match first:
 
   Siemens / S7-1500 (when HTTPS active)
     prefix        --                      1 advisory
   Siemens / SIMATIC S7-1500 Software Controller
     tokens        --                      20 advisories
-  Siemens / SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES75...
+  Siemens / SIMATIC S7-1500 CPU family (incl. related ET200 CPUs and SI...
+    tokens        --                      19 advisories
+  Siemens / SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
     tokens        6ES7518-4AX00-1AB0      16 advisories
 ```
 
@@ -551,19 +553,29 @@ better advisory record.
 $ retrust alternatives --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6
 
 ALTERNATIVES TO  Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  28.6   Known exploited vulnerability
+  AVOID  5.6   Known exploited vulnerability
 
 ReTrust does not know whether any of these will do the same job. It holds
 advisory history, not specifications: no I/O counts, no form factors, no
 safety integrity levels, nothing about fitness for purpose. These are
 candidates for an engineer to evaluate, not a recommendation to substitute.
 
-CANDIDATE                                     VERDICT      SCORE  CVES  SHARED NAME
-Siemens SIMATIC S7-1500 CPU family (incl. re  PREFER        72.1    24  SIMATIC S7-1500 CPU family
-Siemens SIMATIC S7-1500 CPU 1516T-3 PN/DP (6  PREFER        70.5    18  SIMATIC S7-1500 CPU
+These are scored without a firmware version, while the product above was
+scored at 3.1.6. A version decides which CVEs apply, so the two are not on
+equal terms: check each candidate again once you know which firmware you
+would buy.
 
-2 further family member(s) could not be assessed and are not listed. Absence
-of advisories is not evidence of safety.
+VERIFY candidates need technical checks; their ranges are provisional, not recommendations or proof that they are safer.
+
+CANDIDATE                                     VERDICT      SCORE  CVES  SHARED NAME
+Siemens SIMATIC ET 200S IM 151-8 PN/DP CPU (  VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC ET 200S IM 151-8F PN/DP CPU   VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC ET 200pro IM 154-8 PN/DP CPU  VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC ET 200pro IM 154-8F PN/DP CP  VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC ET 200pro IM 154-8FX PN/DP C  VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC S7-300 CPU 314C-2 PN/DP (6ES  VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC S7-300 CPU 315-2 PN/DP (6ES7  VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC S7-300 CPU 315F-2 PN/DP (6ES  VERIFY       53.7-95.7    12  SIMATIC
 ```
 
 **A product ReTrust could not assess is never suggested.** This is the inversion
@@ -642,20 +654,22 @@ retrust lev --vendor "Schneider Electric" --product "Modicon M340"
 ```
 
 ```
-  CVEs estimated                         20
-  expected already exploited            6.9   (sum of the probabilities)
+  CVEs estimated                         48
+  expected already exploited           19.7   (sum of the probabilities)
   listed in CISA KEV                      0   (observed, not estimated)
 
-CVE                   LEV  EPSS NOW   PEAK  KEV  DAYS  FIRST SCORED
-CVE-2015-7937       0.975     0.074  0.163    -    57  2022-02-08
-CVE-2013-0663       0.725     0.060  0.070    -    57  2022-02-08
-CVE-2018-7240       0.526     0.033  0.033    -    67  2021-04-14
+CVE                   LEV  EPSS NOW   PEAK  KEV SAMPLES  FIRST SCORED
+CVE-2018-7846       1.000     0.296  0.441    -      67  2021-04-14
+CVE-2015-7937       0.975     0.074  0.163    -      57  2022-02-08
+CVE-2018-7842       0.962     0.350  0.372    -      67  2021-04-14
 ```
 
-That gap is the whole point. This product has **nothing in KEV**, and its worst
-EPSS today is 0.074, which no threshold would catch. CVE-2015-7937 has been
-sitting at roughly that score every month since 2022, and a flaw that is 7%
-likely every month for five years is very likely by now: LEV puts it at 0.975.
+That gap is the whole point. This product has **nothing in KEV**, yet the
+expectation says 19.7 of its 48 estimated CVEs have probably been exploited
+already. CVE-2015-7937 scores an EPSS of 0.074 today, which no threshold
+would catch. It has been sitting at roughly that score every month since
+2022, and a flaw that is 7% likely every month for years on end is very
+likely by now: LEV puts it at 0.975.
 
 **`--update` fetches about 107 MB**, one EPSS snapshot per thirty days back to
 2021-04-14, when FIRST published the first scores. Thirty days is not a tuning
@@ -698,14 +712,14 @@ CVEs under a year old clear 0.1, against 87.5% of those over three. A high LEV o
 an old CVE is the expected case, not a finding.
 
 That is why a per-product count is printed with the corpus base rate beside it.
-The Modicon M340 above reads "18 of these (90%) ... across the whole corpus 57%
+The Modicon M340 above reads "39 of these (81%) ... across the whole corpus 57%
 do, so this is more than usual", and Siemens TeleControl Server Basic reads "8 of
 these (10%) ... fewer than usual". A count nobody can compare is not a finding.
 
 Three rules taken from the paper itself:
 
 - **The expected count is an expectation over a set**, not a claim about any one
-  CVE. "6.9 of these 20" does not name which.
+  CVE. "19.7 of these 48" does not name which.
 - **LEV never overrides KEV.** The composite probability takes the highest of
   KEV, LEV and current EPSS rather than averaging them: KEV is an observation
   and LEV is a model, and an average would let the model talk down something
@@ -728,46 +742,50 @@ retrust batch system-bom.json                  # a CycloneDX SBOM, as exported
 ```
 
 ```
-CANDIDATE COMPARISON ───────────────────────────────────────────────────────
+Scoring 8 candidate(s) from examples/candidates.csv ...
 
-ABB AC 800M
-VERIFY · 68.2–87.7/100
-CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
+  CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
-Siemens SIMATIC S7-1500 (firmware 3.1.6)
-AVOID · 5.6–89.4/100
-CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
-Known exploited vulnerability
+  Siemens SIMATIC IPC477E Pro
+  VERIFY  ·  45.0–99.2/100 (provisional range)
+  CVEs 14
 
-Schneider Electric Modicon M340
-VERIFY · 6.0–69.9/100
-CVEs 48  ·  ROBUST 51%  ·  WORST FLAW 0.88
+  Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
+  VERIFY  ·  6.2–98.5/100 (provisional range)
+  CVEs 1034
 
-Moxa EDS-405A
-VERIFY · 5.9–92.8/100
-CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
+  Schneider Electric Modicon M340
+  VERIFY  ·  6.0–69.9/100 (provisional range)
+  CVEs 48
 
-Hikvision IP Camera
-AVOID  ·  no score
-ROBUST not sampled
-Named on a covered list
+  Rockwell Automation ControlLogix
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 35
 
-product (firmware 6ES7518-4AX00-1AB0)
-NOT ASSESSED  ·  no score
-ROBUST not sampled
-need either an order number or vendor and product
+  Moxa EDS-405A
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 10
 
-Acme Widgets Nonexistent 9000
-NOT ASSESSED  ·  no score
-ROBUST not sampled
-vendor 'Acme Widgets' does not appear in the advisory corpus
+  Johnson Controls iSTAR Ultra G2
+  VERIFY  ·  5.5–69.9/100 (provisional range)
+  CVEs 8
 
-AVOID: 4  ·  NOT ASSESSED: 2  ·  PREFER: 1
+  Siemens SIMATIC S7-1500 (firmware 3.1.6)
+  AVOID  ·  5.6–89.4/100 (provisional range)
+  CVEs 942
+  Known exploited vulnerability
+
+  Hikvision IP Camera
+  AVOID  ·  no score
+  Named on a covered list
+
+  AVOID: 2  ·  VERIFY: 6
+
   exit 1: a candidate is disqualified
 ```
 
 **Read the caution, wherever the MFP lands.** It carries 1,034 CVEs and still
-scores mid-table rather than bottom, which looks wrong until you see why: all but a handful arrive in
+ranks beside candidates carrying a few dozen rather than at the bottom, which looks wrong until you see why: all but a handful arrive in
 third-party component-bundle advisories — the Linux and OpenSSL stack the device
 ships — and a bundle establishes that a component is present, not that each of
 its CVEs is reachable on the controller. Exposure therefore measures the
@@ -814,12 +832,13 @@ of them:
 ```json
 {
   "generated_by": "retrust",
-  "schema": 2,
+  "schema": 3,
   "weights":    { "exposure": 0.6, "patchability": 0.2, "vendor_practice": 0.15, "certification": 0.05 },
   "provenance": [ { "source": "CISA KEV", "detail": "1,726 entries",
-                    "captured": "2026-09-27" } ],
-  "results": [ { "product": "Moxa EDS-405A", "verdict": "AVOID",
-                 "score": 5.9, "robust": 0.56, "gates": [], ... } ]
+                    "captured": "2026-10-01" } ],
+  "results": [ { "product": "Moxa EDS-405A", "verdict": "VERIFY",
+                 "score": 5.9, "score_min": 5.9, "score_max": 92.8,
+                 "provisional": true, "assertions": [], "gates": [], ... } ]
 }
 ```
 
@@ -834,8 +853,12 @@ interface, remediation and reproduction vector. `retrust diff` keeps these
 owner choices fixed when it re-scores a saved assessment. Firmware comparison
 notes and weight-robustness calculations also hold the owner choices fixed.
 
-`score` and `compare` also take `--fail-on`, defaulting to `never` because they
-are interactive; `batch` defaults to `avoid` because it is a gate.
+`score` and `compare` also take `--fail-on`. `compare` defaults to `never`
+because it is interactive; `batch` defaults to `avoid` because it is a gate.
+`score` without the flag exits 2 on VERIFY or NOT ASSESSED when printing the
+terminal table, and 0 when `--json` was asked for, because a pipeline that
+asked for JSON parses the verdict itself. An explicit `--fail-on` wins
+identically in both modes.
 
 **Screenshots.** Uses whatever Chrome or Chromium is already on the machine; it
 is not a dependency, and its absence costs you screenshots and nothing else.
@@ -937,6 +960,41 @@ Existing hard gates and the cap below PREFER for unfixable hardcoded credentials
 still apply. Bands remain PREFER ≥70, CONDITIONAL 40–69.9, AVOID <40.
 These proposal-specific weights and consequence values require validation;
 they are not a NIST standard or a measured procurement accuracy guarantee.
+
+**A banded verdict reached through operator answers names them.** Site answers
+are assertions ReTrust cannot verify, so a PREFER, CONDITIONAL or AVOID that
+rests on them carries an "assertions" list and a note beside the verdict:
+"This PREFER rests on operator assertions ReTrust cannot verify: ... On the
+published evidence alone this product is VERIFY, 5.9-92.8/100." The
+evidence-only range is computed with every assertion withdrawn, so the reader
+sees exactly what the answers bought. JSON and CSV exports carry the same
+`assertions` field, so a stored decision record keeps the attribution.
+
+**`applied` and `not_affected` zero U only against a checked firmware
+version.** "Fix verified present on this firmware" names a firmware. Without a
+supplied version the claim resolves nothing: U stays an interval, and the U
+verification item asks for the version instead. A dropdown answer alone cannot
+clear applicability for every finding.
+
+**A certificate with zero advisory findings is NOT ASSESSED, never banded.**
+Certification is assurance, not risk evidence, and with no advisory record to
+weigh it against it cannot carry a verdict on its own. Found live: a product
+with no findings and one vendor certificate rendered PREFER 85.0, which is
+absence of data reading as safety -- the exact inversion this tool exists to
+prevent. The result now says so in its notes instead of banding.
+
+**Rankings order verdicts PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED.**
+`compare`, `alternatives` and the web interface all sort this way. AVOID sits
+below VERIFY because a disqualified product must never outrank one that merely
+needs its checks finished: VERIFY is unfinished work, not a worse answer.
+NOT ASSESSED stays last for the usual reason -- no evidence must not read as
+safety.
+
+**The `score` exit code depends on who is reading.** At the terminal the
+default exits 2 on VERIFY or NOT ASSESSED, so an incomplete assessment cannot
+pass silently through a script that never read the table. With `--json` the
+default is 0, because a pipeline that asked for JSON parses the verdict
+itself. An explicit `--fail-on` wins identically in both modes.
 
 ### The facts only you have
 
@@ -1046,8 +1104,8 @@ how much to trust the verdict, not how safe the product is.
 
 CISA KEV records exploitation confirmed in the wild; FIRST's EPSS is an
 independent statistical model. On this corpus they agree sharply. OT CVEs
-listed in KEV have a median EPSS of **0.70** against **0.0073** for OT CVEs
-overall, roughly a 97× separation. Two independently built sources pointing the
+listed in KEV have a median EPSS of **0.74** against **0.0076** for OT CVEs
+overall, roughly a 98× separation. Two independently built sources pointing the
 same way is the empirical footing for the exploitation pillar.
 
 ## Resolution ladder
@@ -1083,9 +1141,11 @@ retrust verify
 CONTENT   does each file still match the digest shipped beside it?
   verified                        3,937
   failed                              0
+  no digest shipped                   0
 
 ORIGIN    who signed it?
   signature verified                  0
+  signature failed                    0
   not established                 3,937
 
   signed by:
@@ -1148,7 +1208,7 @@ CISA's repository already mirrors most of their advisories.
 ## Development
 
 ```bash
-python3 -m pytest tests/ -q      # 259 tests, no network needed
+python3 -m pytest tests/ -q      # 943 tests, no network needed
 ```
 
 Layout:
@@ -1183,26 +1243,27 @@ verifies every SHA-256 and refuses a modified bundle.
 
 ## Does the score predict anything?
 
-The fresh 28 September 2026 backtest uses a 2022-01-01 cutoff and 1,000 seeded
+The fresh 20 October 2026 backtest uses a 2022-01-01 cutoff and 100 seeded
 permutations. It does not validate prediction of real-world compromise.
 
 | Diagnostic | Products | Spearman rho |
 |---|---:|---:|
-| Score versus later CVE disclosure | 5,848 | +0.342 |
-| Within vendor | 3,822 | +0.212 |
-| Within vendor, excluding Siemens | See raw results | -0.108 |
+| Score versus later CVE disclosure | 5,848 | +0.484 |
+| Within vendor (19 vendors) | 3,796 | +0.340 |
+| Within vendor, excluding Siemens | See raw results | +0.110 |
 
-Pooled and within-vendor permutation p-values are 0.001. The weakening positive
-association is consistent with disclosure/exposure effects, but does not prove
-a causal explanation. Only two products across two vendors qualify for the
-later-KEV outcome. That is too sparse for an exploitation-rate claim.
+Pooled and within-vendor permutation p-values are 0.010 at 100 shuffles. The
+weakening positive association is consistent with disclosure/exposure effects,
+but does not prove a causal explanation. Only two products across two vendors
+qualify for the later-KEV outcome. That is too sparse for an
+exploitation-rate claim.
 
 The current snapshot covers one cutoff. Run `retrust backtest --sweep` to explore
 other dates; earlier sweep figures are not current release measurements.
 See [benchmark methods and raw evidence](benchmark-report.md).
 
 ```sh
-retrust backtest --cutoff 2022-01-01 --permutations 1000 --json results.json
+retrust backtest --cutoff 2022-01-01 --permutations 100 --json results.json
 ```
 
 ## Extending it
