@@ -1,5 +1,10 @@
 # ReTrust benchmark report
 
+The retained score/backtest figures below describe RT4. The current RT5 release
+changes firmware gate decisions; do not treat historical decision-policy results
+as current RT5 validation. Parser/recovery evaluation and command latency can be
+reproduced separately with the commands below.
+
 Measured 28 September 2026 against 3,937 advisories and 28,951 product entries. The exploitation feeds were refreshed and the index rebuilt on 20 October 2026; accuracy and coverage figures were re-run against the refreshed data and are unchanged, and the historical diagnostic was re-run and is likewise unchanged under the RT4 scoring model. These are internal measurements, not independent accuracy validation or a comparison against competing tools.
 
 ## Data snapshot

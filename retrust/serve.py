@@ -16,11 +16,9 @@ that screens sanctions lists has no business opening an unauthenticated port on
 a plant network by accident. See SAFETY below for what is enforced.
 """
 
-import hashlib
 import html
 import http.server
 import os
-import pathlib
 import urllib.parse
 from datetime import date
 
@@ -44,25 +42,7 @@ DEFAULT_PORT = 8765
 EDIT_PANEL = "Edit product, firmware, or network exposure"
 
 
-def build_fingerprint():
-    """A short hash of the package's own source, served as a header.
-
-    "Is the deployed code the code I have?" turned out to be the hardest
-    question to answer about this service, and the expensive way to learn that
-    was a silent deploy: the build ran, the data refreshed, and the index hash
-    moved while three commits of fixes stayed behind. Nothing user-visible had
-    to change for the site to be stale, so nothing user-visible could prove it
-    current. Comparing the scoring version did not help either -- it is the same
-    string across every one of those builds.
-
-    This hashes the source instead, so any code difference shows up, and it is
-    computed once per process rather than per request.
-    """
-    digest = hashlib.sha256()
-    for path in sorted(pathlib.Path(__file__).parent.glob("*.py")):
-        digest.update(path.name.encode())
-        digest.update(path.read_bytes())
-    return digest.hexdigest()[:12]
+from .identity import build_fingerprint
 
 
 BUILD = build_fingerprint()
@@ -415,11 +395,12 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
                       helper='Another computer, a laptop plugged in, or someone standing '
                              'at the panel. Answer “no” only if someone has checked every '
                              'route in. “Not sure” is a fine answer.')
-            + _choice('prerequisites' + suffix, 'Would an attacker need anything else first?',
+            + _choice('prerequisites' + suffix, 'Could an attacker meet the conditions needed to exploit it?',
                       score.PREREQUISITES, prerequisites,
-                      helper='Some weaknesses need a login, someone clicking a link, or '
-                             'hands on the equipment. Others need nothing at all — both '
-                             'count as “yes”. Answer “no” only if someone has ruled it out.')
+                      helper='Conditions can include a login, someone clicking a link, or '
+                             'physical access. Choose “yes” if an attacker could meet them, '
+                             'or if no extra conditions are needed. Choose “no” only after '
+                             'a technical review of every relevant weakness. Otherwise, choose “not sure”.')
             + _choice('consequence' + suffix, 'If it were attacked, what is the worst that could happen?',
                       score.CONSEQUENCES, consequence, blank='Not sure — ask an engineer',
                       helper='Ask operations or safety. Pick what is believable for these '
@@ -447,7 +428,7 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
             + '</div></details>'
             + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
             + '<p class="helper">Firmware is the software running on the equipment. Leave blank if unknown; the result will show what still needs checking.</p>'
-            '<section class="site-context"><h3>Network access and operating context</h3>'
+            '<section class="site-context"><h3>Network access and operating conditions</h3>'
             '<p class="helper">These answers are central to the assessment. '
             'Leave them unknown if unsure, then ask your technical team. '
             'ReTrust uses your answers; it does not inspect your network.</p>'
@@ -535,7 +516,7 @@ def _compare_page(assess, context, candidates, submitted=False):
                   + _field(f'cv{i}', f'vendor_{i}', 'Vendor', vendor, 'e.g. Moxa')
                   + _field(f'cp{i}', f'product_{i}', 'Product / model', product, 'e.g. EDS-405A')
                   + _field(f'cf{i}', f'version_{i}', 'Firmware (optional)', version, 'e.g. 3.0')
-                  + '</div><h3>Network access and operating context</h3>'
+                  + '</div><h3>Network access and operating conditions</h3>'
                   + _owner_fields(network, suffix=f'_{i}', **owner) + '</fieldset>')
     form = ('<form method="get" action="/compare">' + boxes
             + '<p class="helper">Use an order number, or a vendor and model. If you enter both, '

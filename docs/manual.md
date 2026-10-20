@@ -266,8 +266,13 @@ included. When `retrust provider` follows a vendor's own CSAF feed, the feed,
 each advisory, and the digest and signature beside them are all addresses that
 document hands the tool, so every one is vetted before the request, and each
 redirect is vetted before it is followed -- urllib would otherwise open the
-connection to a redirect target before anything could object: https only, and
-never a private, loopback or link-local host, so a crafted feed cannot turn a
+connection to a redirect target before anything could object. The HTTPS
+transport resolves the actual destination and connects directly to a vetted
+public address, preserving TLS certificate and hostname checks. DNS errors and
+non-global addresses, including shared address space, fail closed. Environment
+proxies are ignored for these provider/download requests so they cannot resolve
+a different target. Each redirect uses the same transport: https only, and
+never a non-public host, so a crafted feed cannot turn a
 fetch into a read of a local file or a request to a cloud metadata endpoint. That feed is capped at 50,000 advisories
 and 30 MB apiece. All of this fetching lives in the CLI; the web server fetches
 nothing, so none of it is reachable over HTTP. PGP key material is refused over
@@ -898,7 +903,7 @@ already going to hear about.
 | Vendor practice | 0.15 | whether the vendor runs its own CSAF feed, and advisory completeness |
 | Certification | 0.05 | IEC 62443 (ISASecure) and Common Criteria certificates |
 
-**Exposure in RT4 follows the ReTrust-OT V1 proposal:**
+**Exposure in RT5 follows the ReTrust-OT V1 proposal:**
 
 ```
 T = max(KEV, LEV, EPSS)
@@ -1035,7 +1040,14 @@ JSON schema 3 includes `score_min`, `score_max`, `exposure_min`, `exposure_max`,
 `provisional`, `verification`, and full per-unit factors under `paths` in detail
 exports. CSV retains the ranges and verification actions. `--fail-on unassessed`
 returns exit 2 for VERIFY, so a pipeline can reject incomplete assessments.
-Scoring vectors begin `RT4`; RT3 results must be reassessed under the new model.
+Scoring vectors begin `RT5`. RT4 and earlier results must be reassessed under
+this decision policy. The exposure formula and weights are unchanged; the gate
+now follows assessed firmware applicability, rather than vendor patch availability.
+Conflicting reviewed path IDs for one CVE are rejected before scoring.
+
+The question “Could an attacker meet the conditions needed to exploit it?” asks
+whether exploitation is possible, not whether extra conditions exist. A technical
+review can answer no; unknown attack requirements stay unknown.
 
 ### What the vector says, not just the score
 
@@ -1256,11 +1268,16 @@ retrust/
 
 ## Reproducibility
 
-Every report footer records which data snapshot produced it: the advisory
-count, the KEV and EPSS capture dates, and the weights used. `retrust snapshot`
-bundles the index and both auxiliary lists into one checksummed zip, so a
-result can be regenerated months later and shown to be the same result. Restore
-verifies every SHA-256 and refuses a modified bundle.
+Current CLI and web results record the RT5 model and a source-code fingerprint.
+Their data token hashes the complete database plus the certification and screening
+lists; it is distinct from the older count/date provenance token. JSON and CSV
+retain these identifiers, and comparisons warn when the model or tool build differs.
+Weights and detailed evidence remain in the assessment reports. Keep the code,
+configuration and data snapshot together to reproduce a decision.
+
+`retrust snapshot` bundles the index and both auxiliary lists into one checksummed
+ZIP. Restore verifies every file before replacing live data. The manifest has its
+own 1 MiB expanded limit and also counts against the 500 MiB archive budget.
 
 ## Does the score predict anything?
 

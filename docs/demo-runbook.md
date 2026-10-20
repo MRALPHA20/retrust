@@ -185,19 +185,16 @@ Enough to know if you last presented an earlier build.
   advisory findings, with only a vendor certificate behind it, used to score
   well enough to come out PREFER. Absence of evidence is no longer treated as
   evidence.
-- **The KEV gate requires an unfixed CVE.** A catalogued CVE the vendor has
-  already patched is a reason to buy current firmware, not a reason to refuse
-  the purchase, so it no longer disqualifies. Expect some formerly gated
-  products to carry a score now. Siemens "S7-1500 (when HTTPS active)" is the
-  clean illustration: its one KEV CVE is CVE-2014-0160, filed with a vendor
-  fix, and it used to print AVOID above a patch availability pillar reading
-  100.0/100. It now reads `VERIFY · 6.3–99.2/100`. The demo's Siemens SIMATIC
-  S7-1500 at firmware 3.1.6 still gates, because its KEV CVEs are offered
-  mitigations only.
+- **RT5 checks the selected firmware.** A published patch alone does not clear
+  a KEV blocker. Affected or unresolved firmware still reads AVOID, including
+  the HTTPS-only S7-1500 example that previously read VERIFY under RT4. Show the
+  assessor the fixed firmware version and supporting evidence; do not present
+  vendor patch availability as proof that this device is fixed.
 - **A claimed fix has to name a firmware.** `--remediation applied` and
   `not_affected` clear firmware applicability only when a version was supplied
   *and* the tool's own range check does not contradict the claim. Where it
-  does, the verdict stays VERIFY and the contradiction is listed as a check:
+  does, the claim remains unresolved and the contradiction is listed as a check.
+  A hard gate can still force AVOID:
 
   ```
   - The firmware you gave is inside the affected range published for

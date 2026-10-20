@@ -22,6 +22,8 @@ import json
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
+from . import identity
+
 # Accepted column names, so a real requisition export needs less reshaping.
 COLUMN_ALIASES = {
     "vendor": {"vendor", "manufacturer", "supplier", "make", "brand"},
@@ -210,6 +212,10 @@ def to_record(assessment, resolution, stability=None, query=None):
         "worst_flaw": None if assessment.worst_risk is None
                       else round(assessment.worst_risk, 3),
         "vector": assessment.vector,
+        "model_version": assessment.vector.split('/')[0] if assessment.vector else None,
+        "source_build": identity.build_fingerprint(),
+        "data_fingerprint": assessment.vector.rsplit('/DS:', 1)[-1]
+                            if '/DS:' in assessment.vector else None,
         "resolved_by": resolution.method if resolution.resolved else None,
         "match_confidence": resolution.confidence if resolution.resolved else None,
         "matched_products": len(resolution.matches),
@@ -279,7 +285,7 @@ def to_detail(assessment, resolution, findings=(), stability=None,
 def envelope(results, meta=None):
     """Wrap results with the metadata every JSON output carries."""
     return {"generated_by": "retrust", "schema": SCHEMA_VERSION,
-            **(meta or {}), "results": results}
+            **(meta or {}), "source_build": identity.build_fingerprint(), "results": results}
 
 
 def dumps(payload):
@@ -333,7 +339,7 @@ def dumps_csv(records, include_queries=False):
                "assessment_type", "network_exposure", "consequence",
                "interface", "prerequisites", "remediation", "assertions",
                "worst_flaw",
-               "vector"]
+               "vector", "model_version", "source_build", "data_fingerprint"]
     columns += [f"pillar_{n.lower().replace(' ', '_')}" for n in pillar_names]
     if include_queries:
         columns += [f"query_{field}" for field in QUERY_FIELDS]

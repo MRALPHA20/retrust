@@ -33,6 +33,7 @@ CONTENTS = ["retrust.db", "certifications.json", "screening.json"]
 # A snapshot of the real corpus is ~24 MB unpacked. This ceiling leaves ample
 # room while refusing an archive that claims to expand to gigabytes.
 MAX_UNPACKED_BYTES = 500 * 1024 * 1024
+MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 
 
 def _digest(path):
@@ -60,31 +61,59 @@ def create(data_dir="data", out_path="retrust-snapshot.zip", provenance=(), note
         "files": {},
     }
 
+    for name in present:
+        source = directory / name
+        manifest["files"][name] = {
+            "sha256": _digest(source), "bytes": source.stat().st_size}
+    packed = json.dumps(manifest, indent=2).encode('utf-8')
+    if len(packed) > min(MAX_MANIFEST_BYTES, MAX_UNPACKED_BYTES):
+        raise SystemExit('Snapshot note or metadata is too large. Shorten it before creating the snapshot.')
+    if len(packed) + sum(meta['bytes'] for meta in manifest['files'].values()) > MAX_UNPACKED_BYTES:
+        raise SystemExit('Snapshot data exceeds the safe expanded size limit.')
     destination = Path(out_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as bundle:
         for name in present:
-            source = directory / name
-            manifest["files"][name] = {
-                "sha256": _digest(source), "bytes": source.stat().st_size}
-            bundle.write(source, name)
-        bundle.writestr(MANIFEST, json.dumps(manifest, indent=2))
+            bundle.write(directory / name, name)
+        bundle.writestr(MANIFEST, packed)
 
     return {"path": str(destination), "files": present,
             "bytes": destination.stat().st_size, "manifest": manifest}
 
 
-def inspect(snapshot_path):
-    """Read a snapshot's manifest without unpacking it."""
+def _manifest(snapshot_path):
+    """Read bounded bytes before parsing any archive-controlled JSON."""
     with zipfile.ZipFile(snapshot_path) as bundle:
-        if MANIFEST not in bundle.namelist():
-            raise SystemExit(f"{snapshot_path} has no {MANIFEST}; not a ReTrust snapshot.")
-        return json.loads(bundle.read(MANIFEST))
+        if bundle.namelist().count(MANIFEST) != 1:
+            raise SystemExit(f'{snapshot_path} must contain exactly one {MANIFEST}.')
+        with bundle.open(MANIFEST) as member:
+            payload = member.read(min(MAX_MANIFEST_BYTES, MAX_UNPACKED_BYTES) + 1)
+        if len(payload) > min(MAX_MANIFEST_BYTES, MAX_UNPACKED_BYTES):
+            raise SystemExit('Snapshot manifest exceeds the safe size limit (possible decompression bomb); refusing to read it.')
+        try:
+            manifest = json.loads(payload)
+        except (ValueError, UnicodeError) as error:
+            raise SystemExit(f'Snapshot manifest is not valid JSON: {error}') from error
+        if isinstance(manifest, dict) and isinstance(manifest.get('files'), dict):
+            for name in manifest['files']:
+                if Path(name).name != name or name not in CONTENTS:
+                    raise SystemExit(f'{name!r} is not a file a ReTrust snapshot carries; refusing to unpack.')
+        if (not isinstance(manifest, dict) or not isinstance(manifest.get('files'), dict)
+                or 'retrust.db' not in manifest['files']
+                or not all(isinstance(meta, dict) and isinstance(meta.get('sha256'), str)
+                           for meta in manifest['files'].values())):
+            raise SystemExit('Snapshot manifest must describe the index and its file checksums.')
+        return manifest, len(payload)
+
+
+def inspect(snapshot_path):
+    """Read a snapshot's manifest within a small decompression budget."""
+    return _manifest(snapshot_path)[0]
 
 
 def restore(snapshot_path, data_dir="data", verify=True):
     """Unpack a snapshot, checking each file against its recorded digest."""
-    manifest = inspect(snapshot_path)
+    manifest, manifest_bytes = _manifest(snapshot_path)
     if manifest.get("format") != FORMAT_VERSION:
         raise SystemExit(
             f"snapshot format {manifest.get('format')} is not supported "
@@ -99,7 +128,7 @@ def restore(snapshot_path, data_dir="data", verify=True):
     with tempfile.TemporaryDirectory(dir=directory.parent) as staging:
         staged = Path(staging)
         restored, mismatched = [], []
-        total = 0
+        total = manifest_bytes
 
         with zipfile.ZipFile(snapshot_path) as bundle:
             for name, meta in manifest["files"].items():

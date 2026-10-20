@@ -16,17 +16,17 @@ import html
 import re
 from datetime import date
 
-from . import score
+from . import identity, score
 
 # One palette, written once and emitted three times. The bare :root is the
 # light default; the two dark selectors let the reader's OS preference and an
 # explicit data-theme each win, the latter being what the screenshot tool
 # stamps to shoot both themes deterministically.
 LIGHT = ("--field:#e6e9eb;--panel:#f2f4f5;--sunk:#d8dcdf;--rule:#b5bcc2;"
-         "--ink:#1a2026;--soft:#58626c;--faint:#868f99;"
+         "--ink:#1a2026;--soft:#58626c;--faint:#56616b;"
          "--prefer:#1c7a4a;--cond:#a86e00;--avoid:#b02a20")
 DARK = ("--field:#191e23;--panel:#222930;--sunk:#13171b;--rule:#38414a;"
-        "--ink:#e2e6ea;--soft:#9aa4ae;--faint:#6f7983;"
+        "--ink:#e2e6ea;--soft:#9aa4ae;--faint:#a0aab4;"
         "--prefer:#45b07a;--cond:#d79a26;--avoid:#e06054")
 
 # System faces only. A webfont would be a network fetch, and this file has to
@@ -58,6 +58,8 @@ code{white-space:nowrap}
 .vector code{white-space:normal;overflow-wrap:anywhere}
 .evidence-details{border:0;padding:0;margin:0;background:transparent}
 .evidence-details summary{font-size:.86rem;color:var(--soft);cursor:pointer}
+summary{min-height:44px;padding:10px 0;line-height:1.6}
+summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .evidence-details[open]>summary{margin-bottom:.5rem}
 /* The state stripe. This is the panel indicator lamp, and it is how a reader
    skims a comparison of six candidates. --vc is set once per block, so the
@@ -380,8 +382,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         parts.append('<details class="vector"><summary>Technical assessment settings</summary>'
                      f'<p><code>{_esc(assessment.vector)}</code></p>'
                      '<p class="tnote">Includes the scoring version, supplied firmware and '
-                     'operator choices. The data token fingerprints recorded source '
-                     'provenance metadata; it does not checksum the full database.</p>'
+                     'operator choices. The data token identifies '
+                     'the recorded data inputs. Current CLI and web assessments fingerprint the database and supplementary lists; older results may identify provenance metadata only.</p>'
                      '</details>')
 
     if assessment.paths:
@@ -649,6 +651,7 @@ def render(blocks, title="ReTrust assessment", snapshot="", stabilities=None,
         + f"</p><h1>{_esc(title)}</h1>{inner}"
         + _query_table(queries)
         + _footer_sources(provenance, weights, config_source)
+        + f'<p class="tnote">Model {_esc(score.SCORING_VERSION)} · Tool build {_esc(identity.build_fingerprint())}. Keep this report with its data snapshot when reassessing.</p>'
         + "<footer>Scores are decision support, not a certification. Every figure above "
         "comes from public CISA, FIRST and vendor sources; weights are configurable and "
         "shown so you can disagree with them. Ranges this tool could not parse are "

@@ -119,7 +119,7 @@ Attack reachability comes from each weakness's own CVSS attack vector and the
 conditions it demands, narrowed only by what you have verified — whether the
 affected service is reachable (`--interface`) and whether those conditions can
 be met (`--prerequisites`). Unknown material inputs produce **VERIFY**, a provisional
-score range and concrete checks for your technical team. RT4 uses the raw
+score range and concrete checks for your technical team. RT5 uses the raw
 `T × A × H × U` model and `R = min(1, Z1 + .20 Z2 + .10 Z3)`; repeated advisory
 records for one CVE count once. See [the current scoring explanation](docs/explainers/scoring.html).
 
@@ -207,14 +207,21 @@ The backtest above has been re-run under RT4; it diagnoses disclosure
 correlation and does not validate the new model or its procurement accuracy.
 Gates still apply.
 
+## Current decision model: RT5
+
+RT5 keeps the V1 exposure formula and the 60/20/15/5 weights. It corrects the
+firmware-specific KEV gate and rejects conflicting reviewed path assignments.
+Saved JSON/CSV assessments record the model, source build and full data-input
+fingerprint. Reassess older results; their RT4 labels do not identify this policy.
+The forms use plain explanations alongside expandable technical evidence.
+
 ## Honest by design
 
-- **Hard gates sit outside the weighted score** — an *unfixed* KEV hit or a
-  covered-list match cannot be averaged away by good scores elsewhere. The KEV
-  gate reads the finding's fix status, because a catalogued CVE the vendor has
-  already patched is a reason to buy current firmware rather than a reason to
-  refuse the purchase: gating on it alone printed AVOID beside a patch
-  availability pillar reading 100/100.
+- **Hard gates sit outside the weighted score** — a KEV-listed weakness
+  that remains affected or unresolved for the selected firmware, or a covered-list
+  match, cannot be averaged away. A patch being published does not prove it is
+  installed. Select unaffected firmware or provide non-contradicted evidence of
+  its fix before the firmware blocker can clear. Network controls do not remove it.
 - **The score is a product, not a mean** — `E^0.60 × P^0.20 × V^0.15 × C^0.05`,
   so dangerous exposure cannot be bought back with a good vendor record and a
   certificate. Exposure itself is concentrated on the worst findings rather than

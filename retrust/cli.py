@@ -36,7 +36,7 @@ from pathlib import Path
 from .index import normalize_vendor
 from . import (alternatives, appetites, backtest, batch, bootstrap,
                certification, config, console, cvelookup, diff, doctor, dossier,
-               evaluate, exposure, index, integrity, lev, match, questions,
+               evaluate, exposure, identity, index, integrity, lev, match, questions,
                report, score, screenshot, search, sensitivity, serve, shell,
                snapshot, ssvc, supplychain, timeline, vex)
 
@@ -71,7 +71,7 @@ def _open(path):
 def _context(data_dir="data", config_path=None):
     """Load the supplementary sources and scoring configuration once per run."""
     weights, bands, source = config.load(config_path)
-    return {"screening": supplychain.load(data_dir),
+    return {"data_dir": str(data_dir), "screening": supplychain.load(data_dir),
             "certificates": certification.load(data_dir),
             "weights": weights, "bands": bands, "config_source": source}
 
@@ -85,7 +85,7 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
     declared = dict(network_exposure=network_exposure, consequence=consequence,
                     interface=interface, assessment_type=assessment_type,
                     remediation=remediation, prerequisites=prerequisites)
-    snapshot = score.provenance_token(index.provenance(connection))
+    snapshot = identity.data_fingerprint(connection, context.get("data_dir", "data"))
     resolution = match.resolve(
         connection, vendor=vendor, product=product, order_number=order_number)
     findings = match.findings(connection, resolution, version=version)

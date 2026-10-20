@@ -47,7 +47,7 @@ VERDICT_RANK = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2,
 
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
-SCORING_VERSION = "RT4"
+SCORING_VERSION = "RT5"
 
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
@@ -603,7 +603,7 @@ def _cautions(third_party):
     return cautions
 
 
-def check_gates(findings, screening_gates=()):
+def check_gates(findings, screening_gates=(), assessment_type="purchase", remediation="unknown"):
     """Facts that end the assessment regardless of everything else.
 
     Screening gates arrive already decided, from the vendor name alone; this
@@ -614,22 +614,22 @@ def check_gates(findings, screening_gates=()):
     """
     gates = list(screening_gates)
 
-    # `not f.fixed` is the whole point of the name: a KEV CVE the vendor has
-    # already patched is not a purchase blocker, it is a reason to buy current
-    # firmware. Without this clause the gate printed "AVOID 99.2/100" over a
-    # product whose patch availability read 100/100, and 172 corpus products
-    # were disqualified for flaws their vendor had already fixed. The
-    # third-party twin in `_cautions` has always had the clause.
-    unpatched_kev = {f.cve for f in findings if f.in_kev and not f.fixed}
+    # A published patch is not proof that the selected firmware contains it.
+    # Version filtering already removes source-confirmed unaffected firmware;
+    # an explicit, non-contradicted installed-fix claim can also resolve U to 0.
+    # Network controls never remove a categorical firmware blocker.
+    applicable = [f for f in findings if exposure_model.applicability_bounds(
+        f, assessment_type, remediation).high > 0]
+    unpatched_kev = {f.cve for f in applicable if f.in_kev}
     if unpatched_kev:
         gates.append({
             "gate": "Known exploited vulnerability",
-            "detail": f"{len(unpatched_kev)} CVE(s) appear in CISA's KEV catalogue: "
+            "detail": f"{len(unpatched_kev)} CVE(s) have confirmed exploitation and are still affected or unresolved for this firmware: "
                       + ", ".join(sorted(unpatched_kev)[:5]),
             "source": "CISA Known Exploited Vulnerabilities catalogue",
         })
 
-    ransomware = {f.cve for f in findings if f.ransomware}
+    ransomware = {f.cve for f in applicable if f.ransomware}
     if ransomware:
         gates.append({
             "gate": "Ransomware-linked vulnerability",
@@ -641,7 +641,7 @@ def check_gates(findings, screening_gates=()):
     # Weighted scoring alone could not reach AVOID here: pillars the vendor does
     # well on offset the one that makes the product unbuyable. That is exactly
     # what a gate is for.
-    unfixable = [f for f in findings
+    unfixable = [f for f in applicable
                  if f.remediation == "none_available"
                  and (f.cvss or 0) >= 9.0
                  and ((f.epss or 0) >= 0.5 or f.in_kev)]
@@ -776,7 +776,7 @@ def assess(product_label, findings, advisories=(), weights=None,
     # the exact inversion this tool exists to prevent (found live: a product
     # with no findings and one vendor certificate rendered PREFER 85.0).
     risk_usable = [(spec, p) for spec, p in usable if spec.key != "certification"]
-    gates = check_gates(first, screening_gates)
+    gates = check_gates(first, screening_gates, assessment_type, remediation)
     cautions = _cautions(third)
 
     if not risk_usable:

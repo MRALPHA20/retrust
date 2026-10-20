@@ -16,6 +16,7 @@ resumes where it stopped.
 import gzip
 import io
 import ipaddress
+import http.client
 import json
 import shutil
 import socket
@@ -47,28 +48,69 @@ class StepFailed(Exception):
     """A setup step failed in a way the user can act on."""
 
 
-def _host_is_private(host):
-    """Does this hostname resolve to any address we must never fetch from?
-
-    An SSRF reaches a cloud metadata endpoint (169.254.169.254), the loopback,
-    or an internal 10./192.168. service by naming it in a URL. Resolution that
-    fails here returns False rather than blocking: the real connection would
-    resolve the same way and fail on its own, and a DNS hiccup must not turn a
-    legitimate fetch into an error.
-    """
+def _resolve_public(host, port=443):
+    """Resolve once and reject the whole answer if any address is non-public."""
     if not host:
-        return True
+        raise StepFailed('A download URL must name a public host.')
     try:
-        infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
-    except OSError:
-        return False
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM,
+                                   proto=socket.IPPROTO_TCP)
+    except OSError as error:
+        raise StepFailed(f'Could not resolve {host}; no connection was made. Retry when DNS is available.') from error
+    if not infos:
+        raise StepFailed(f'No public address found for {host}; refusing to connect.')
     for info in infos:
         address = ipaddress.ip_address(info[4][0])
-        if (address.is_private or address.is_loopback or address.is_link_local
-                or address.is_reserved or address.is_multicast
-                or address.is_unspecified):
-            return True
+        mapped = getattr(address, 'ipv4_mapped', None)
+        if (not address.is_global or address.is_multicast or address.is_reserved
+                or (mapped is not None and (not mapped.is_global or mapped.is_multicast))):
+            raise StepFailed(f'{host} resolves to a non-public address; refusing to connect.')
+    return infos
+
+
+def _host_is_private(host):
+    try:
+        _resolve_public(host)
+    except StepFailed:
+        return True
     return False
+
+
+def _public_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+    """Connect to a vetted sockaddr directly, with no second name lookup."""
+    infos = _resolve_public(*address)
+    last_error = None
+    for family, kind, proto, _, sockaddr in infos:
+        sock = socket.socket(family, kind, proto)
+        try:
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                sock.settimeout(timeout)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(sockaddr)
+            return sock
+        except OSError as error:
+            last_error = error
+            sock.close()
+    raise last_error or StepFailed('No public download address could be reached.')
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._create_connection = _public_connection
+
+    def connect(self):
+        # Proxy CONNECT would let a second machine resolve an unvetted target.
+        if self._tunnel_host:
+            raise StepFailed('Download proxies are not supported by the public-address guard.')
+        # The standard implementation keeps hostname/SNI and certificate checks.
+        super().connect()
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, request):
+        return self.do_open(_PinnedHTTPSConnection, request, context=self._context)
 
 
 def _require_public_https(url):
@@ -85,10 +127,13 @@ def _require_public_https(url):
     if parts.scheme != "https":
         raise StepFailed(f"{url} is not https; refusing to fetch over a channel "
                          "anyone on the path can rewrite")
-    if _host_is_private(parts.hostname or ""):
-        raise StepFailed(f"{url} resolves to a non-public address; refusing, "
-                         "this is how a feed URL becomes a request to an "
-                         "internal service or a cloud metadata endpoint")
+    if parts.username is not None or parts.password is not None:
+        raise StepFailed('Credentials in download URLs are not supported.')
+    try:
+        port = parts.port or 443
+    except ValueError as error:
+        raise StepFailed('The download URL has an invalid port.') from error
+    _resolve_public(parts.hostname or '', port)
     return url
 
 
@@ -109,14 +154,14 @@ class _VettedRedirect(urllib.request.HTTPRedirectHandler):
 
 
 # The one opener these fetches use: default handlers, but with redirects vetted.
-_OPENER = urllib.request.build_opener(_VettedRedirect)
+# Ignore environment proxies: they could resolve the target independently and
+# bypass the pinned address. TLS verification and hostname checking stay enabled.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                      _PinnedHTTPSHandler, _VettedRedirect)
 
 
 def _check_landed(response, url):
-    """Belt-and-suspenders: the opener vets every hop before connecting, so by
-    here the landed URL is already clean. This re-asserts it on the response in
-    case the fetch ever runs through a plain opener.
-    """
+    """Check the returned URL too; connection safety is enforced by the transport."""
     landed = getattr(response, "url", url)
     parts = urllib.parse.urlsplit(landed)
     if parts.scheme != "https":

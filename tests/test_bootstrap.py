@@ -11,6 +11,14 @@ import pytest
 from retrust import bootstrap
 
 
+@pytest.fixture(autouse=True)
+def fake_download_dns(monkeypatch):
+    """The opener is stubbed here; use a deterministic public DNS fixture too."""
+    import socket
+    monkeypatch.setattr(bootstrap, '_resolve_public', lambda host, port=443: [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, '', ('93.184.216.34', port))])
+
+
 # --- the step sequence -----------------------------------------------------
 
 def test_default_sequence_is_fetch_then_build_then_refresh():

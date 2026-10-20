@@ -178,6 +178,17 @@ def format_report(changes, previous_meta=None, current_weights=None):
         lines += ['THE SCORING MODEL CHANGED BETWEEN THESE TWO RUNS',
                   '  ' + ', '.join(f'{old} -> {new}' for old, new in models),
                   '  Score changes cannot be attributed to new vulnerability evidence alone.', '']
+    builds = sorted({(c.before.get('source_build'), c.after.get('source_build'))
+                     for c in changes if c.before.get('source_build')
+                     and c.after.get('source_build')
+                     and c.before['source_build'] != c.after['source_build']})
+    if builds:
+        lines += ['THE TOOL CODE CHANGED BETWEEN THESE TWO RUNS',
+                  '  ' + ', '.join(f'{old} -> {new}' for old, new in builds),
+                  '  Recheck policy changes before attributing the result to new data.', '']
+    elif any(c.after.get('source_build') and not c.before.get('source_build') for c in changes):
+        lines += ['THE OLDER RESULT HAS NO CODE FINGERPRINT',
+                  '  Code equivalence cannot be established from that result.', '']
     if drifted := weights_differ(previous_meta or {}, current_weights or {}):
         # Said before any finding, because otherwise every score below reads as
         # evidence about the corpus when some of it is evidence about the config.

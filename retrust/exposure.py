@@ -23,8 +23,8 @@ CONSEQUENCES = {
 # answer, because both mean the same thing for A: nothing stands in the way.
 # Splitting them left a buyer with no way to say a weakness needs nothing.
 PREREQUISITES = {
-    'satisfiable': ('Yes, or it needs nothing extra', 1.0),
-    'unsatisfiable': ('No, we checked and they could not', 0.0),
+    'satisfiable': ('Yes — or no extra conditions are needed', 1.0),
+    'unsatisfiable': ('No — a technical review confirmed they cannot', 0.0),
     'unknown': ('Not sure', None),
 }
 INTERFACES = {
@@ -247,7 +247,16 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     # "path_id or cve" alone would split one CVE into two units when a reviewer
     # tagged only some of its advisory records, and the same flaw would then
     # enter R twice as Z1 + 0.20 Z2.
-    reviewed = {f.cve: f.path_id for f in findings if getattr(f, 'path_id', None)}
+    assignments = {}
+    for f in findings:
+        if getattr(f, 'path_id', None):
+            assignments.setdefault(f.cve, set()).add(f.path_id)
+    conflicts = sorted(cve for cve, ids in assignments.items() if len(ids) > 1)
+    if conflicts:
+        raise ValueError('Conflicting reviewed attack-path labels for '
+                         + ', '.join(conflicts)
+                         + '. Assign one consistent path per CVE before assessing.')
+    reviewed = {cve: next(iter(ids)) for cve, ids in assignments.items()}
     for finding in findings:
         values = factors(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
         z = risk_bounds(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
@@ -280,8 +289,7 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     labels = {
         'T': 'Exploitation data is missing for these. Refresh the data sources'
              ' -- this is not something you can answer',
-        'A': 'Answer "Could anything reach it to attack it?" and "Would an'
-             ' attacker need anything else first?" -- ask whoever runs the network',
+        'A': 'Answer "Could anything reach it to attack it?" and "Could an attacker meet the conditions needed to exploit it?" -- ask whoever runs the network',
         'H': 'Answer "If it were attacked, what is the worst that could happen?"'
              ' -- ask operations or safety',
         'U': 'Answer "Is the firmware you are getting already fixed?" -- and give'
@@ -321,21 +329,29 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     # assertions SUPPORTING a high-exposure verdict, which reads backwards.
     inapplicable, prerequisites_applied = [], True
     if prerequisites == 'unsatisfiable':
-        unconditioned = sorted({f.cve for f in findings
-                                if demands_conditions(cvss.parse(f.vector)
-                                                      if f.vector else None) is not True})
-        conditioned = {f.cve for f in findings} - set(unconditioned)
+        conditions = [(f.cve, demands_conditions(cvss.parse(f.vector)
+                                                if f.vector else None))
+                      for f in findings]
+        unknown = {cve for cve, state in conditions if state is None}
+        conditioned = {cve for cve, state in conditions if state is True}
+        unconditioned = sorted({cve for cve, state in conditions if state is False}
+                               - unknown - conditioned)
         prerequisites_applied = bool(conditioned)
         if unconditioned:
             sample = ', '.join(unconditioned[:3])
-            more = f' and {len(unconditioned)-3} more' if len(unconditioned) > 3 else ''
             inapplicable.append(
-                f'{len(unconditioned)} of {len(groups)} weakness(es) need nothing'
-                f' extra to exploit ({sample}{more}), so "an attacker could not'
-                ' meet what it requires" does not apply to them and did not'
-                ' reduce their reachability'
-                + ('' if conditioned else
-                   '. That answer changed nothing in this assessment'))
+                f'{len(unconditioned)} weakness(es) need nothing extra to exploit '
+                f'({sample}), so the answer that extra conditions cannot be met '
+                'did not reduce their reachability')
+        if unknown:
+            sample = ', '.join(sorted(unknown)[:3])
+            inapplicable.append(
+                f'Attack requirements are unknown in some advisory evidence for '
+                f'{len(unknown)} weakness(es) ({sample}). Missing attack-vector '
+                'evidence cannot establish that no extra conditions are needed, '
+                'or that an attacker cannot meet them')
+        if not conditioned:
+            inapplicable[-1] += '. That answer changed nothing in this assessment'
 
     evidence = ['R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)',
                 f'{len(paths)} review unit(s) across {len(findings)} advisory finding(s); duplicate advisories count once per unit',

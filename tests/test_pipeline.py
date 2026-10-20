@@ -296,3 +296,25 @@ def test_a_snapshot_naming_a_path_is_refused(tmp_path):
     with pytest.raises(SystemExit, match="not a file a ReTrust snapshot"):
         snapshot.restore(str(bundle_path), data_dir=str(tmp_path / "data"))
     assert not (tmp_path / "escape.txt").exists()
+
+
+@pytest.mark.parametrize('interface', ['exposed', 'blocked'])
+def test_published_patch_cannot_clear_kev_for_selected_affected_firmware(db, interface):
+    from retrust import cli
+    # The original indexed fixture says <2.0 is affected; a published vendor
+    # patch must not change the selected version's known affectedness.
+    with db:
+        db.execute("UPDATE affected SET remediation='vendor_fix' WHERE cve='CVE-2026-0001'")
+    context = dict(screening={}, certificates={}, weights=score.DEFAULT_WEIGHTS,
+                   bands=score.BANDS, config_source='audit regression')
+    a, resolution, findings = cli._assess(
+        db, 'Testco', 'TestPLC 9000', '1.9', None, context=context,
+        network_exposure='it_ot', interface=interface, prerequisites='satisfiable',
+        consequence='recoverable', remediation='available')
+    assert resolution.resolved
+    assert any(f.cve == 'CVE-2026-0001' and f.fixed and f.decided for f in findings)
+    assert a.verdict == 'AVOID'
+    assert any(g['gate'] == 'Known exploited vulnerability' for g in a.gates)
+    b, _, remaining = cli._assess(db, 'Testco', 'TestPLC 9000', '2.5', None, context=context)
+    assert all(f.cve != 'CVE-2026-0001' for f in remaining)
+    assert not any(g['gate'] == 'Known exploited vulnerability' for g in b.gates)
