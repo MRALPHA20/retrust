@@ -162,9 +162,9 @@ def _footer_sources(provenance, weights, config_source):
         shown = ", ".join(f"{k} {v / total:.1%}" for k, v in weights.items())
         parts.append(f'<p>Weights ({_esc(config_source)}): {_esc(shown)}. '
                      'Change them in the config file and re-run; the sensitivity '
-                     'figures above show how much that would matter. Network access '
-                     'contributes to exposure safety. Parts without measurable evidence '
-                     'are excluded and the remaining weights are adjusted.</p>')
+                     'figures above show how much that would matter. Parts without '
+                     'measurable evidence are excluded and the remaining weights are '
+                     'adjusted.</p>')
     parts.append("</section>")
     return "".join(parts)
 
@@ -389,6 +389,12 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
 # reachability and credible OT consequence are established separately in RT4.
 FEEDS_EXPOSURE = {"Exploitation"}
 
+# Recorded and shown, but deliberately NOT a term: where the equipment sits
+# describes the deployment, it does not establish that an attacker can reach
+# the vulnerable service. Saying "not scored" here invited the obvious
+# question -- then where does reachability come from? -- so the row answers it.
+CONTEXT_ONLY = {"Network exposure"}
+
 
 def _pillar_table(assessment, weights):
     active_pillars = [p for p in assessment.pillars
@@ -416,6 +422,8 @@ def _pillar_table(assessment, weights):
             + (f'<td class="n">{weight}</td>' if weight
                else '<td class="n na">within exposure</td>'
                if pillar.name in FEEDS_EXPOSURE
+               else '<td class="n na">context only</td>'
+               if pillar.name in CONTEXT_ONLY
                else '<td class="n na">not scored</td>')
             + f'<td class="n">{pillar.coverage * 100:.0f}%</td>'
             f'<td><details class="evidence-details"><summary>Show supporting evidence</summary>'
@@ -424,8 +432,15 @@ def _pillar_table(assessment, weights):
                  'formula. Evidence available describes usable inputs, including operator statements; '
                  'it does not mean every fact has been independently verified. Rows marked '
                  '“within exposure” carry no weight of their own because they are inputs to '
-                 'the exposure score rather than separate terms -- a declared network exposure '
-                 'still changes the result. Evidence completeness is reported and never scored.</p>')
+                 'the exposure score rather than separate terms. “Context only” means the row '
+                 'is recorded and reported but is not a term in the formula: where the equipment '
+                 'sits does not by itself establish that an attacker can reach a weakness, so it '
+                 'never moves the score. Attack reachability is taken from each weakness&rsquo;s own '
+                 'CVSS attack vector and the conditions it demands, narrowed only by what you have '
+                 '<em>verified</em> &mdash; whether the affected service is reachable, and whether its '
+                 'required privileges, user interaction or attack conditions can be met. Those answers '
+                 'change the result; the network row does not. Evidence completeness is reported and '
+                 'never scored.</p>')
     return "".join(parts)
 
 

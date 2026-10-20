@@ -343,10 +343,19 @@ def test_invalid_response_setting_explains_how_to_recover(handler):
 
 
 def test_methodology_describes_current_network_and_scoring_rules(handler):
+    """The /about page must not claim network topology feeds the score.
+
+    It said "Network access contributes to exposure safety" while, five lines
+    below, the formula block correctly called topology context -- the page
+    contradicted itself, and the claim was false: isolated, IT-OT and direct
+    Internet all produce an identical range.
+    """
     _, _, body = _get(handler, '/about')
     assert 'exposure safety (60%)' in body
     assert 'available fixes (20%)' in body
-    assert 'does not add a separate score' in body
+    assert 'recorded as context and never moves the score' in body
+    assert 'CVSS attack vector' in body
+    assert 'Network access contributes' not in body
     assert 'Five evidence pillars' not in body
 
 

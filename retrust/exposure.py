@@ -117,6 +117,14 @@ def demands_conditions(vector):
     return False
 
 
+# The spec's step A1: read the flaw's own attack vector first, because it
+# decides WHICH question establishes reachability. "The affected service is
+# reachable" is an answer about the network; it cannot establish that an
+# attacker has the local execution or the physical contact that an AV:L or
+# AV:P flaw additionally requires.
+REMOTE_VECTORS = ('network', 'adjacent')
+
+
 def reach_bounds(finding, interface='unknown', network=None, prerequisites='unknown'):
     if interface not in INTERFACES or prerequisites not in PREREQUISITES:
         raise ValueError('Unknown reachability or prerequisite status')
@@ -126,7 +134,17 @@ def reach_bounds(finding, interface='unknown', network=None, prerequisites='unkn
     conditions = demands_conditions(vector)
     if conditions is True and prerequisites == 'unsatisfiable':
         return Bounds(0, 0)
-    if interface == 'exposed' and (conditions is False or prerequisites == 'satisfiable'):
+    # "The affected service is reachable" settles a NETWORK question, so on its
+    # own it resolves only a remotely-reachable flaw. A local or physical flaw
+    # additionally needs execution on the box or hands on the cabinet, and the
+    # network answer says nothing about either -- without that, an AV:P flaw
+    # would score exactly like an unauthenticated remote one. An explicit
+    # "the attacker can meet what this weakness requires" does cover that
+    # access, so it still resolves any vector.
+    remotely_reachable = vector is None or vector.attack_vector in REMOTE_VECTORS
+    if interface == 'exposed' and (
+            prerequisites == 'satisfiable'
+            or (conditions is False and remotely_reachable)):
         return Bounds(1, 1)
     return Bounds(0, 1)
 

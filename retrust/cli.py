@@ -1882,7 +1882,7 @@ def build_parser():
         worst case silently."""
         parser.add_argument("--network-exposure",
                             choices=list(score.NETWORK_EXPOSURES),
-                            help="main network context; unknown context requires verification")
+                            help="where the equipment sits; recorded as context and never scored, but an unanswered one still requires verification")
         parser.add_argument("--consequence",
                             choices=list(exposure.CONSEQUENCES),
                             help="what a compromise would cost this process: "

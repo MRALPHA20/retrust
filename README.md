@@ -18,8 +18,8 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.2–87.7/100 (provisional range)
-  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
+  VERIFY  ·  68.0–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
 
   Moxa EDS-405A
   VERIFY  ·  5.9–92.8/100 (provisional range)
@@ -111,9 +111,14 @@ retrust score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6
 
 You get a verdict, the pillar scores with the evidence behind each, and any
 hard gate that fired — never a bare number. Add `--consequence`,
-`--network-exposure`, `--interface` or `--remediation` to describe where the
-equipment will actually live. Network context and actual reachability are main
-assessment inputs. Unknown material inputs produce **VERIFY**, a provisional
+`--network-exposure`, `--interface`, `--prerequisites` or `--remediation` to
+describe where the equipment will actually live. Where it sits
+(`--network-exposure`) is recorded as context and never moves the score: a
+network zone does not establish that an attacker can reach a specific weakness.
+Attack reachability comes from each weakness's own CVSS attack vector and the
+conditions it demands, narrowed only by what you have verified — whether the
+affected service is reachable (`--interface`) and whether those conditions can
+be met (`--prerequisites`). Unknown material inputs produce **VERIFY**, a provisional
 score range and concrete checks for your technical team. RT4 uses the raw
 `T × A × H × U` model and `R = min(1, Z1 + .20 Z2 + .10 Z3)`; repeated advisory
 records for one CVE count once. See [the current scoring explanation](docs/explainers/scoring.html).

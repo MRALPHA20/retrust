@@ -24,8 +24,8 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.2–87.7/100 (provisional range)
-  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
+  VERIFY  ·  68.0–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
 
   Schneider Electric Modicon M340
   VERIFY  ·  6.0–69.9/100 (provisional range)
@@ -568,14 +568,14 @@ would buy.
 VERIFY candidates need technical checks; their ranges are provisional, not recommendations or proof that they are safer.
 
 CANDIDATE                                     VERDICT      SCORE  CVES  SHARED NAME
-Siemens SIMATIC ET 200S IM 151-8 PN/DP CPU (  VERIFY       53.7-95.7    12  SIMATIC
-Siemens SIMATIC ET 200S IM 151-8F PN/DP CPU   VERIFY       53.7-95.7    12  SIMATIC
-Siemens SIMATIC ET 200pro IM 154-8 PN/DP CPU  VERIFY       53.7-95.7    12  SIMATIC
-Siemens SIMATIC ET 200pro IM 154-8F PN/DP CP  VERIFY       53.7-95.7    12  SIMATIC
-Siemens SIMATIC ET 200pro IM 154-8FX PN/DP C  VERIFY       53.7-95.7    12  SIMATIC
-Siemens SIMATIC S7-300 CPU 314C-2 PN/DP (6ES  VERIFY       53.7-95.7    12  SIMATIC
-Siemens SIMATIC S7-300 CPU 315-2 PN/DP (6ES7  VERIFY       53.7-95.7    12  SIMATIC
-Siemens SIMATIC S7-300 CPU 315F-2 PN/DP (6ES  VERIFY       53.7-95.7    12  SIMATIC
+Siemens SIMATIC ET 200S IM 151-8 PN/DP CPU (  VERIFY       46.9-95.7    12  SIMATIC
+Siemens SIMATIC ET 200S IM 151-8F PN/DP CPU   VERIFY       46.9-95.7    12  SIMATIC
+Siemens SIMATIC ET 200pro IM 154-8 PN/DP CPU  VERIFY       46.9-95.7    12  SIMATIC
+Siemens SIMATIC ET 200pro IM 154-8F PN/DP CP  VERIFY       46.9-95.7    12  SIMATIC
+Siemens SIMATIC ET 200pro IM 154-8FX PN/DP C  VERIFY       46.9-95.7    12  SIMATIC
+Siemens SIMATIC S7-300 CPU 314C-2 PN/DP (6ES  VERIFY       46.9-95.7    12  SIMATIC
+Siemens SIMATIC S7-300 CPU 315-2 PN/DP (6ES7  VERIFY       46.9-95.7    12  SIMATIC
+Siemens SIMATIC S7-300 CPU 315F-2 PN/DP (6ES  VERIFY       46.9-95.7    12  SIMATIC
 ```
 
 **A product ReTrust could not assess is never suggested.** This is the inversion
@@ -613,7 +613,7 @@ WHAT BUYING THIS COMMITS YOU TO
 
 CVE                OUTCOME        EXPLOITATION    EPSS  CVSS
 CVE-2023-44487     out-of-cycle   active         1.000   7.5
-CVE-2023-4911      out-of-cycle   active         0.814   7.8
+CVE-2023-4911      out-of-cycle   active         0.638   7.8
 CVE-2024-6387      scheduled      none           0.995   8.1
 ```
 
@@ -627,7 +627,7 @@ filled them in would be misrepresenting the method rather than applying it.
 in CISA KEV is `active`. Everything else is `none`, because ReTrust has no feed
 of public proof-of-concept code and so can never reach SSVC's middle value. The
 report says so, and names the findings where it matters most: in the run above,
-eight sit at `none` with an EPSS above 0.5, topping out at 0.995. EPSS is a
+nine sit at `none` with an EPSS above 0.5, topping out at 0.995. EPSS is a
 model, not evidence of a public exploit, so it cannot move the tree, and those
 need checking by hand.
 
@@ -655,21 +655,21 @@ retrust lev --vendor "Schneider Electric" --product "Modicon M340"
 
 ```
   CVEs estimated                         48
-  expected already exploited           19.7   (sum of the probabilities)
+  expected already exploited           20.1   (sum of the probabilities)
   listed in CISA KEV                      0   (observed, not estimated)
 
 CVE                   LEV  EPSS NOW   PEAK  KEV SAMPLES  FIRST SCORED
-CVE-2018-7846       1.000     0.296  0.441    -      67  2021-04-14
-CVE-2015-7937       0.975     0.074  0.163    -      57  2022-02-08
-CVE-2018-7842       0.962     0.350  0.372    -      67  2021-04-14
+CVE-2018-7846       1.000     0.296  0.441    -      68  2021-04-14
+CVE-2015-7937       0.977     0.074  0.163    -      58  2022-02-08
+CVE-2018-7842       0.976     0.350  0.372    -      68  2021-04-14
 ```
 
 That gap is the whole point. This product has **nothing in KEV**, yet the
-expectation says 19.7 of its 48 estimated CVEs have probably been exploited
+expectation says 20.1 of its 48 estimated CVEs have probably been exploited
 already. CVE-2015-7937 scores an EPSS of 0.074 today, which no threshold
 would catch. It has been sitting at roughly that score every month since
 2022, and a flaw that is 7% likely every month for years on end is very
-likely by now: LEV puts it at 0.975.
+likely by now: LEV puts it at 0.977.
 
 **`--update` fetches about 107 MB**, one EPSS snapshot per thirty days back to
 2021-04-14, when FIRST published the first scores. Thirty days is not a tuning
@@ -690,25 +690,25 @@ Historical backtests from earlier models do not validate this revision.
 `retrust lev --audit`:
 
 ```
-  median LEV                       0.167
-  share reaching 0.1                56.9%
+  median LEV                       0.172
+  share reaching 0.1                57.4%
 
 BY HOW LONG EPSS HAS SCORED THEM
   band                      CVEs   median   >= 0.1
-  under a year             1,365    0.008     2.6%
-  one to three years       3,348    0.025    12.6%
-  three years or more      7,290    0.307    87.5%
+  under a year             1,282    0.009     2.4%
+  one to three years       3,363    0.027    12.8%
+  three years or more      7,400    0.316    87.2%
 
 AGAINST KEV   (the paper's own check: LEV should score KEV high)
-  median LEV, in KEV       1.000   (113 CVEs)
-  median LEV, not in KEV   0.162
+  median LEV, in KEV       1.000   (114 CVEs)
+  median LEV, not in KEV   0.168
 ```
 
 Two things fall out, and the tool prints both rather than only the flattering
-one. **LEV works**: CVEs in KEV have a median LEV of 1.000 against 0.162 for the
+one. **LEV works**: CVEs in KEV have a median LEV of 1.000 against 0.168 for the
 rest, a 6× separation, which is the paper's own validation and means LEV is not
-merely measuring age. **But it is cumulative**, so exposure dominates: 2.6% of
-CVEs under a year old clear 0.1, against 87.5% of those over three. A high LEV on
+merely measuring age. **But it is cumulative**, so exposure dominates: 2.4% of
+CVEs under a year old clear 0.1, against 87.2% of those over three. A high LEV on
 an old CVE is the expected case, not a finding.
 
 That is why a per-product count is printed with the corpus base rate beside it.
@@ -719,7 +719,7 @@ these (10%) ... fewer than usual". A count nobody can compare is not a finding.
 Three rules taken from the paper itself:
 
 - **The expected count is an expectation over a set**, not a claim about any one
-  CVE. "19.7 of these 48" does not name which.
+  CVE. "20.1 of these 48" does not name which.
 - **LEV never overrides KEV.** The composite probability takes the highest of
   KEV, LEV and current EPSS rather than averaging them: KEV is an observation
   and LEV is a model, and an average would let the model talk down something
@@ -747,7 +747,7 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   Siemens SIMATIC IPC477E Pro
-  VERIFY  ·  45.0–99.2/100 (provisional range)
+  VERIFY  ·  44.7–99.2/100 (provisional range)
   CVEs 14
 
   Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
@@ -834,8 +834,8 @@ of them:
   "generated_by": "retrust",
   "schema": 3,
   "weights":    { "exposure": 0.6, "patchability": 0.2, "vendor_practice": 0.15, "certification": 0.05 },
-  "provenance": [ { "source": "CISA KEV", "detail": "1,726 entries",
-                    "captured": "2026-10-01" } ],
+  "provenance": [ { "source": "CISA KEV", "detail": "1,748 entries",
+                    "captured": "2026-10-20" } ],
   "results": [ { "product": "Moxa EDS-405A", "verdict": "VERIFY",
                  "score": 5.9, "score_min": 5.9, "score_max": 92.8,
                  "provisional": true, "assertions": [], "gates": [], ... } ]
@@ -915,16 +915,34 @@ indices, not probabilities of a device being compromised.
 | Factor | Rule | Evidence needed |
 |---|---|---|
 | T: threat | Maximum available KEV, LEV and EPSS; confirmed exploitation is 1 | Source values and capture dates |
-| A: attack access | 1 for a feasible path; 0 for a verified block; unknown is [0,1] | Actual service/local/physical access plus prerequisites |
+| A: attack access | Read against the flaw's own CVSS attack vector: 1 for an established path; 0 for a verified block; unknown is [0,1] | That vector, plus whether the access it demands -- network, local or physical -- has actually been established |
 | H: operational harm | Safety 1; control .8; recoverable .5; minor .2; negligible 0 | Credible consequence of this specific weakness |
 | U: affected and unfixed | Affected/unpatched 1; verified fixed/not affected 0; unknown [0,1] | Selected firmware and fix evidence |
 
-**Network context is a main assessment input.** Select isolated, OT-only,
-IT–OT, remote vendor access, direct Internet, or unknown, then establish actual
-reachability. Topology alone never multiplies risk by an invented discount.
-An isolated PLC can still be reachable from a compromised OT workstation.
-The website displays these questions in the main assessment and comparison forms.
-ReTrust does not scan or independently verify the plant network.
+**A is read against the flaw's own attack vector.** Each weakness declares the
+access it needs, so the same answer does not settle every finding. A verified
+block -- `--interface blocked` -- is A=0 for any vector. A reachable affected
+service -- `--interface exposed` -- answers a question about the network, so on
+its own it settles A=1 only for a remotely reachable flaw, AV:N or AV:A. For
+AV:L or AV:P that answer establishes neither the local execution nor the hands
+on the cabinet the flaw additionally demands, so A stays [0,1] and a
+verification item asks for it. Otherwise a physical-contact flaw would resolve
+to fully reachable on a network answer alone, exactly like an unauthenticated
+remote one. An explicit `--prerequisites satisfiable` -- an attacker can meet
+what the weakness requires -- does cover local and physical access, so it
+settles any vector.
+
+**Network topology is recorded context only and never moves the score.** Select
+isolated, OT-only, IT–OT, remote vendor access, direct Internet, or unknown: the
+answer is kept with the assessment and shown in the record, and isolated, IT–OT
+and direct Internet all produce an identical range. Topology is not a discount,
+because an isolated PLC can still be reachable from a compromised OT
+workstation; reachability comes from each weakness's own attack vector and the
+conditions it demands, narrowed only by what the operator has verified. An
+unanswered topology question is still raised for verification, since the network
+owner is who the reachability question goes to. The website displays these
+questions in the main assessment and comparison forms. ReTrust does not scan or
+independently verify the plant network.
 
 CVSS prerequisites are checked per finding. A no-privilege, no-interaction flaw
 cannot be ruled out by declaring other prerequisites impossible. An unreadable
@@ -1001,9 +1019,9 @@ itself. An explicit `--fail-on` wins identically in both modes.
 | Input | Choices | Effect |
 |---|---|---|
 | `--assessment-type` | `purchase`, `installed` | Records the review context |
-| `--network-exposure` | `isolated`, `ot_only`, `it_ot`, `remote_vendor`, `internet_ot` | Main network context; unknown requires verification |
-| `--interface` | `exposed`, `blocked`, `unknown` | Verified feasible access or block, otherwise a range |
-| `--prerequisites` | `satisfiable`, `unsatisfiable`, `unknown` | Checks conditions recorded by each CVSS vector |
+| `--network-exposure` | `isolated`, `ot_only`, `it_ot`, `remote_vendor`, `internet_ot` | Recorded context only; never moves the score, and unknown still requires verification |
+| `--interface` | `exposed`, `blocked`, `unknown` | `blocked` is a verified block for any vector; `exposed` settles only an AV:N or AV:A flaw, otherwise a range |
+| `--prerequisites` | `satisfiable`, `unsatisfiable`, `unknown` | Checks conditions recorded by each CVSS vector; `satisfiable` also affirms local or physical access |
 | `--consequence` | `safety`, `control`, `recoverable`, `minor`, `negligible` | Credible OT harm; unknown produces a range |
 | `--remediation` | `affected`, `available`, `applied`, `not_affected`, `mitigated`, `planned`, `unknown` | Verified firmware applicability; protective controls do not patch it |
 
@@ -1039,8 +1057,11 @@ other optional field in the data.
 | Physical access only | 1.8% |
 
 The vector identifies the access type and required conditions. Actual feasible
-access is 1, a verified block is 0, and unresolved access is [0,1]. Physical
-access is not automatically a tenth of network access. The severity diagnostic
+access is 1, a verified block is 0, and unresolved access is [0,1]. The access
+type also decides which answer can settle A: a reachable service resolves a
+network or adjacent flaw, and nothing in the 1.8% that needs physical
+contact. Physical access is not automatically a tenth of network access; it is a
+different question, left open until somebody answers it. The severity diagnostic
 retains peak CVSS and critical share, without multiplying CVSS into OT harm.
 
 `retrust ssvc --automatable auto` derives SSVC's Automatable from the vectors and
@@ -1104,8 +1125,8 @@ how much to trust the verdict, not how safe the product is.
 
 CISA KEV records exploitation confirmed in the wild; FIRST's EPSS is an
 independent statistical model. On this corpus they agree sharply. OT CVEs
-listed in KEV have a median EPSS of **0.74** against **0.0076** for OT CVEs
-overall, roughly a 98× separation. Two independently built sources pointing the
+listed in KEV have a median EPSS of **0.72** against **0.0076** for OT CVEs
+overall, roughly a 94× separation. Two independently built sources pointing the
 same way is the empirical footing for the exploitation pillar.
 
 ## Resolution ladder
@@ -1194,10 +1215,10 @@ advisory.
 |---|---|---|
 | CISA ICS advisories (CSAF 2.0) | authoritative product→CVE mappings | `cisagov/CSAF` on GitHub |
 | CISA KEV | confirmed exploitation, ransomware linkage | JSON feed |
-| FIRST EPSS | exploitation probability, covers 99.70% of OT CVEs | daily CSV |
+| FIRST EPSS | exploitation probability, covers 99.75% of OT CVEs | daily CSV |
 | ISASecure | IEC 62443-4-1/4-2/3-3 certificates | scraped listings |
 | Common Criteria | Published certified products | official CSV |
-| Consolidated Screening List | 26,144 sanctioned/restricted entities | trade.gov CSV |
+| Consolidated Screening List | 26,159 sanctioned/restricted entities | trade.gov CSV |
 | FCC Covered List / NDAA §889 | named covered entities | curated, cited in-repo |
 
 Vendors that run their own CSAF feed (Siemens, Schneider, ABB, Hitachi Energy

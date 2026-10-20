@@ -217,3 +217,28 @@ def test_a_partially_reviewed_cve_still_forms_one_unit():
     assert len(result.paths) == 1
     assert result.paths[0]['grouping'] == 'reviewed path'
     assert sorted(result.paths[0]['advisories']) == ['A', 'B']
+
+
+@pytest.mark.parametrize('vector,resolves', [
+    ('CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H', True),
+    ('CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H', True),
+    ('CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H', False),
+    ('CVSS:3.1/AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H', False),
+])
+def test_a_reachable_service_settles_only_a_remote_flaw(vector, resolves):
+    """Step A1: the flaw's own attack vector decides which question settles A.
+
+    "The affected service is reachable" answers a NETWORK question. Before
+    this, A ignored the attack vector entirely, so an AV:P flaw needing hands
+    on the cabinet resolved to fully reachable on that answer alone, exactly
+    like an unauthenticated remote one.
+    """
+    f = flaw(vector=vector)
+    assert exposure.reach_bounds(f, 'exposed').values() == (
+        [1, 1] if resolves else [0, 1])
+    # An explicit affirmation of the requirements does cover local and
+    # physical access, so it still settles any vector.
+    assert exposure.reach_bounds(
+        f, 'exposed', prerequisites='satisfiable').values() == [1, 1]
+    # And a verified block is a block whatever the vector says.
+    assert exposure.reach_bounds(f, 'blocked').values() == [0, 0]

@@ -409,7 +409,7 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
                       helper='Include network, local and physical access where relevant. Select “blocked” only after a technical owner has checked every relevant path.')
             + _choice('prerequisites' + suffix, 'Can an attacker meet what the weakness requires?',
                       score.PREREQUISITES, prerequisites,
-                      helper='An attack may need an account, someone clicking a link, or a particular device state. Ask a technical owner to check these conditions for every weakness. Unknown is a valid answer.')
+                      helper='An attack may need an account, someone clicking a link, a particular device state, or physical access to the equipment. Ask a technical owner to check these conditions for every weakness, including any local or physical access the weakness needs. Unknown is a valid answer.')
             + _choice('assessment_type' + suffix, 'Are you buying or reviewing installed equipment?',
                       score.ASSESSMENT_TYPES, assessment_type,
                       helper='Buying it, or assessing one already installed.')
@@ -869,9 +869,12 @@ trigger AVOID. A blocker overrides the numerical score. Issues reported only in
 bundled software are flagged separately for technical review.</p></div></li>
 <li><span class="step-number">3</span><div><b>Combine four kinds of evidence</b>
 <p>The default score weighs exposure safety (60%), available fixes (20%), vendor
-security practices (15%) and certification evidence (5%). Network access contributes
-to exposure safety; it does not add a separate score. Missing evidence and operator
-assumptions are shown with the result.</p></div></li>
+security practices (15%) and certification evidence (5%). Where the equipment sits on
+the network is recorded as context and never moves the score: a network zone does not
+establish that an attacker can reach a particular weakness. Reachability is read from
+each weakness&rsquo;s own CVSS attack vector and the conditions it demands, narrowed only by
+what you have verified. Missing evidence and operator assumptions are shown with the
+result.</p></div></li>
 </ol></section>
 <details class="vector"><summary>Scoring formula and its limits</summary>
 <p><code>S = E^0.60 × P^0.20 × V^0.15 × C^0.05</code>, using scores from 1 to 100.

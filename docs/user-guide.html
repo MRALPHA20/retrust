@@ -88,7 +88,9 @@ ol.qs pre{margin:1.5mm 0 0;font-size:8.2pt;padding:2.5mm 3mm}
 </style>
 
 <div class="plate">
-  <h1>ReTrust</h1><p><b>RT4 update, 20 October 2026:</b> Network access is a main assessment input.
+  <h1>ReTrust</h1><p><b>RT4 update, 20 October 2026:</b> Attack reachability is read from each
+weakness's own CVSS attack vector and the conditions it demands; where the equipment sits on the
+network is recorded as context and never moves the score.
 Unknown reachability, OT consequences or firmware status produces VERIFY and a
 provisional range. The current formula is Z=T×A×H×U, R=min(1,Z1+.20Z2+.10Z3),
 E=100(1−R), S=E^.60×P^.20×V^.15×C^.05. Historical benchmark measurements below
@@ -164,7 +166,7 @@ reproducible and a demonstration never depends on the network.</p>
 <h2>2 &nbsp; How it works</h2>
 
 <figure>
-<svg viewBox="0 4 700 152" role="img" aria-label="Five stages: fetch sources, build index, resolve the request, score against evidence pillars and required network context and verified reachability with hard gates, print a verdict with its evidence" style="width:100%;height:auto;display:block">
+<svg viewBox="0 4 700 152" role="img" aria-label="Five stages: fetch sources, build index, resolve the request, score against evidence pillars, with reachability taken from each weakness's own CVSS attack vector and narrowed by verified answers, alongside hard gates, print a verdict with its evidence" style="width:100%;height:auto;display:block">
   <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
     <path d="M0 0 L8 4 L0 8 z" fill="currentColor"/></marker></defs>
   <g fill="none" stroke="currentColor" stroke-width="1.2">
@@ -189,7 +191,7 @@ reproducible and a demonstration never depends on the network.</p>
     <text x="12" y="70">CISA CSAF</text><text x="12" y="85">KEV, EPSS</text><text x="12" y="100">ISASecure, CSL</text>
     <text x="168" y="70">SQLite,</text><text x="168" y="85">keyed on order</text><text x="168" y="100">numbers</text>
     <text x="324" y="70">order no. &rarr;</text><text x="324" y="85">exact name &rarr;</text><text x="324" y="100">tokens &rarr; abstain</text>
-    <text x="480" y="46">evidence +</text><text x="480" y="61">network, weighted</text>
+    <text x="480" y="46">evidence pillars</text><text x="480" y="61">+ reachability</text>
     <text x="480" y="108">KEV, sanctions,</text><text x="480" y="123">covered list</text>
     <text x="636" y="70">verdict</text><text x="636" y="85">+ evidence</text>
   </g>
@@ -226,13 +228,32 @@ so abstention is a feature rather than a failure.</p>
     <tr><td>Patch availability</td><td class="n">0.20</td><td>a fix, a workaround, or nothing</td></tr>
     <tr><td>Vendor practice</td><td class="n">0.15</td><td>own CSAF feed, and advisory completeness</td></tr>
     <tr><td>Certification</td><td class="n">0.05</td><td>IEC 62443 (ISASecure) and Common Criteria</td></tr>
+    <tr><td>Network access</td><td class="n">context only</td><td>where the equipment sits &mdash; recorded and reported, never a term in the formula</td></tr>
   </tbody>
 </table>
 
 <p>The weighted result is reported as a band: <span class="v-prefer">PREFER</span>
 at 70 or above, <span class="v-caution">CONDITIONAL</span> at 40 or above,
-<span class="v-avoid">AVOID</span> below. If material network, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range; a product that cannot be resolved at all is NOT ASSESSED and gets no score. Network context is a main input; topology alone is not a discount.
+<span class="v-avoid">AVOID</span> below. If material reachability, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range; a product that cannot be resolved at all is NOT ASSESSED and gets no score.
 Weights and thresholds are yours to change &mdash; run <code>retrust config --init</code>.</p>
+
+<p><b>Network access &mdash; context only.</b> If where the equipment sits is not
+scored, where does attack reachability come from? From each weakness itself: its
+own CVSS attack vector and the conditions it demands &mdash; privileges, user
+interaction, attack requirements &mdash; narrowed only by what you have
+<i>verified</i>, namely whether the affected service is reachable
+(<code>--interface</code>) and whether those conditions can be met
+(<code>--prerequisites</code>). The network zone is still recorded and reported,
+because it frames the decision and belongs in the record, but a zone does not
+establish that an attacker can reach one specific weakness, so it never moves
+the number: score the same product as <code>isolated</code>,
+<code>it_ot</code> or <code>internet_ot</code> and the range comes back
+identical. A verified answer about the network does count, and only as far as
+the flaw allows: that the affected service is reachable settles reachability for
+a remote flaw (CVSS <span class="id">AV:N</span> or <span class="id">AV:A</span>),
+while one needing local execution or physical contact
+(<span class="id">AV:L</span>, <span class="id">AV:P</span>) still has to be
+asked about.</p>
 
 <div class="state">
   <b>Reported, but deliberately not scored</b>
@@ -264,9 +285,9 @@ connection.</p>
   [2/4] CISA Known Exploited Vulnerabilities ...
         1.8 MB
   [3/4] FIRST EPSS scores ...
-        11.5 MB
+        11.9 MB
   [4/4] Build the local index ...
-        3,937 advisories, 28,951 products, KEV 1,726, EPSS 12,031
+        3,937 advisories, 28,951 products, KEV 1,748, EPSS 12,031
 
 Ready.</pre>
 
@@ -360,12 +381,16 @@ answer and choose HTML, JSON or CSV then.</p>
 <p>The database holds 28,951 product entries under 814 vendor spellings, and
 scoring needs the spelling the advisory used.</p>
 
-<pre class="cmd">$ retrust search S7-1500</pre>
+<pre class="cmd">$ retrust search S7-1500 --limit 4</pre>
 <pre>4 products matching 'S7-1500', strongest match first:
 
+  Siemens / S7-1500 (when HTTPS active)
+    prefix        --                      1 advisory
   Siemens / SIMATIC S7-1500 Software Controller
     tokens        --                      20 advisories
-  Siemens / SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES75...
+  Siemens / SIMATIC S7-1500 CPU family (incl. related ET200 CPUs and SI...
+    tokens        --                      19 advisories
+  Siemens / SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
     tokens        6ES7518-4AX00-1AB0      16 advisories</pre>
 
 <p>Every hit says which test matched it: <code>exact</code>, <code>prefix</code>,
@@ -382,7 +407,7 @@ what you typed.</p>
 
   Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0) (firmware
   3.1.6)
-  VERIFY  ·  79.6–82.6/100 (provisional range)
+  VERIFY  ·  79.4–82.6/100 (provisional range)
   Matched by order_number (confidence 0.98) · 1 product(s) across 16
   advisories · 477 CVE(s)
 
@@ -413,8 +438,8 @@ what you typed.</p>
 <pre>  CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.2–87.7/100 (provisional range)
-  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.27
+  VERIFY  ·  68.0–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
 
   Schneider Electric Modicon M340
   VERIFY  ·  6.0–69.9/100 (provisional range)
@@ -576,6 +601,6 @@ against the cited source before acting on it.</p>
 
 <footer>
 ReTrust 0.1.0 &middot; Apache-2.0 &middot; No third-party runtime dependencies &middot;
-Figures measured against 3,937 CISA OT advisories captured 2026-09-28 &middot;
+Figures measured against 3,937 CISA OT advisories captured 2026-10-20 &middot;
 Run <code>retrust eval</code> to recompute them.
 </footer>
