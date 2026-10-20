@@ -19,16 +19,16 @@ $ retrust compare \
 
   ABB AC 800M
   PREFER  ·  70.1/100
-  CVEs 10  ·  ROBUST 76%
+  CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
   AVOID  ·  28.6/100
-  CVEs 942  ·  ROBUST gated
+  CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
   Known exploited vulnerability
 
   Moxa EDS-405A
   AVOID  ·  5.9/100
-  CVEs 10  ·  ROBUST 56%
+  CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
 
   Hikvision IP Camera
   AVOID  ·  no score

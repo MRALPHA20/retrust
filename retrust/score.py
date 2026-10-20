@@ -39,7 +39,7 @@ SCORING_VERSION = "RT3"
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
            interface="unknown", consequence=None, remediation="unknown",
-           snapshot=""):
+           snapshot="", prerequisites="unknown"):
     """A compact, reproducible record of the choices behind one score.
 
     Borrowed from CVSS: a result nobody can reproduce is an opinion. This
@@ -50,8 +50,9 @@ def vector(assessment_type="purchase", version=None, network_exposure=None,
     """
     parts = [SCORING_VERSION, f"AT:{assessment_type}"]
     for code, value in (("FW", version), ("NX", network_exposure),
-                        ("IF", interface), ("OC", consequence),
-                        ("RS", remediation), ("DS", snapshot)):
+                        ("IF", interface), ("PQ", prerequisites),
+                        ("OC", consequence), ("RS", remediation),
+                        ("DS", snapshot)):
         parts.append(f"{code}:{value if value else 'unset'}")
     return "/".join(parts)
 
@@ -109,6 +110,11 @@ class Assessment:
     consequence: str | None = None
     interface: str = "unknown"
     remediation: str = "unknown"
+    prerequisites: str = "unknown"
+    # The highest single z behind this score. Reported because R clips at 1:
+    # once three paths are severe enough every worse product reads E = 0, and
+    # this is what still separates them.
+    worst_risk: float | None = None
 
 
 def _exploitation(findings):
@@ -400,6 +406,7 @@ NETWORK_EXPOSURES = {
 CONSEQUENCES = exposure_model.CONSEQUENCES
 INTERFACES = exposure_model.INTERFACES
 REMEDIATIONS = exposure_model.REMEDIATIONS
+PREREQUISITES = exposure_model.PREREQUISITES
 ASSESSMENT_TYPES = exposure_model.ASSESSMENT_TYPES
 
 
@@ -418,21 +425,24 @@ def _network_exposure(value):
 
 
 def narrows(network_exposure=None, consequence=None, interface="unknown",
-            remediation="unknown"):
+            remediation="unknown", prerequisites="unknown"):
     """Did the operator supply anything that can narrow exposure?
 
     `assessment_type` is absent on purpose: it is recorded, never scored, so it
     cannot move a number and must not trip the clamp below.
     """
     return bool(network_exposure) or consequence is not None \
-        or interface != "unknown" or remediation != "unknown"
+        or interface != "unknown" or remediation != "unknown" \
+        or prerequisites != "unknown"
 
 
 def _exposure(findings, consequence=None, interface="unknown",
-              assessment_type="purchase", remediation="unknown", network=None):
+              assessment_type="purchase", remediation="unknown", network=None,
+              prerequisites="unknown"):
     """The E term: concentrated exposure, as a Pillar."""
     score, coverage, evidence = exposure_model.measure(
-        findings, consequence, interface, assessment_type, remediation, network)
+        findings, consequence, interface, assessment_type, remediation, network,
+        prerequisites)
     return Pillar("Exposure", score, coverage, evidence)
 
 
@@ -627,7 +637,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
            certificates=(), screening_gates=(), bands=None, vendor_key=None,
            network_exposure=None, consequence=None, interface="unknown",
            assessment_type="purchase", remediation="unknown", version=None,
-           snapshot=""):
+           snapshot="", prerequisites="unknown"):
     """Score a resolved product. Returns an Assessment.
 
     The last four arguments are facts only the asset owner has: what a
@@ -642,8 +652,9 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     declared = dict(
         network_exposure=network_exposure, assessment_type=assessment_type,
         consequence=consequence, interface=interface, remediation=remediation,
+        prerequisites=prerequisites,
         vector=vector(assessment_type, version, network_exposure, interface,
-                      consequence, remediation, snapshot))
+                      consequence, remediation, snapshot, prerequisites))
 
     # Findings from the vendor's own advisories against those arriving in
     # third-party component bundles. The bundles establish that a component
@@ -662,7 +673,7 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     for spec in PILLARS:
         if spec.key == "exposure":
             pillar = _exposure(base, consequence, interface, assessment_type,
-                               remediation, network_exposure)
+                               remediation, network_exposure, prerequisites)
         else:
             pillar = spec.measure(base, advisories, certificates, vendor_key)
         measured.append((spec, pillar))
@@ -755,7 +766,8 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
     # would need defending field by field, and "no unverified input can
     # promote a verdict" is a property a reviewer can check in one sentence.
     clamp_note = None
-    if narrows(network_exposure, consequence, interface, remediation):
+    if narrows(network_exposure, consequence, interface, remediation,
+               prerequisites):
         undeclared = [(spec, _exposure(base) if spec.key == "exposure" else pillar)
                       for spec, pillar in usable]
         earned = _composite(undeclared, weights)
@@ -859,5 +871,8 @@ def assess(product_label, findings, advisories=(), weights=None, today_year=2026
         third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
         undecided_count=len({f.cve for f in undecided}),
         confidence=round(confidence.coverage, 2),
+        worst_risk=exposure_model.worst(base, consequence, interface,
+                                        assessment_type, remediation,
+                                        network_exposure, prerequisites),
         notes=notes, **declared,
     )

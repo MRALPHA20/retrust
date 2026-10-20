@@ -25,24 +25,24 @@ $ retrust compare \
 
   ABB AC 800M
   PREFER  ·  70.1/100
-  CVEs 10  ·  ROBUST 76%
+  CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
   AVOID  ·  28.6/100
-  CVEs 942  ·  ROBUST gated
+  CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
   Known exploited vulnerability
 
   Schneider Electric Modicon M340
   AVOID  ·  6.0/100
-  CVEs 48  ·  ROBUST 51%
+  CVEs 48  ·  ROBUST 51%  ·  WORST FLAW 0.88
 
   Moxa EDS-405A
   AVOID  ·  5.9/100
-  CVEs 10  ·  ROBUST 56%
+  CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
 
   Rockwell ControlLogix
   AVOID  ·  5.9/100
-  CVEs 35  ·  ROBUST 51%
+  CVEs 35  ·  ROBUST 51%  ·  WORST FLAW 0.88
 
   Hikvision IP Camera
   AVOID  ·  no score
@@ -731,20 +731,20 @@ CANDIDATE COMPARISON ───────────────────�
 
 ABB AC 800M
 PREFER  ·  70.1/100
-CVEs 10  ·  ROBUST 76%
+CVEs 10  ·  ROBUST 76%  ·  WORST FLAW 0.27
 
 Siemens SIMATIC S7-1500 (firmware 3.1.6)
 AVOID  ·  28.6/100
-CVEs 942  ·  ROBUST gated
+CVEs 942  ·  ROBUST gated  ·  WORST FLAW 0.66
 Known exploited vulnerability
 
 Schneider Electric Modicon M340
 AVOID  ·  6.0/100
-CVEs 48  ·  ROBUST 51%
+CVEs 48  ·  ROBUST 51%  ·  WORST FLAW 0.88
 
 Moxa EDS-405A
 AVOID  ·  5.9/100
-CVEs 10  ·  ROBUST 56%
+CVEs 10  ·  ROBUST 56%  ·  WORST FLAW 0.86
 
 Hikvision IP Camera
 AVOID  ·  no score
@@ -878,6 +878,12 @@ already going to hear about.
 what a purchase decision least wants: a product with one catastrophic flaw and
 forty minor ones should not average out like forty-one middling ones.
 
+`compare` prints a **WORST FLAW** figure beside each score for the same reason
+the formula needs it: `R` clips at 1, so once three paths are severe enough
+every worse product reads `E = 0` and the band stops telling them apart. The
+worst single `z` — 0–1, higher is worse, the opposite direction to the score —
+keeps ranking after exposure has bottomed out.
+
 ```
 z  = T' × A × H × U          one number per vulnerability, 0–1, higher is worse
 T' = 0.40 + 0.60 T           threat amplifies; it never zeroes the rest
@@ -888,7 +894,7 @@ E  = 100 (1 − R)
 | Term | Reads | From |
 |---|---|---|
 | `T` threat | ransomware linkage, KEV, LEV, EPSS — the strongest of them | evidence; never asked |
-| `A` reachability | the CVSS attack vector, narrowed by deployment and by a *verified* interface block | evidence + operator |
+| `A` reachability | the CVSS attack vector, narrowed by deployment, by a *verified* interface block, and by ruling out the conditions the vector demands | evidence + operator |
 | `H` impact | the finding's own CVSS severity, scaled by the declared process consequence | evidence + operator |
 | `U` applicability | does it still apply to the firmware being bought or run | CSAF + operator |
 
@@ -915,6 +921,14 @@ clips at 1, so a product with three severe paths reaches exactly `E = 0` and
 stops being rankable against a worse one (5.7% of a 582-product sample lands
 there); and only three paths are counted, so three severe flaws and three
 hundred score alike.
+
+`A` also reads the conditions CVSS records beyond arriving at the service:
+Privileges Required, User Interaction, and v4's Attack Requirements. Those are
+three CVSS metrics, so `--prerequisites unsatisfiable` is one question answered
+against each finding's own vector rather than applied flatly. A `PR:N/UI:N`
+flaw asks nothing of an attacker and has no condition to rule out, so the
+answer cannot discount it — which matters, because those are the most
+dangerous findings and a flat discount would hit them hardest.
 
 **No operator declaration may promote a verdict.** Network exposure and
 interface reachability are the strongest inputs in the model and the only ones

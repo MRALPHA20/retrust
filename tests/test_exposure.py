@@ -9,7 +9,7 @@ unmeasured pillar.
 
 import pytest
 
-from retrust import exposure, score
+from retrust import cvss, exposure, score
 from retrust.match import Finding
 
 
@@ -236,3 +236,75 @@ def test_an_unfixable_credential_can_never_read_prefer():
                               certificates=[{"scheme": "IEC 62443-4-2",
                                              "matches_product": True}])
     assert assessment.verdict != "PREFER"
+
+
+# --- A: the exploitation conditions CVSS itself records ----------------------
+
+_NEEDS_NOTHING = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+_NEEDS_ACCOUNT = "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+_NEEDS_A_CLICK = "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H"
+_NEEDS_CONDITIONS = "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H"
+
+
+@pytest.mark.parametrize("vector", [_NEEDS_ACCOUNT, _NEEDS_A_CLICK,
+                                    _NEEDS_CONDITIONS])
+def test_ruling_out_the_conditions_narrows_a_flaw_that_has_them(vector):
+    """Privileges, user interaction and v4 attack requirements, read as one."""
+    finding = _finding(vector=vector)
+    assert exposure.reach(finding, prerequisites="unsatisfiable") < \
+        exposure.reach(finding)
+
+
+@pytest.mark.parametrize("vector", [_NEEDS_NOTHING, None])
+def test_a_flaw_that_demands_nothing_cannot_be_ruled_out(vector):
+    """The trap this avoids, and the reason the question is read per finding.
+
+    The operator answers once for the product, but an unauthenticated,
+    no-interaction flaw never had a condition to verify impossible. Applying
+    the answer flatly would discount exactly the findings that need no
+    conditions met -- the most dangerous ones -- on the strength of a claim
+    about different findings entirely.
+    """
+    finding = _finding(vector=vector)
+    assert exposure.reach(finding, prerequisites="unsatisfiable") == \
+        pytest.approx(exposure.reach(finding))
+
+
+def test_saying_the_conditions_are_satisfiable_changes_nothing():
+    """Confirming the worst case is already the assumption, so it cannot move."""
+    finding = _finding(vector=_NEEDS_ACCOUNT)
+    assert exposure.reach(finding, prerequisites="satisfiable") == \
+        pytest.approx(exposure.reach(finding, prerequisites="unknown"))
+
+
+def test_demands_conditions_reads_all_three_cvss_generations():
+    assert not exposure.demands_conditions(cvss.parse(_NEEDS_NOTHING))
+    assert exposure.demands_conditions(cvss.parse(_NEEDS_ACCOUNT))
+    assert exposure.demands_conditions(cvss.parse(_NEEDS_A_CLICK))
+    assert exposure.demands_conditions(cvss.parse(_NEEDS_CONDITIONS))
+    # v2 spells privileges "Au" and never asked about interaction at all.
+    assert exposure.demands_conditions(cvss.parse("AV:N/AC:L/Au:S/C:C/I:C/A:C"))
+    assert not exposure.demands_conditions(cvss.parse("AV:N/AC:L/Au:N/C:C/I:C/A:C"))
+    assert not exposure.demands_conditions(None)
+
+
+# --- the worst single flaw, reported because exposure clips ------------------
+
+def test_the_worst_flaw_still_separates_products_the_score_has_flattened():
+    """Three severe paths clip R at 1, so E = 0 for every product past that.
+
+    Moxa EDS-405A, Rockwell ControlLogix and Schneider M340 all clip, leaving
+    5.9/5.9/6.0 -- which is not a ranking. The highest single z keeps working
+    after exposure has bottomed out.
+    """
+    bad = [_finding(cve=f"CVE-2026-{i:04d}", cvss=9.8, in_kev=True,
+                    vector=_NEEDS_NOTHING) for i in range(3)]
+    worse = bad + [_finding(cve="CVE-2026-9999", cvss=10.0, ransomware=True,
+                            vector=_NEEDS_NOTHING)]
+    assert exposure.concentrate([exposure.risk(f) for f in bad]) == \
+        exposure.concentrate([exposure.risk(f) for f in worse]) == 1.0
+    assert exposure.worst(worse) > exposure.worst(bad)
+
+
+def test_the_worst_flaw_is_none_when_there_is_nothing_to_rank():
+    assert exposure.worst([]) is None

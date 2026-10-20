@@ -52,6 +52,7 @@ def _owner_inputs(args):
         interface=get("interface", "unknown") or "unknown",
         assessment_type=get("assessment_type", "purchase") or "purchase",
         remediation=get("remediation", "unknown") or "unknown",
+        prerequisites=get("prerequisites", "unknown") or "unknown",
     )
 
 
@@ -77,12 +78,13 @@ def _context(data_dir="data", config_path=None):
 
 def _assess(connection, vendor, product, version, order_number, label=None, context=None,
             network_exposure=None, consequence=None, interface="unknown",
-            assessment_type="purchase", remediation="unknown"):
+            assessment_type="purchase", remediation="unknown",
+            prerequisites="unknown"):
     """Resolve, collect findings, and score. Shared by `score` and `compare`."""
     context = context or _context()
     declared = dict(network_exposure=network_exposure, consequence=consequence,
                     interface=interface, assessment_type=assessment_type,
-                    remediation=remediation)
+                    remediation=remediation, prerequisites=prerequisites)
     snapshot = score.provenance_token(index.provenance(connection))
     resolution = match.resolve(
         connection, vendor=vendor, product=product, order_number=order_number)
@@ -381,6 +383,7 @@ def cmd_compare(args):
                 "cves": assessment.findings_count if assessment.score is not None else None,
                 "robust": "not sampled" if st is None else
                           "gated" if st.gated else f"{st.agreement:.0%}",
+                "worst": assessment.worst_risk,
             })
         print(console.candidates(displayed))
 
@@ -1188,11 +1191,12 @@ def cmd_serve(args):
         connection,
         lambda vendor, product, version=None, order_number=None,
                network_exposure=None, consequence=None, interface="unknown",
-               assessment_type="purchase", remediation="unknown": _assess(
+               assessment_type="purchase", remediation="unknown",
+               prerequisites="unknown": _assess(
             connection, vendor, product, version, order_number, context=context,
             network_exposure=network_exposure, consequence=consequence,
             interface=interface, assessment_type=assessment_type,
-            remediation=remediation),
+            remediation=remediation, prerequisites=prerequisites),
         context, dossier, index.stats(connection), index.provenance(connection),
         args.host, args.port)
 
@@ -1865,6 +1869,12 @@ def build_parser():
                             choices=list(exposure.REMEDIATIONS), default="unknown",
                             help="is the fix actually on the box? applied, "
                                  "mitigated, available, planned or unknown")
+        parser.add_argument("--prerequisites",
+                            choices=list(exposure.PREREQUISITES), default="unknown",
+                            help="can an attacker satisfy the privileges, user "
+                                 "interaction and attack conditions the CVSS "
+                                 "vector demands? satisfiable, unsatisfiable or "
+                                 "unknown")
 
     p = sub.add_parser("score", help="assess one product")
     _product_args(p)

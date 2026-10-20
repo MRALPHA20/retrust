@@ -73,6 +73,17 @@ CONSEQUENCES = {
     "negligible":  ("Negligible operational effect", 0.0),
 }
 
+# What the operator has established about the conditions the CVSS vector
+# itself demands before a flaw can be exploited. CVSS asks this across three
+# metrics -- Privileges Required, User Interaction and (v4) Attack
+# Requirements -- and a buyer answers them together or not at all, so they are
+# read as one question against whatever the vector happens to carry.
+PREREQUISITES = {
+    "satisfiable":   ("An attacker can satisfy them", 1.00),
+    "unsatisfiable": ("Verified impossible in this threat model", 0.10),
+    "unknown":       ("Not established", 1.00),
+}
+
 # What the operator has established about reaching the vulnerable interface.
 # This only ever narrows what the CVSS vector already claims -- saying
 # "blocked" cannot make a flaw more reachable than its own vector says.
@@ -185,17 +196,35 @@ def impact(finding, consequence=None):
     return severity * CONSEQUENCES[consequence][1]
 
 
-def reach(finding, interface="unknown", network=None):
+def demands_conditions(vector):
+    """Does this vector require anything of the attacker beyond arriving?
+
+    A PR:N/UI:N/AT:N flaw asks for nothing, so there is no condition for an
+    operator to rule out. The question is asked once for the product but
+    answered by each finding's own vector, exactly as CVSS scores it --
+    otherwise "we verified the prerequisites are unsatisfiable" would discount
+    an unauthenticated, no-interaction flaw that never had any.
+    """
+    if vector is None:
+        return False
+    return (vector.privileges not in (None, "none")
+            or vector.interaction not in (None, "none")
+            or vector.requirements == "present")
+
+
+def reach(finding, interface="unknown", network=None, prerequisites="unknown"):
     """A: what the flaw's own vector allows, narrowed by where it is deployed.
 
-    Both operator inputs can only narrow: the vector sets the ceiling, and a
+    Every operator input can only narrow: the vector sets the ceiling, and a
     buyer's claim about their plant never raises it.
     """
     vector = cvss.parse(finding.vector) if finding.vector else None
     base = VECTOR_REACH.get(vector.attack_vector, UNRATED_REACH) if vector \
         else UNRATED_REACH
+    conditions = PREREQUISITES.get(prerequisites, PREREQUISITES["unknown"])[1] \
+        if demands_conditions(vector) else 1.0
     return (base * INTERFACES.get(interface, INTERFACES["unknown"])[1]
-            * NETWORK_REACH.get(network, 1.0))
+            * NETWORK_REACH.get(network, 1.0) * conditions)
 
 
 def applicability(finding, assessment_type="purchase", remediation="unknown"):
@@ -211,12 +240,28 @@ def applicability(finding, assessment_type="purchase", remediation="unknown"):
 
 
 def risk(finding, consequence=None, interface="unknown",
-         assessment_type="purchase", remediation="unknown", network=None):
+         assessment_type="purchase", remediation="unknown", network=None,
+         prerequisites="unknown"):
     """z for one finding, 0-1, higher is worse."""
     amplified = THREAT_FLOOR + (1.0 - THREAT_FLOOR) * threat(finding)
-    return (amplified * reach(finding, interface, network)
+    return (amplified * reach(finding, interface, network, prerequisites)
             * impact(finding, consequence)
             * applicability(finding, assessment_type, remediation))
+
+
+def worst(findings, consequence=None, interface="unknown",
+          assessment_type="purchase", remediation="unknown", network=None,
+          prerequisites="unknown"):
+    """The single highest z, or None.
+
+    Reported beside the score because R clips at 1: once three paths are
+    severe enough, every worse product reads E = 0 and the band stops
+    separating them. The worst z keeps on ranking after exposure has
+    bottomed out.
+    """
+    risks = [risk(f, consequence, interface, assessment_type, remediation,
+                  network, prerequisites) for f in findings]
+    return max(risks) if risks else None
 
 
 def concentrate(risks):
@@ -233,7 +278,8 @@ def concentrate(risks):
 
 
 def measure(findings, consequence=None, interface="unknown",
-            assessment_type="purchase", remediation="unknown", network=None):
+            assessment_type="purchase", remediation="unknown", network=None,
+            prerequisites="unknown"):
     """The E term as (score, coverage, evidence).
 
     Coverage says how much of this rests on evidence rather than on a declared
@@ -244,7 +290,7 @@ def measure(findings, consequence=None, interface="unknown",
         return 100.0, 0.0, ["no advisory findings to measure"]
 
     risks = [risk(f, consequence, interface, assessment_type, remediation,
-                  network) for f in findings]
+                  network, prerequisites) for f in findings]
     worst = concentrate(risks)
     score = 100.0 * (1.0 - worst)
 
@@ -270,6 +316,13 @@ def measure(findings, consequence=None, interface="unknown",
         evidence.append(f"deployment: {network} (operator-reported, unverified)")
     if interface != "unknown":
         evidence.append(f"interface: {INTERFACES[interface][0]}")
+    if prerequisites != "unknown":
+        conditioned = sum(1 for f in findings
+                          if demands_conditions(cvss.parse(f.vector) if f.vector else None))
+        evidence.append(
+            f"exploitation prerequisites: {PREREQUISITES[prerequisites][0]}"
+            f" -- applies to {conditioned} of {len(findings)} finding(s) whose"
+            " vector demands privileges, interaction or attack conditions")
     if remediation != "unknown":
         evidence.append(f"remediation: {REMEDIATIONS[remediation][0]}")
     evidence.append(f"assessed as: {ASSESSMENT_TYPES.get(assessment_type, assessment_type)}")

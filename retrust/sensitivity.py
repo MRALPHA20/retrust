@@ -105,7 +105,8 @@ def _band(score, bands):
 def stability(findings, advisories=(), certificates=(), screening_gates=(),
               vendor_key=None, samples=500, seed=7, bands=None,
               network_exposure=None, consequence=None, interface="unknown",
-              assessment_type="purchase", remediation="unknown"):
+              assessment_type="purchase", remediation="unknown",
+              prerequisites="unknown"):
     """Score one product under many weightings and report the spread.
 
     The owner-supplied facts are held FIXED across the sampling. They are not
@@ -117,6 +118,7 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
     rng = random.Random(seed)
     declared = dict(network_exposure=network_exposure, consequence=consequence,
                     interface=interface, assessment_type=assessment_type,
+                    prerequisites=prerequisites,
                     remediation=remediation)
 
     # A gated product is AVOID whatever the weights say; sampling would only

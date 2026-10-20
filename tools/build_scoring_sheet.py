@@ -147,8 +147,8 @@ def story(m):
                       "can only reduce the assessed risk &#8212; saying nothing is already "
                       "the conservative reading.", S["Body"]),
             table([["Term", "Meaning", "Read from", "You may refine it with"],
-                   ["T", "Threat level", "CISA KEV, ransomware flag, FIRST EPSS", "&#8212; evidence only, never asked"],
-                   ["A", "Attack reachability", "the CVSS attack vector, present on 100% of 69,560 affected rows", "verified interface block; declared network exposure"],
+                   ["T", "Threat level", "CISA KEV, ransomware flag, NIST LEV, FIRST EPSS", "&#8212; evidence only, never asked"],
+                   ["A", "Attack reachability", "the CVSS attack vector, present on 100% of 69,560 affected rows", "verified interface block; declared network exposure; ruling out the privileges, interaction or attack conditions the vector demands"],
                    ["H", "OT operational impact", "the finding&#8217;s own CVSS severity", "declared process consequence"],
                    ["U", "Unresolved applicability", "CSAF remediation status", "fix verified applied, or a verified mitigation"]],
                   [15 * mm, 30 * mm, 60 * mm, 60 * mm])]

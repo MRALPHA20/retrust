@@ -65,7 +65,8 @@ def build_fingerprint():
 
 
 BUILD = build_fingerprint()
-CONTEXT_FIELDS = ('network_exposure', 'assessment_type', 'consequence', 'interface', 'remediation')
+CONTEXT_FIELDS = ('network_exposure', 'assessment_type', 'consequence', 'interface',
+                  'prerequisites', 'remediation')
 COMPARISON_FIELDS = batch.QUERY_FIELDS + CONTEXT_FIELDS
 
 MAX_CANDIDATES = 12
@@ -228,7 +229,8 @@ def _demo_page():
 # that differ from these are forwarded, so a caller that never asks about plant
 # context keeps the simpler call it always had.
 UNDECLARED = {"consequence": None, "interface": "unknown",
-              "assessment_type": "purchase", "remediation": "unknown"}
+              "assessment_type": "purchase", "remediation": "unknown",
+              "prerequisites": "unknown"}
 
 
 def _run_assessment(assess, vendor, product, version=None, order_number=None,
@@ -253,6 +255,7 @@ def _owner_from(params_first):
         interface=pick("interface", score.INTERFACES, "unknown"),
         assessment_type=pick("assessment_type", score.ASSESSMENT_TYPES, "purchase"),
         remediation=pick("remediation", score.REMEDIATIONS, "unknown"),
+        prerequisites=pick("prerequisites", score.PREREQUISITES, "unknown"),
     )
 
 
@@ -265,7 +268,8 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     form = _score_form(vendor, product, version, order_number, network_exposure,
                        owner.get("consequence"), owner.get("interface", "unknown"),
                        owner.get("assessment_type", "purchase"),
-                       owner.get("remediation", "unknown"))
+                       owner.get("remediation", "unknown"),
+                       prerequisites=owner.get("prerequisites", "unknown"))
     if not (vendor or product or order_number):
         notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
                   'or a vendor and product, before assessing.</p>' if submitted else '')
@@ -386,7 +390,8 @@ def _choice(name, label, table, chosen, blank=None, helper=''):
 
 
 def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
-                  assessment_type='purchase', remediation='unknown', suffix=''):
+                  assessment_type='purchase', remediation='unknown', suffix='',
+                  prerequisites='unknown'):
     """The facts only the asset owner has, each optional and each explained.
 
     ReTrust supplies the vulnerability intelligence; these describe the plant.
@@ -407,6 +412,9 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
             + _choice('interface' + suffix, 'Can an attacker reach the affected service?',
                       score.INTERFACES, interface,
                       helper='Choose “Not established” if unsure. A technical owner must verify a block for all in-scope findings before you select it.')
+            + _choice('prerequisites' + suffix, 'Can an attacker meet what the weakness requires?',
+                      score.PREREQUISITES, prerequisites,
+                      helper='Some weaknesses need more than network access: an account, a logged-in engineer tricked into clicking, or a particular machine state. CVSS records which. Choose “verified impossible” only where a technical owner has ruled those conditions out; it is ignored for weaknesses that require nothing.')
             + _choice('remediation' + suffix, 'Have the fixes or protective measures been verified?',
                       score.REMEDIATIONS, remediation,
                       helper='“Applied” or “verified” must cover all in-scope findings. A plan or an available download does not mean the equipment is fixed.')
@@ -415,7 +423,8 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
 
 def _score_form(vendor, product, version, order_number='', network_exposure=None,
                 consequence=None, interface='unknown',
-                assessment_type='purchase', remediation='unknown'):
+                assessment_type='purchase', remediation='unknown',
+                prerequisites='unknown'):
     using_model = ' open' if (vendor or product) and not order_number else ''
     return ('<form class="form-panel" method="get" action="/score">'
             '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number', order_number,
@@ -432,7 +441,8 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
             'Leave them unknown if unsure, then ask your technical team. '
             'ReTrust uses your answers; it does not inspect your network.</p>'
             + _owner_fields(network_exposure, consequence, interface,
-                            assessment_type, remediation)
+                            assessment_type, remediation,
+                            prerequisites=prerequisites)
             + '</details>'
             + '<button type="submit">Assess product →</button></form>')
 

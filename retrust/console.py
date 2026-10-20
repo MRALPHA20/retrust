@@ -142,6 +142,14 @@ def candidates(records):
             robust = record["robust"]
             shown = f"{robust:.0%}" if isinstance(robust, (int, float)) else robust
             details.append(f"ROBUST {shown}")
+        if record.get("worst") is not None:
+            # Exposure clips: once three paths are severe enough every worse
+            # product reads E = 0 and the score stops separating them. The
+            # worst single finding's z keeps ranking after that, so a reader
+            # comparing three products tied at the floor can still tell which
+            # one is worst. 0-1, higher is worse -- the opposite direction to
+            # the score, which is why it is labelled rather than bare.
+            details.append(f"WORST FLAW {record['worst']:.2f}")
         if details:
             lines.append(prose("  ·  ".join(details), style="label"))
         gates = record.get("gates") or []

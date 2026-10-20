@@ -174,7 +174,12 @@ def to_record(assessment, resolution, stability=None, query=None):
         "assessment_type": assessment.assessment_type,
         "consequence": assessment.consequence,
         "interface": assessment.interface,
+        "prerequisites": assessment.prerequisites,
         "remediation": assessment.remediation,
+        # The highest single z. Exposure clips at 0, so this is what still
+        # separates two products the score has flattened together.
+        "worst_flaw": None if assessment.worst_risk is None
+                      else round(assessment.worst_risk, 3),
         "vector": assessment.vector,
         "resolved_by": resolution.method if resolution.resolved else None,
         "match_confidence": resolution.confidence if resolution.resolved else None,
@@ -295,7 +300,8 @@ def dumps_csv(records, include_queries=False):
     columns = ["product", "verdict", "score", "cves", "undecided", "confidence",
                "robust", "resolved_by", "match_confidence", "gates", "reason",
                "assessment_type", "network_exposure", "consequence",
-               "interface", "remediation", "vector"]
+               "interface", "prerequisites", "remediation", "worst_flaw",
+               "vector"]
     columns += [f"pillar_{n.lower().replace(' ', '_')}" for n in pillar_names]
     if include_queries:
         columns += [f"query_{field}" for field in QUERY_FIELDS]
