@@ -46,8 +46,13 @@ def handler(db):
     from retrust import dossier, score
     from retrust.match import Resolution
 
-    def assess(vendor, product, version=None):
-        assessment = score.not_assessed(f"{vendor} {product}".strip(), "stub")
+    def assess(vendor, product, version=None, order_number=None, **owner):
+        # Mirrors what serve actually calls, including the order number and the
+        # site answers. The narrower signature this replaced raised TypeError
+        # -- a 500 -- for any order-number lookup, so no test here had ever
+        # exercised that path.
+        label = " ".join(filter(None, [vendor, product])) or (order_number or "")
+        assessment = score.not_assessed(label.strip(), "stub")
         return assessment, Resolution(query="q", abstained=True, reason="stub"), []
 
     return serve.build_handler(
@@ -742,3 +747,39 @@ def test_the_build_header_identifies_the_deployed_code():
     assert len(serve.BUILD) == 12 and serve.BUILD.isalnum()
     # Stable for identical source, and actually derived from it.
     assert serve.build_fingerprint() == serve.BUILD
+
+
+# --- a failed lookup must never be a dead end --------------------------------
+
+def test_a_product_name_in_the_order_number_box_offers_a_way_out(handler):
+    """Reported by a user: a product title pasted into the part-number field.
+
+    An order number is matched exactly and never by name, so the page answered
+    "not enough data to assess" with no suggestions and nowhere to go. It now
+    names the mistake and lists the product the text actually describes.
+    """
+    _, _, body = _get(handler, '/score?order_number=Testco+Electric+TestPLC+9000+Alpha')
+    assert 'NOT ASSESSED' in body
+    flat = " ".join(body.split())
+    assert 'looks like a product name rather than a manufacturer order number' in flat
+    assert 'Did you mean' in body
+    assert 'product=' in body, 'the suggestions must be clickable into a real lookup'
+
+
+def test_an_absent_order_number_explains_exact_matching(handler):
+    _, _, body = _get(handler, '/score?order_number=6ES7999-9ZZ99-9ZZ9')
+    flat = " ".join(body.split())
+    assert 'No advisory in this corpus names that order number' in flat
+    assert 'product name rather than' not in flat, 'a short code is not a name'
+
+
+def test_a_failed_lookup_always_says_something(handler):
+    """Whatever was typed, the page offers a next step rather than stopping."""
+    for query in ('order_number=Testco+Electric+TestPLC+9000+Alpha',
+                  'order_number=6ES7999-9ZZ99-9ZZ9',
+                  'vendor=Nope&product=Nothing',
+                  'vendor=Testco+Electric&product=Nonesuch+1'):
+        _, _, body = _get(handler, '/score?' + query)
+        flat = " ".join(body.split())
+        assert ('Did you mean' in flat or 'Nothing close was found' in flat
+                or 'No advisory in this corpus' in flat), query

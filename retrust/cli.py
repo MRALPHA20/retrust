@@ -342,6 +342,16 @@ def cmd_score(args):
 
     print(_render_one(assessment, resolution, findings))
 
+    # A failed lookup must never end in a full stop. The shell menu has always
+    # printed this; the command people actually run did not, so the commonest
+    # mistake -- a product name typed into the order-number box -- produced
+    # "not enough data to assess" and nowhere to go.
+    if not resolution.resolved:
+        print()
+        print(search.format_suggestions(search.suggest(
+            connection, vendor=args.vendor, product=args.product,
+            order_number=args.order_number)))
+
     if args.html:
         _write_html(args.html, report.render(
             [(assessment, resolution, findings)], title=assessment.product,
@@ -926,8 +936,9 @@ def _shell_actions(connection, context, args):
         print(_render_one(assessment, resolution, findings))
         if not resolution.resolved:
             print()
-            print(search.format_suggestions(
-                search.suggest(connection, vendor=vendor, product=product)))
+            print(search.format_suggestions(search.suggest(
+                connection, vendor=vendor, product=product,
+                order_number=order_number)))
             return None
         return shell.Result(
             kind="score", blocks=[(assessment, resolution, findings)],

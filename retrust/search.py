@@ -240,14 +240,36 @@ def order_numbers(connection, query, limit=20):
             for row in rows]
 
 
-def suggest(connection, vendor=None, product=None, limit=5):
-    """The closest real things in the corpus, for a resolution that failed."""
+# No order number in the corpus is longer than this, and exactly one of 9,674
+# has four or more words. Text past either bound is a product name somebody
+# typed into the part-number box -- the commonest way to reach a dead end,
+# because an order number is matched exactly and never by name.
+ORDER_NUMBER_MAX_CHARS = 40
+ORDER_NUMBER_MAX_WORDS = 4
+
+
+def looks_like_a_name(text):
+    """Is this text too long or too wordy to be a manufacturer part number?"""
+    text = (text or "").strip()
+    return bool(text) and (len(text) > ORDER_NUMBER_MAX_CHARS
+                           or len(text.split()) >= ORDER_NUMBER_MAX_WORDS)
+
+
+def suggest(connection, vendor=None, product=None, limit=5, order_number=None):
+    """The closest real things in the corpus, for a resolution that failed.
+
+    Every failed lookup gets a way forward. An order number that matched
+    nothing is searched again as a product name -- which costs one query and
+    rescues the case where someone pasted a product title into the part-number
+    box, where previously the tool answered "not enough data" and stopped.
+    """
     vendor_key = normalize_vendor(vendor or "")
     known = bool(vendor_key) and connection.execute(
         "SELECT 1 FROM product WHERE vendor_key = ? LIMIT 1",
         (vendor_key,)).fetchone() is not None
     found = {"vendor": vendor, "product": product, "vendor_known": known,
-             "vendors": [], "products": []}
+             "order_number": order_number, "vendors": [], "products": [],
+             "mistyped_order_number": False}
     # A vendor the corpus already knows is not what failed, so listing rival
     # manufacturers would answer a question nobody asked.
     if vendor and not known:
@@ -256,6 +278,10 @@ def suggest(connection, vendor=None, product=None, limit=5):
     if product:
         found["products"] = products(
             connection, product, vendor=vendor if known else None, limit=limit)
+    if order_number and not found["products"]:
+        # Read the unmatched order number as a name and search on that.
+        found["products"] = products(connection, order_number, limit=limit)
+        found["mistyped_order_number"] = looks_like_a_name(order_number)
     return found
 
 
@@ -356,15 +382,34 @@ def format_order_numbers(hits, query):
 
 
 def format_suggestions(suggestions):
-    """What scoring prints under NOT ASSESSED, from one suggest() call."""
+    """What scoring prints under NOT ASSESSED, from one suggest() call.
+
+    A failed lookup must never end in a full stop. Whatever was typed, this
+    says what did not resolve and what to try instead.
+    """
     vendor, product = suggestions["vendor"], suggestions["product"]
-    if not (asked := " / ".join(filter(None, [vendor, product]))):
-        return "Nothing to suggest: no vendor or product was given."
+    number = suggestions.get("order_number")
+    asked = " / ".join(filter(None, [vendor, product])) or number
+    if not asked:
+        return ("Nothing was given to look up. Enter a manufacturer order "
+                "number, or a vendor and product name.")
+
     blocks = [f"Nothing in the corpus resolved {asked!r}."]
+    if suggestions.get("mistyped_order_number"):
+        blocks.append(
+            "That looks like a product name rather than a manufacturer order\n"
+            "number. Order numbers are short codes such as 6ES7518-4AX00-1AB0\n"
+            "and are matched exactly. Try it as the product name instead.")
+    elif number and not (vendor or product):
+        blocks.append(
+            "Order numbers are matched exactly, so a missing one means this\n"
+            "corpus has no advisory naming it. Try the vendor and model name.")
+
     if vendor and not suggestions["vendor_known"]:
         blocks.append(format_vendors(suggestions["vendors"], vendor,
                                      lead="Closest vendors in the corpus:"))
-    if product:
-        blocks.append(format_products(suggestions["products"], product,
+    if product or suggestions["products"]:
+        blocks.append(format_products(suggestions["products"],
+                                      product or number,
                                       lead="Closest products in the corpus:"))
     return "\n\n".join(blocks)

@@ -298,13 +298,40 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
                  f' · <a href="/lev?{_esc(query)}">Check past exploitation estimates</a>'
                  f' · <a href="/ssvc?{_esc(query)}">Plan response priorities</a></p></section>')
     else:
-        suggestions = search.suggest(connection, vendor=vendor, product=product)
+        # Recovery for every way a lookup can fail, not just a bad model name.
+        # An order number is matched exactly, so one that found nothing used to
+        # end here with no suggestions at all -- and a product name pasted into
+        # that box is the commonest way to get here.
+        suggestions = search.suggest(connection, vendor=vendor, product=product,
+                                     order_number=order_number)
+        if suggestions['mistyped_order_number']:
+            body += ('<p class="notice" role="alert">That looks like a product '
+                     'name rather than a manufacturer order number. Order numbers '
+                     'are short codes such as <span class="id">6ES7518-4AX00-1AB0</span> '
+                     'and must match exactly. Pick the product below, or enter it '
+                     'under &ldquo;Use vendor and model instead&rdquo;.</p>')
+        elif order_number and not (vendor or product):
+            body += ('<p class="notice" role="alert">No advisory in this corpus '
+                     'names that order number. Check the digits, or search by '
+                     'vendor and model instead.</p>')
         rows = ''.join(
             f'<a class="hit" href="/score?vendor={urllib.parse.quote(h.vendor)}'
             f'&amp;product={urllib.parse.quote(h.name)}">{_esc(h.vendor)} / {_esc(h.name)}</a>'
             for h in suggestions['products'][:8])
         if rows:
             body += f'<h2>Did you mean</h2><div class="rows">{rows}</div>'
+        # A misspelled manufacturer never had a route back either.
+        vendor_rows = ''.join(
+            f'<a class="hit" href="/?q={urllib.parse.quote(h.vendor)}">'
+            f'{_esc(h.vendor)} <span class="meta">{h.products:,} product entries</span></a>'
+            for h in suggestions['vendors'][:5])
+        if vendor_rows:
+            body += (f'<h2>Did you mean this manufacturer?</h2>'
+                     f'<div class="rows">{vendor_rows}</div>')
+        if not rows and not vendor_rows:
+            body += ('<p class="helper">Nothing close was found. Try a shorter '
+                     'model name, the manufacturer on its own, or '
+                     '<a href="/">search the corpus</a>.</p>')
     return _page(f'Score: {assessment.product}', body)
 
 

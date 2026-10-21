@@ -421,3 +421,35 @@ def test_every_surface_ranks_through_one_table():
         "PREFER", "CONDITIONAL", "VERIFY", "AVOID", "NOT ASSESSED"]
     assert set(alternatives.RANK) <= set(score.VERDICT_RANK)
     assert set(diff.RANK) <= set(score.VERDICT_RANK)
+
+
+def test_score_offers_a_way_forward_when_nothing_resolves(workspace, capsys):
+    """A failed lookup must never end in a full stop.
+
+    The interactive shell had always printed suggestions; `retrust score` --
+    the command people actually run -- printed none, so the commonest mistake
+    (a product name typed into the order-number box) ended at "not enough data
+    to assess" with nowhere to go. Mutation-checked: removing the suggestion
+    call must fail this.
+    """
+    assert main(["score", "--order-number", "Testco Electric TestPLC 9000 Alpha",
+                 "--no-sensitivity"]) == 2
+    out = " ".join(capsys.readouterr().out.split())
+    assert "NOT ASSESSED" in out
+    assert "product name rather than a manufacturer order number" in out
+    assert "Closest products in the corpus" in out
+    assert "TestPLC 9000" in out
+
+
+def test_score_explains_an_order_number_that_simply_is_not_there(workspace, capsys):
+    assert main(["score", "--order-number", "TC-0000-ZZ", "--no-sensitivity"]) == 2
+    out = " ".join(capsys.readouterr().out.split())
+    assert "matched exactly" in out
+    assert "product name rather than" not in out, "a short code is not a name"
+
+
+def test_score_suggests_the_manufacturer_for_a_misspelled_vendor(workspace, capsys):
+    assert main(["score", "--vendor", "Testco Electrc", "--product", "TestPLC 9000",
+                 "--no-sensitivity"]) == 2
+    out = " ".join(capsys.readouterr().out.split())
+    assert "Testco Electric" in out

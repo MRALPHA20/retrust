@@ -308,8 +308,11 @@ def test_everything_survives_an_empty_index(empty):
     assert search.products(empty, "S7-1500") == []
     assert search.order_numbers(empty, "6ES7518") == []
     found = search.suggest(empty, vendor="Siemens", product="S7-1500")
-    assert found == {"vendor": "Siemens", "product": "S7-1500",
-                     "vendor_known": False, "vendors": [], "products": []}
+    # Checked by content, not by whole-dict equality: adding a key to the
+    # recovery payload is not a behaviour change, and should not fail here.
+    assert found["vendor"] == "Siemens" and found["product"] == "S7-1500"
+    assert not found["vendor_known"]
+    assert found["vendors"] == [] and found["products"] == []
     for text in (search.format_vendors([], "Siemens"),
                  search.format_products([], "S7-1500"),
                  search.format_order_numbers([], "6ES7518"),
@@ -349,8 +352,40 @@ def test_format_order_numbers_names_the_product_it_found(db):
 
 
 def test_format_suggestions_says_when_nothing_was_asked(db):
-    assert search.format_suggestions(search.suggest(db)) == \
-        "Nothing to suggest: no vendor or product was given."
+    text = search.format_suggestions(search.suggest(db))
+    assert "order number" in text and "vendor and product" in text
+
+
+def test_a_product_name_in_the_order_number_box_is_recovered(db):
+    """The commonest dead end: a product title pasted into the part-number box.
+
+    An order number is matched exactly and never by name, so this used to end
+    at "not enough data to assess" with nothing to try next.
+    """
+    found = search.suggest(db, order_number="Testco Electric TestPLC 9000 Alpha")
+    assert found["mistyped_order_number"], "long multi-word text is not a part number"
+    assert found["products"], "the name search should still find the product"
+    # Whitespace-normalised, so re-wrapping the paragraph is not a failure.
+    text = " ".join(search.format_suggestions(found).split())
+    assert "product name rather than a manufacturer order number" in text
+    assert "Closest products" in text
+
+
+def test_a_plausible_but_absent_order_number_is_not_called_a_name(db):
+    """Short codes are real part numbers; the advice must differ."""
+    found = search.suggest(db, order_number="6ES7999-9ZZ99-9ZZ9")
+    assert not found["mistyped_order_number"]
+    assert "matched exactly" in " ".join(search.format_suggestions(found).split())
+
+
+def test_order_number_length_bounds_match_the_corpus(db):
+    """Guards the thresholds: no real order number may be read as a name."""
+    assert not search.looks_like_a_name("6ES7518-4AX00-1AB0")
+    assert not search.looks_like_a_name("MLFB 6GK5613-0BA00-2AA3")
+    assert not search.looks_like_a_name("TC1210/TC1220/TC1300/TC1320")
+    assert search.looks_like_a_name(
+        "Moxa EDS-405A/EDS-408A series managed Ethernet switches")
+    assert not search.looks_like_a_name("")
 
 
 def test_advisory_count_is_singular_for_one(db):
