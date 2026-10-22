@@ -255,6 +255,83 @@ def looks_like_a_name(text):
                            or len(text.split()) >= ORDER_NUMBER_MAX_WORDS)
 
 
+def exact_product_title(connection, text, vendor_key=None):
+    """Recognise a pasted title without turning a fuzzy suggestion into fact.
+
+    Explore prints vendor plus product name, which can repeat the vendor when
+    it is already in the advisory title. Accept either exact spelling. Check
+    every possible suffix rather than a ranked shortlist, so another vendor's
+    identical title can never be hidden by the search result limit.
+    """
+    key = normalize_name(text)
+    if not key:
+        return None
+    # A genuine part number takes precedence, even if it is also a title.
+    if connection.execute("SELECT 1 FROM order_number WHERE number_key = ? LIMIT 1",
+                          (normalize_order_number(text),)).fetchone():
+        return None
+    scope = " AND vendor_key = ?" if vendor_key is not None else ""
+    parameters = (key, key, vendor_key) if vendor_key is not None else (key, key)
+    rows = connection.execute(
+        "SELECT DISTINCT vendor_key, name_key, vendor, name FROM product WHERE name_key != ''"
+        " AND (? = name_key OR ? LIKE '%' || name_key)" + scope, parameters).fetchall()
+    vendors_by_key, names_by_key = _labels(connection, rows)
+    exact = {}
+    for row in rows:
+        candidate_vendor, name_key = row['vendor_key'], row['name_key']
+        vendor = vendors_by_key.get((candidate_vendor,), '')
+        name = names_by_key.get((candidate_vendor, name_key), '')
+        # Accept the vendor spelling on any advisory, then return the usual
+        # corpus spelling. Rare aliases must not make a real title disappear.
+        titles = {normalize_name(row['name']),
+                  normalize_name(row['vendor'] + ' ' + row['name']),
+                  normalize_name(vendor + ' ' + name)}
+        if vendor and name and key in titles:
+            exact[candidate_vendor, name_key] = Hit('exact', vendor=vendor, name=name)
+    return next(iter(exact.values())) if len(exact) == 1 else None
+
+
+def split_product_query(connection, text):
+    """Read an explicitly named manufacturer followed by a model query.
+
+    Match a published vendor spelling at a word boundary. Prefer its longest
+    spelling and refuse ties across manufacturers; never infer a vendor from
+    a fuzzy search result.
+    """
+    text = ' '.join((text or '').split())
+    candidates = []
+    for row in connection.execute("SELECT DISTINCT vendor, vendor_key FROM product WHERE vendor != ''"):
+        vendor = ' '.join(row['vendor'].split())
+        if text.casefold().startswith(vendor.casefold() + ' '):
+            candidates.append((len(vendor), row['vendor_key'], row['vendor'], text[len(vendor):].strip()))
+    if not candidates:
+        return None
+    longest = max(item[0] for item in candidates)
+    candidates = [item for item in candidates if item[0] == longest]
+    if len({item[1] for item in candidates}) != 1:
+        return None
+    _, _, vendor, model = candidates[0]
+    return vendor, model
+
+
+def product_query(connection, text):
+    """Interpret a web product-or-part-number field without guessing identity."""
+    if connection.execute("SELECT 1 FROM order_number WHERE number_key = ? LIMIT 1",
+                          (normalize_order_number(text or ''),)).fetchone():
+        return None
+    exact = exact_product_title(connection, text)
+    if exact:
+        return exact
+    supplied = split_product_query(connection, text)
+    if supplied:
+        from .match import resolve
+        vendor, model = supplied
+        resolution = resolve(connection, vendor=vendor, product=model)
+        if resolution.resolved:
+            return Hit('vendor_model', vendor=vendor, name=model)
+    return None
+
+
 def suggest(connection, vendor=None, product=None, limit=5, order_number=None):
     """The closest real things in the corpus, for a resolution that failed.
 
@@ -280,7 +357,9 @@ def suggest(connection, vendor=None, product=None, limit=5, order_number=None):
             connection, product, vendor=vendor if known else None, limit=limit)
     if order_number and not found["products"]:
         # Read the unmatched order number as a name and search on that.
-        found["products"] = products(connection, order_number, limit=limit)
+        supplied = split_product_query(connection, order_number)
+        found["products"] = (products(connection, supplied[1], vendor=supplied[0], limit=limit)
+                             if supplied else products(connection, order_number, limit=limit))
         found["mistyped_order_number"] = looks_like_a_name(order_number)
     return found
 

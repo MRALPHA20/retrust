@@ -191,3 +191,38 @@ def test_the_table_is_not_empty_and_shows_exactly_the_cap():
     assert len(shown) == 10, f"expected the 10-row cap, rendered {len(shown)}"
     # the ten worst, nothing else
     assert shown == {f"CVE-2026-{i:04d}" for i in range(16, 26)}
+
+
+def test_assessment_only_collapses_the_four_additional_rows():
+    from html.parser import HTMLParser
+    class DisclosureParser(HTMLParser):
+        def __init__(self):
+            super().__init__(); self.stack = []; self.visible = []; self.extra = []; self.attrs = None; self.td = False; self.visible_rows = []; self.extra_rows = []
+        def handle_starttag(self, tag, attrs):
+            if tag == 'td': self.td = True
+            if tag == 'details':
+                attrs = dict(attrs)
+                is_more = attrs.get('class') == 'assessment-more-info'
+                self.stack.append(is_more)
+                if is_more: self.attrs = attrs
+        def handle_endtag(self, tag):
+            if tag == 'td': self.td = False
+            if tag == 'details': self.stack.pop()
+        def handle_data(self, data):
+            (self.extra if any(self.stack) else self.visible).append(data)
+            if self.td: (self.extra_rows if any(self.stack) else self.visible_rows).append(data.strip())
+    finding = Finding('CVE-2026-0001', 'A', 7.5, None, .039, False,
+                      False, '<2', True, 'vendor_fix')
+    assessment = score.assess('PLC', [finding], {'A'})
+    assessment.notes.append('A retained assessment note')
+    parser = DisclosureParser()
+    parser.feed(report._assessment_block(assessment, findings=[finding], weights=score.DEFAULT_WEIGHTS))
+    visible, extra = ' '.join(parser.visible), ' '.join(parser.extra)
+    assert parser.attrs is not None and 'open' not in parser.attrs
+    for label in ('Exposure safety', 'Available fixes', 'Vendor security practices', 'Certification evidence'):
+        assert label in parser.visible_rows and label not in parser.extra_rows
+    for label in ('Attack activity', 'Issue severity', 'Network access', 'Evidence completeness'):
+        assert label in parser.extra_rows and label not in parser.visible_rows
+    assert 'Influence is the weight' in extra
+    assert 'A retained assessment note' in visible and 'Vulnerabilities to review' in visible
+    assert 'Show more info' in extra

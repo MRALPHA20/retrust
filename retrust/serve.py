@@ -247,6 +247,14 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     if network_exposure not in score.NETWORK_EXPOSURES:
         network_exposure = None
     owner = owner or {}
+    recognised = None
+    # A full title copied from Explore is a product identifier, not a part
+    # number. Recognise an exact title or an explicitly named vendor/model;
+    # suggestions never become matches. Never override conflicting fields.
+    if order_number and not (vendor or product):
+        recognised = search.product_query(connection, order_number)
+        if recognised:
+            vendor, product, order_number = recognised.vendor, recognised.name, ""
     form = _score_form(vendor, product, version, order_number, network_exposure,
                        owner.get("consequence"), owner.get("interface", "unknown"),
                        owner.get("assessment_type", "purchase"),
@@ -266,6 +274,9 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         order_number=order_number, network_exposure=network_exposure or "",
         **{key: value or "" for key, value in owner.items()}))
     body = '<h1>Product assessment</h1>'
+    if recognised:
+        body += ('<p class="notice">Product name recognised. Assessing '
+                 + _esc(recognised.vendor) + ' / ' + _esc(recognised.name) + '.</p>')
     tools = (f'<details class="assessment-edit"><summary>{EDIT_PANEL}</summary>' + form + '</details>'
              '<details class="assessment-downloads"><summary>Save or share this assessment</summary>'
              '<p class="helper">Download a report to discuss with your supplier or purchasing team.</p>'
@@ -305,19 +316,23 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         suggestions = search.suggest(connection, vendor=vendor, product=product,
                                      order_number=order_number)
         if suggestions['mistyped_order_number']:
-            body += ('<p class="notice" role="alert">That looks like a product '
-                     'name rather than a manufacturer order number. Order numbers '
-                     'are short codes such as <span class="id">6ES7518-4AX00-1AB0</span> '
-                     'and must match exactly. Pick the product below, or enter it '
+            body += ('<p class="notice" role="alert">That product name could not '
+                     'be identified. Choose a matching product below, or refine it '
                      'under &ldquo;Use vendor and model instead&rdquo;.</p>')
         elif order_number and not (vendor or product):
             body += ('<p class="notice" role="alert">No advisory in this corpus '
                      'names that order number. Check the digits, or search by '
                      'vendor and model instead.</p>')
-        rows = ''.join(
-            f'<a class="hit" href="/score?vendor={urllib.parse.quote(h.vendor)}'
-            f'&amp;product={urllib.parse.quote(h.name)}">{_esc(h.vendor)} / {_esc(h.name)}</a>'
-            for h in suggestions['products'][:8])
+        def recovery_link(hit):
+            # Correct only the failed identity. Keep the owner's firmware and
+            # network answers so choosing a suggestion cannot reset the risk.
+            query = urllib.parse.urlencode(dict(
+                vendor=hit.vendor, product=hit.name, version=version or '',
+                network_exposure=network_exposure or '',
+                **{key: value or '' for key, value in owner.items()}))
+            return (f'<a class="hit" href="/score?{_esc(query)}">'
+                    f'{_esc(hit.vendor)} / {_esc(hit.name)}</a>')
+        rows = ''.join(recovery_link(h) for h in suggestions['products'][:8])
         if rows:
             body += f'<h2>Did you mean</h2><div class="rows">{rows}</div>'
         # A misspelled manufacturer never had a route back either.
@@ -413,7 +428,7 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
                       helper='Recorded with the result. It does not change the score.')
             + _choice('network_exposure' + suffix, 'Where will it sit?',
                       score.NETWORK_EXPOSURES, network_exposure,
-                      blank='Not sure — ask your technical team',
+                      blank='Unknown — ask your technical team',
                       helper='Recorded as context. Where it sits does not decide whether '
                              'a weakness can be reached, so it never moves the score — '
                              'the next two questions are the ones that do.')
@@ -421,18 +436,18 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
                       score.INTERFACES, interface,
                       helper='Another computer, a laptop plugged in, or someone standing '
                              'at the panel. Answer “no” only if someone has checked every '
-                             'route in. “Not sure” is a fine answer.')
+                             'route in. Choose “Unknown” if this has not been checked.')
             + _choice('prerequisites' + suffix, 'Could an attacker meet the conditions needed to exploit it?',
                       score.PREREQUISITES, prerequisites,
                       helper='Conditions can include a login, someone clicking a link, or '
                              'physical access. Choose “yes” if an attacker could meet them, '
                              'or if no extra conditions are needed. Choose “no” only after '
-                             'a technical review of every relevant weakness. Otherwise, choose “not sure”.')
+                             'a technical review of every relevant weakness. Otherwise, choose “Unknown”.')
             + _choice('consequence' + suffix, 'If it were attacked, what is the worst that could happen?',
-                      score.CONSEQUENCES, consequence, blank='Not sure — ask an engineer',
+                      score.CONSEQUENCES, consequence, blank='Unknown — ask an engineer',
                       helper='Ask operations or safety. Pick what is believable for these '
                              'specific weaknesses, not how important the equipment is. '
-                             '“Not sure” gives you a range instead of a single number.')
+                             '“Unknown” gives you a range instead of a single number.')
             + _choice('remediation' + suffix, 'Is the firmware you are getting already fixed?',
                       score.REMEDIATIONS, remediation,
                       helper='A fix being available is not the same as a fix being '
@@ -446,7 +461,7 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
                 prerequisites='unknown'):
     using_model = ' open' if (vendor or product) and not order_number else ''
     return ('<form class="form-panel" method="get" action="/score">'
-            '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number', order_number,
+            '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number or full product name', order_number,
                                                  'e.g. 6ES7518-4AX00-1AB0') + '</div>'
             f'<details class="form-options"{using_model}><summary>Use vendor and model instead</summary>'
             '<p class="helper">Use these if you do not have an order number. If both are entered, they must agree.</p>'

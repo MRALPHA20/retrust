@@ -309,3 +309,30 @@ def test_a_partly_applicable_answer_is_cited_and_qualified():
     assert any('prerequisite' in x for x in a.assertions)
     note = next(n for n in a.notes if 'need nothing extra' in n)
     assert 'CVE-2026-1000' in note and 'changed nothing' not in note
+
+
+def test_checklist_does_not_request_an_already_recorded_network_answer():
+    f = flaw(vector=None, decided=False)
+    result = exposure.analyse([f], network='it_ot', interface='exposed',
+                              prerequisites='unknown', consequence='safety', remediation='affected')
+    text = ' '.join(result.missing)
+    assert 'Could an attacker meet' in text
+    assert 'Could anything reach' not in text
+
+
+def test_checklist_explains_why_a_firmware_claim_still_needs_a_version():
+    f = flaw(decided=False, version_supplied=False)
+    result = exposure.analyse([f], network='it_ot', interface='exposed',
+                              prerequisites='satisfiable', consequence='safety', remediation='not_affected')
+    text = ' '.join(result.missing)
+    assert 'exact firmware version' in text and 'recorded' in text
+    assert 'Answer "Is the firmware' not in text
+
+
+def test_checklist_respects_finding_specific_answers():
+    f = flaw(vector=None, decided=False)
+    f.review = {'interface': 'exposed'}
+    result = exposure.analyse([f], network='it_ot', interface='unknown',
+                              prerequisites='unknown', consequence='safety', remediation='affected')
+    text = ' '.join(result.missing)
+    assert 'Could an attacker meet' in text and 'Could anything reach' not in text

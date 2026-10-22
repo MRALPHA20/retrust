@@ -374,7 +374,7 @@ def test_unassessable_product_still_says_so():
     resolution = Resolution(query="x", abstained=True, reason="vendor not in corpus")
     markup = report.render([(assessment, resolution, [])],
                            weights=score.DEFAULT_WEIGHTS)
-    assert "not enough data" in markup
+    assert "product not identified" in markup
     assert "Not assessed." in markup
 
 

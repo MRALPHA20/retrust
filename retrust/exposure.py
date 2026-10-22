@@ -25,12 +25,12 @@ CONSEQUENCES = {
 PREREQUISITES = {
     'satisfiable': ('Yes — or no extra conditions are needed', 1.0),
     'unsatisfiable': ('No — a technical review confirmed they cannot', 0.0),
-    'unknown': ('Not sure', None),
+    'unknown': ('Unknown', None),
 }
 INTERFACES = {
     'exposed': ('Yes, something could reach it', 1.0),
     'blocked': ('No, we checked every route and blocked them', 0.0),
-    'unknown': ('Not sure', None),
+    'unknown': ('Unknown', None),
 }
 REMEDIATIONS = {
     'affected': ('Affected, and not fixed', 1.0),
@@ -39,7 +39,7 @@ REMEDIATIONS = {
     'mitigated': ('We added a protection, but have not checked it covers this', None),
     'available': ('A fix exists, but we have not installed it', 1.0),
     'planned': ('We plan to fix it, but have not yet', None),
-    'unknown': ('Not sure, or still checking', None),
+    'unknown': ('Unknown', None),
 }
 ASSESSMENT_TYPES = {'purchase': 'Buying it', 'installed': 'Already installed'}
 CONCENTRATION = (1.0, .20, .10)
@@ -306,10 +306,32 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
                 f'for {sample}{more}, which contradicts "{REMEDIATIONS[remediation][0]}". '
                 'Re-check the version, or ask the vendor to confirm the fix in writing')
     for name, cves in unresolved.items():
-        if cves:
-            sample = ', '.join(sorted(cves)[:3])
-            more = f' and {len(cves)-3} more' if len(cves) > 3 else ''
-            missing.add(f'{labels[name]} ({sample}{more})')
+        requests = {}
+        for finding in findings:
+            if finding.cve not in cves:
+                continue
+            review = getattr(finding, 'review', {}) or {}
+            message = labels[name]
+            if name == 'A':
+                questions = []
+                if review.get('interface', interface) == 'unknown':
+                    questions.append('"Could anything reach it to attack it?"')
+                if review.get('prerequisites', prerequisites) == 'unknown':
+                    questions.append('"Could an attacker meet the conditions needed to exploit it?"')
+                message = ('Answer ' + ' and '.join(questions) + ' -- ask whoever runs the network'
+                           if questions else
+                           'Review the attack requirements in the advisory; the supplied answers '
+                           'do not settle reachability for these weaknesses')
+            if name == 'U' and review.get('remediation', remediation) in ('applied', 'not_affected'):
+                message = (
+                    'Give the exact firmware version to check the recorded fixed or unaffected claim'
+                    if not finding.version_supplied else
+                    'Resolve the conflict between the recorded firmware claim and the published affected range')
+            requests.setdefault(message, set()).add(finding.cve)
+        for message, affected in requests.items():
+            sample = ', '.join(sorted(affected)[:3])
+            more = f' and {len(affected)-3} more' if len(affected) > 3 else ''
+            missing.add(f'{message} ({sample}{more})')
     if network is None:
         missing.add('Answer "Where will it sit?" -- recorded as context, and'
                     ' needed before a verdict is given')

@@ -72,6 +72,8 @@ summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .verdict .n{color:var(--soft);font-size:.95rem}
 .verdict .review-required{flex-basis:100%;font:600 .95rem/1.5 var(--sans);color:var(--cond)}
 .score-scope{max-width:75ch;margin:.8rem 0 1.2rem}
+.assessment-more-info{margin:1rem 0}
+.assessment-more-info>summary{cursor:pointer;font-weight:600}
 .coverage{margin:1rem 0}.coverage summary{cursor:pointer;font-weight:600}
 .coverage p{max-width:75ch}
 .gate{border:1px solid var(--rule);border-left:3px solid var(--avoid);
@@ -335,6 +337,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         # for the second is wrong -- the tool decided, and the reason is the
         # gate shown below.
         reason = ("disqualified below" if assessment.gates
+                  else "product not identified" if resolution is not None and not resolution.resolved
+                  else "no applicable risk evidence" if resolution is not None and resolution.resolved
                   else "not enough data to assess")
         summary = f'<span class="s">no score</span><span class="n">{reason}</span>'
     else:
@@ -355,7 +359,16 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         summary += '<span class="review-required">Supplier verification required before purchase</span>'
     parts.append(f'<div class="verdict"><span class="v">'
                  f'{_esc(assessment.verdict)}</span>{summary}</div>')
-    parts.append(f'<p class="result-help">{_esc(VERDICT_HELP.get(assessment.verdict, "Review the evidence below."))}</p>')
+    explanation = VERDICT_HELP.get(assessment.verdict, "Review the evidence below.")
+    if assessment.verdict == "NOT ASSESSED" and resolution is not None:
+        explanation = (
+            "The product was identified, but there is no usable vulnerability evidence to score "
+            "for this assessment. Your answers are recorded. Review the firmware and supporting "
+            "security notices; network answers alone cannot establish a cybersecurity score."
+            if resolution.resolved else
+            "Your answers are recorded, but the product has not been identified in the advisory data. "
+            "Choose a matching product below, or correct the manufacturer order number, vendor or model.")
+    parts.append(f'<p class="result-help">{_esc(explanation)}</p>')
     if assessment.score is not None:
         parts.append('<p class="tnote">Higher scores are more favourable under the chosen settings. '
                      'The score is not a percentage chance that the equipment is secure.</p>')
@@ -462,7 +475,10 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                      'or a guarantee that the equipment is secure.' + scope + '</p></details>')
 
     if assessment.pillars:
-        parts.append(_pillar_table(assessment, weights, hint))
+        parts.append(_pillar_table(assessment, weights, hint, section="scored"))
+        parts.append('<details class="assessment-more-info"><summary>Show more info</summary>'
+                     + _pillar_table(assessment, weights, hint, section="additional")
+                     + '</details>')
 
     for note in assessment.notes:
         parts.append(f'<div class="note">{_ids(_esc(note))}</div>')
@@ -498,7 +514,7 @@ FEEDS_EXPOSURE = {"Exploitation"}
 CONTEXT_ONLY = {"Network exposure"}
 
 
-def _pillar_table(assessment, weights, hint=True):
+def _pillar_table(assessment, weights, hint=True, section=None):
     active_pillars = [p for p in assessment.pillars
                       if p.name != "Evidence quality" and p.scored]
     parts = ['<div class="tw" tabindex="0" role="region" aria-label="Pillar evidence, scroll horizontally for more columns">'
@@ -507,6 +523,11 @@ def _pillar_table(assessment, weights, hint=True):
              '<th style="width:18%">&nbsp;</th><th class="n">Influence</th><th class="n">Evidence available</th>'
              '<th>Evidence</th></tr></thead><tbody>']
     for pillar in assessment.pillars:
+        is_main = pillar.name in PILLAR_KEYS
+        if section == "scored" and not is_main:
+            continue
+        if section == "additional" and is_main:
+            continue
         evidence = "".join(f"<li>{_labels(_esc(e))}</li>" for e in pillar.evidence)
         share = (_weight_share(pillar.name, weights, active_pillars)
                  if pillar.scored else None)
@@ -530,7 +551,10 @@ def _pillar_table(assessment, weights, hint=True):
             + f'<td class="n">{pillar.coverage * 100:.0f}%</td>'
             f'<td><details class="evidence-details"><summary>Show supporting evidence</summary>'
             f'<ul class="ev">{evidence}</ul></details></td></tr>')
-    parts.append('</tbody></table></div><p class="tnote">Influence is the weight used in the '
+    parts.append('</tbody></table></div>')
+    if section == 'scored':
+        return ''.join(parts)
+    parts.append('<p class="tnote">Influence is the weight used in the '
                  'formula. Evidence available describes usable inputs, including operator statements; '
                  'it does not mean every fact has been independently verified. Rows marked '
                  '“within exposure” carry no weight of their own because they are inputs to '

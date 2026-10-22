@@ -257,6 +257,19 @@ def resolve(connection, vendor=None, product=None, order_number=None):
             result.method, result.confidence = "token_subset", CONFIDENCE["token_subset"]
             return result
 
+    # A title copied from Explore may include the vendor, even though it is
+    # also supplied in its own field. Recover only an exact title within this
+    # vendor; a typo or a different manufacturer's title cannot be accepted.
+    from .search import exact_product_title, split_product_query
+    title = exact_product_title(connection, product, vendor_key=vendor_key)
+    supplied = ((title.vendor, title.name) if title else
+                split_product_query(connection, product))
+    if (supplied and normalize_vendor(supplied[0]) == vendor_key
+            and normalize_name(supplied[1]) != name_key):
+        recovered = resolve(connection, vendor=supplied[0], product=supplied[1])
+        recovered.query = query
+        return recovered
+
     result.abstained = True
     result.reason = f"no product of {vendor!r} matched {product!r}"
     return result

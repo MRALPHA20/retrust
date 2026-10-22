@@ -417,3 +417,66 @@ def test_a_clipped_name_is_visibly_clipped(db):
     """A truncated name read as a whole one would be a wrong answer."""
     hit = search.Hit("exact", vendor="V" * 40, name="N" * 80)
     assert "..." in search.format_products([hit], "n")
+
+
+def test_pasted_product_titles_require_an_exact_unique_identity(db):
+    hit = search.exact_product_title(db, 'Testco Electric TestPLC 9000 (TC-9000-A1)')
+    assert hit and hit.vendor == 'Testco Electric'
+    assert hit.name == 'TestPLC 9000 (TC-9000-A1)'
+    assert search.exact_product_title(db, 'Widgetron 500') is None  # two vendors
+    assert search.exact_product_title(db, 'Testco Electric TestPLC 9000 Alpha') is None
+    assert search.exact_product_title(db, '<script>alert(1)</script>') is None
+    assert search.exact_product_title(db, '%') is None
+
+
+def test_pasted_title_accepts_vendor_repeated_in_advisory_name(db):
+    name = 'Moxa EDS-405A/EDS-408A series managed Ethernet switches'
+    db.execute('INSERT INTO product(advisory_id,product_id,vendor,vendor_key,name,name_key) '
+               'VALUES(?,?,?,?,?,?)', ('MOXA', 'M1', 'Moxa', 'moxa', name, index.normalize_name(name)))
+    hit = search.exact_product_title(db, 'Moxa ' + name)
+    assert hit and hit.vendor == 'Moxa' and hit.name == name
+    assert search.exact_product_title(db, name).name == name
+
+
+def test_real_order_number_takes_priority_over_a_title(db):
+    name = 'TC-9000-A1'
+    db.execute('INSERT INTO product(advisory_id,product_id,vendor,vendor_key,name,name_key) '
+               'VALUES(?,?,?,?,?,?)', ('OTHER', 'O1', 'Other', 'other', name, index.normalize_name(name)))
+    assert search.exact_product_title(db, name) is None
+
+
+def test_exact_titles_accept_the_vendor_spelling_used_by_an_advisory(db):
+    hit = search.exact_product_title(db, 'Testco Legacy Unit 1')
+    assert hit and hit.name == 'Legacy Unit 1' and hit.vendor == 'Testco Electric'
+
+
+def test_vendor_prefixed_model_works_without_crossing_vendors(db):
+    from retrust import match
+    resolution = match.resolve(db, vendor='Siemens', product='Siemens SIMATIC S7-1500')
+    assert resolution.resolved and all(m.vendor == 'Siemens' for m in resolution.matches)
+    assert not match.resolve(db, vendor='Testco', product='Siemens SIMATIC S7-1500').resolved
+    assert not match.resolve(db, vendor='Siemens', product='Siemens SIMATIC S7-1500 Alpha').resolved
+
+
+def test_product_query_accepts_explicit_vendor_and_model_families(db):
+    from retrust import match
+    hit = search.product_query(db, 'Testco Electric TestPLC')
+    assert hit and hit.vendor == 'Testco Electric' and hit.name == 'TestPLC'
+    assert match.resolve(db, vendor=hit.vendor, product=hit.name).resolved
+    assert search.product_query(db, 'Seimens SIMATIC S7-1500') is None
+    assert search.product_query(db, 'Testco Electric Nonexistent PLC') is None
+    assert search.product_query(db, 'TC-9000-A1') is None
+
+
+def test_suggestions_do_not_widen_on_the_manufacturer_name(db):
+    found = search.suggest(db, order_number='Testco Partners Group Gateway 10')
+    assert found['products'] and all(h.name == 'Gateway 10' for h in found['products'])
+    assert all(h.vendor == 'Testco Partners Group' for h in found['products'])
+
+
+def test_vendor_repeated_in_a_family_query_resolves_within_that_vendor(db):
+    from retrust import match
+    result = match.resolve(db, vendor='Testco Electric', product='Testco Electric TestPLC')
+    assert result.resolved and result.product_count == 2
+    assert all(index.normalize_vendor(m.vendor) == 'testco' for m in result.matches)
+    assert not match.resolve(db, vendor='Other Industries', product='Testco Electric TestPLC').resolved

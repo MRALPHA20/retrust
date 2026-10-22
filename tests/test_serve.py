@@ -761,7 +761,7 @@ def test_a_product_name_in_the_order_number_box_offers_a_way_out(handler):
     _, _, body = _get(handler, '/score?order_number=Testco+Electric+TestPLC+9000+Alpha')
     assert 'NOT ASSESSED' in body
     flat = " ".join(body.split())
-    assert 'looks like a product name rather than a manufacturer order number' in flat
+    assert 'That product name could not be identified' in flat
     assert 'Did you mean' in body
     assert 'product=' in body, 'the suggestions must be clickable into a real lookup'
 
@@ -783,3 +783,76 @@ def test_a_failed_lookup_always_says_something(handler):
         flat = " ".join(body.split())
         assert ('Did you mean' in flat or 'Nothing close was found' in flat
                 or 'No advisory in this corpus' in flat), query
+
+
+@pytest.mark.parametrize('vendor,name,title', [
+    ('Moxa', 'Moxa EDS-405A/EDS-408A series managed Ethernet switches',
+     'Moxa Moxa EDS-405A/EDS-408A series managed Ethernet switches'),
+    ('ABB', 'AC500', 'ABB AC500'),
+    ('Siemens', 'SIMATIC S7-1500', 'Siemens SIMATIC S7-1500'),
+    ('Schneider Electric', 'Modicon M340', 'Schneider Electric Modicon M340'),
+])
+def test_full_title_in_order_field_retains_all_assessment_answers(db, tmp_path, vendor, name, title):
+    import html
+    import re
+    from urllib.parse import parse_qs, urlencode, urlsplit
+    from retrust import cli, dossier
+    db.execute('UPDATE product SET vendor=?,vendor_key=?,name=?,name_key=?',
+               (vendor, index.normalize_vendor(vendor), name, index.normalize_name(name)))
+    context = cli._context(data_dir=str(tmp_path))
+    calls = []
+    def assess(vendor, product, version=None, order_number=None, **owner):
+        calls.append((vendor, product, version, order_number, owner))
+        return cli._assess(db, vendor, product, version, order_number, context=context, **owner)
+    handler = serve.build_handler(db, assess, context, dossier, index.stats(db),
+                                  index.provenance(db), '127.0.0.1', 0)
+    answers = dict(network_exposure='internet_ot', assessment_type='installed',
+                   interface='exposed', prerequisites='unknown', consequence='safety',
+                   remediation='not_affected')
+    _, _, output = _get(handler, '/score?' + urlencode(dict(order_number=title, **answers)))
+    assert 'Product name recognised' in output and 'NOT ASSESSED' not in output
+    assert calls[0][:4] == (vendor, name, None, None)
+    for key, value in answers.items():
+        assert calls[0][4].get(key, 'unknown') == value
+    link = html.unescape(re.search(r'href="(/export.json[^" ]+)"', output)[1])
+    query = parse_qs(urlsplit(link).query)
+    assert query['vendor'] == [vendor] and query['product'] == [name]
+    assert not query.get('order_number')
+    for key, value in answers.items():
+        assert query[key] == [value]
+    assert 'not sure' not in output.lower()
+
+
+def test_lookup_suggestions_keep_firmware_and_network_answers(handler):
+    import html
+    import re
+    from urllib.parse import parse_qs, urlsplit
+    _, _, output = _get(handler, '/score?order_number=Testco+Electric+TestPLC+9000+Alpha'
+                        '&version=1.2&network_exposure=it_ot&interface=blocked'
+                        '&consequence=minor&assessment_type=installed&remediation=applied'
+                        '&prerequisites=unsatisfiable')
+    links = re.findall(r'<a class="hit" href="([^" ]+)"', output)
+    queries = [parse_qs(urlsplit(html.unescape(link)).query) for link in links]
+    products = [query for query in queries if 'product' in query]
+    assert products
+    for query in products:
+        for key, value in dict(version='1.2',network_exposure='it_ot',interface='blocked',
+                              consequence='minor',assessment_type='installed',
+                              remediation='applied',prerequisites='unsatisfiable').items():
+            assert query[key] == [value]
+        assert not query.get('order_number')
+
+
+def test_known_product_without_applicable_findings_explains_the_difference(db, tmp_path):
+    from retrust import cli, dossier
+    context = cli._context(data_dir=str(tmp_path))
+    def assess(vendor, product, version=None, order_number=None, **owner):
+        return cli._assess(db, vendor, product, version, order_number, context=context, **owner)
+    handler = serve.build_handler(db, assess, context, dossier, index.stats(db),
+                                  index.provenance(db), '127.0.0.1', 0)
+    _, _, output = _get(handler, '/score?vendor=Testco&product=TestPLC+9000&version=9.0'
+                        '&network_exposure=it_ot&interface=exposed&consequence=safety'
+                        '&prerequisites=satisfiable&remediation=not_affected')
+    assert 'NOT ASSESSED' in output and 'no applicable risk evidence' in output
+    assert 'The product was identified' in output and 'Your answers are recorded' in output
+    assert 'not enough data to assess' not in output
