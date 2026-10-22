@@ -260,6 +260,11 @@ worker that uses them, then closes them there. User inputs and results are
 request-specific. The SQLite thread check remains enabled. At the default
 setting, at most 16 requests are active or queued; excess work receives HTTP
 503 with a retry hint. `retrust serve --workers N` accepts 1–32 workers.
+
+Identical alternatives and exploitation-history requests share one public-page
+computation, bounded to 16 stored pages and 2 MiB. Cache keys include the input
+snapshot, date and product/firmware arguments. Assessment results and operator
+answers are not cached; browsers still receive no-store response headers.
 Comparison weight trials reuse measured evidence instead of repeating the
 full analysis for every sampled weighting.
 

@@ -157,3 +157,43 @@ def test_readonly_connection_does_not_create_or_modify_files(tmp_path):
         assert connection.execute('PRAGMA query_only').fetchone()[0] == 1
         with pytest.raises(sqlite3.OperationalError): connection.execute('CREATE TABLE unexpected(x)')
     finally: connection.close()
+
+
+def test_identical_alternatives_build_once_for_eight_http_clients(application, monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    def alternatives_page(connection, assess, vendor, product, version):
+        calls.append((vendor, product, version))
+        entered.set()
+        assert release.wait(5)
+        return f'<html><h1>{vendor} {product} {version}</h1></html>'
+    monkeypatch.setattr(serve, '_alternatives_page', alternatives_page)
+    with running(application, workers=8) as (_, base):
+        with ThreadPoolExecutor(max_workers=8) as clients:
+            futures = [clients.submit(fetch, base, '/alternatives?vendor=Testco&product=PLC&version=1') for _ in range(8)]
+            try:
+                assert entered.wait(2)
+            finally:
+                release.set()
+            for future in futures:
+                assert future.result(timeout=5)[2] == '<html><h1>Testco PLC 1</h1></html>'
+        assert calls == [('Testco', 'PLC', '1')]
+        assert fetch(base, '/alternatives?vendor=Testco&product=PLC&version=2')[2].endswith('2</h1></html>')
+        assert calls[-1] == ('Testco', 'PLC', '2')
+        assert len(calls) == 2
+
+
+def test_public_page_cache_changes_with_source_snapshot(application, monkeypatch):
+    calls = []
+    def page(connection, assess, vendor, product):
+        calls.append(True)
+        return f'<html><h1>build {len(calls)}</h1></html>'
+    monkeypatch.setattr(serve, '_lev_page', page)
+    with running(application) as (_, base):
+        assert 'build 1' in fetch(base, '/lev?vendor=Testco&product=PLC')[2]
+        assert 'build 1' in fetch(base, '/lev?vendor=Testco&product=PLC')[2]
+        connection = index.connect(application[0])
+        index.record_provenance(connection, 'CISA KEV', 'Changed source snapshot')
+        connection.close()
+        assert 'build 2' in fetch(base, '/lev?vendor=Testco&product=PLC')[2]
+    assert len(calls) == 2

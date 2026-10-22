@@ -259,7 +259,13 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     reviewed = {cve: next(iter(ids)) for cve, ids in assignments.items()}
     for finding in findings:
         values = factors(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
-        z = risk_bounds(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
+        # The factors above are also the exported evidence. Reuse them for
+        # Z rather than parsing every vector and deriving all four twice.
+        low = high = 1.0
+        for bounds in values.values():
+            low *= bounds.low
+            high *= bounds.high
+        z = Bounds(low, high)
         key = getattr(finding, 'path_id', None) or reviewed.get(finding.cve) or finding.cve
         group = groups.setdefault(key, {'path_id': key, 'grouping': 'reviewed path' if key != finding.cve else 'CVE review unit',
                                        'cves': set(), 'advisories': set(), 'z_min': 0, 'z_max': 0, 'inputs': []})

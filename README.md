@@ -94,7 +94,8 @@ free-tier instance that cold-starts in ~30 seconds. The web server supports
 concurrent users with eight bounded request workers and independent read-only
 SQLite connections. Excess work receives HTTP 503 with a retry hint instead
 of an unbounded queue. Configure local capacity with `retrust serve --workers 8`
-(1–32). For a presentation without network dependencies, run from a local snapshot.
+(1–32). Identical alternatives and history pages share bounded public results in memory;
+assessments and operator answers remain request-owned. For a presentation without network dependencies, run from a local snapshot.
 
 To use the shorter `retrust` command below, install the CLI in a virtual environment:
 

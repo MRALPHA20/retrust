@@ -99,6 +99,13 @@ database connections and closes them in the same worker. It admits at most
 with `Retry-After: 2`. The TCP listen backlog is 64. `--workers` accepts 1–32;
 worker count alone does not increase the instance's CPU or memory allocation.
 
+Identical alternatives and exploitation-history page requests share one computation
+and immutable HTML in memory. The cache holds at most 16 entries and 2 MiB,
+keyed by complete input snapshot, date, page and product/firmware arguments.
+Assessment results, comparison exports and operator answers are not cached.
+The history page computes its corpus fraction with SQL rather than loading
+all estimates for each visitor. Browsers still receive Cache-Control: no-store.
+
 Weight sensitivity measures the evidence once and varies only the exponents,
 so comparison reports do not rerun the complete vulnerability analysis 300
 times per candidate. Concurrent-load verification should include scoring,

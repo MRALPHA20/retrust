@@ -337,6 +337,14 @@ def lev_estimates(connection, cves=None):
     return found
 
 
+def lev_corpus_share(connection, threshold=.1):
+    """The public page needs one fraction, not every historical estimate."""
+    row = connection.execute(
+        "SELECT COUNT(*), SUM(CASE WHEN lev >= ? THEN 1 ELSE 0 END)"
+        " FROM lev_estimate", (threshold,)).fetchone()
+    return row[1] / row[0] if row[0] else None
+
+
 def epss_history(connection, cves):
     """{cve: [(date, score), ...]} for the CVEs asked about."""
     from datetime import date as _date

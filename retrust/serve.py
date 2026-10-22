@@ -7,7 +7,8 @@ pages, in the same control-room language as the printed report.
 
 It is deliberately small and deliberately local. One standard-library HTTP
 server, bound to the loopback address unless somebody insists otherwise, GET
-requests only, and no state kept between them. Nothing is written to disk and
+requests only, without sessions. A bounded memory cache shares public alternatives
+and history pages; assessments are never cached. Nothing is written to disk and
 nothing is executed: every request turns into the same function call the command
 line would have made, and the result is rendered with report.py.
 
@@ -25,7 +26,7 @@ import urllib.parse
 from datetime import date
 
 from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline, webviews
-from . import webui, supplychain
+from . import webui, supplychain, identity, webcache
 from .webui import page as _page
 from . import index as index_module
 from .index import normalize_name
@@ -818,13 +819,13 @@ def _lev_page(connection, assess, vendor, product):
     cves = sorted({f.cve for f in findings})
     history = index_module.epss_history(connection, cves)
     signals = {f.cve: f for f in findings}
-    cached = index_module.lev_estimates(connection)
+    corpus_share = index_module.lev_corpus_share(connection, lev.WORTH_LOOKING)
     estimates = [lev.estimate(c, history.get(c, []), in_kev=signals[c].in_kev,
                               current_epss=signals[c].epss) for c in cves]
     return _page(f"LEV: {assessment.product}",
                  heading + _lookup_controls(form, True) + webviews.exploitation(
                      assessment.product, estimates,
-                     corpus_share=lev.baseline(cached)["share"] if cached else None,
+                     corpus_share=corpus_share,
                      kev_loaded=any(p['source'] == 'CISA KEV' for p in index_module.provenance(connection)))
                  + _product_next_steps(vendor, product))
 
@@ -1025,6 +1026,8 @@ def build_concurrent_handler(database, assessor, context, dossier, stats, proven
     Shared settings and certificate records are read-only. Both advisory and
     screening SQLite connections are opened and closed by their request thread.
     """
+    public_pages = webcache.PublicPages()
+
     def handle(request, address, server):
         reader = index_module.connect_readonly(database)
         screening = supplychain.load(context.get('data_dir', 'data'), read_only=True)
@@ -1034,7 +1037,7 @@ def build_concurrent_handler(database, assessor, context, dossier, stats, proven
                 return assessor(reader, vendor, product, version, order_number,
                                 context=request_context, **options)
             handler = build_handler(reader, assess, request_context, dossier,
-                                    stats, provenance, host, port)
+                                    stats, provenance, host, port, public_pages)
             handler(request, address, server)
         finally:
             screening.close()
@@ -1101,7 +1104,7 @@ class ConcurrentHTTPServer(http.server.HTTPServer):
 
 
 def build_handler(connection, assess, context, dossier, stats, provenance,
-                  host, port):
+                  host, port, public_pages=None):
     """The request handler, closed over everything a page needs.
 
     Routing is an explicit dict rather than anything derived from the path, so a
@@ -1166,6 +1169,14 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                                      ("vendor_", "product_", "version_", "order_number_"))
                                      for key in params))
 
+        def public_page(route, fields, render):
+            if public_pages is None:
+                return render()
+            # Only public product lookups are shared. Owner answers never
+            # enter this cache, and a data or calendar change gets a new key.
+            snapshot = identity.data_fingerprint(connection, context.get('data_dir', 'data'))
+            return public_pages.get((snapshot, date.today().isoformat(), route, *fields), render)
+
         routes = {
             "/": lambda: _search_page(connection, stats, first("q")),
             "/healthz": health,
@@ -1179,8 +1190,10 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             "/compare.html": export_comparison,
             "/compare.json": export_comparison,
             "/compare.csv": export_comparison,
-            "/alternatives": lambda: _alternatives_page(
-                connection, assess, first("vendor"), first("product"), first("version")),
+            "/alternatives": lambda: public_page(
+                "/alternatives", (first("vendor"), first("product"), first("version")),
+                lambda: _alternatives_page(
+                    connection, assess, first("vendor"), first("product"), first("version"))),
             "/timeline": lambda: _timeline_page(
                 connection, first("vendor"), first("product")),
             "/annex": lambda: _annex_page(
@@ -1193,8 +1206,9 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                 connection, assess, first("vendor"), first("product"), first("version"),
                 first("exposure") or "controlled", first("automatable") or "yes",
                 first("impact") or "medium"),
-            "/lev": lambda: _lev_page(
-                connection, assess, first("vendor"), first("product")),
+            "/lev": lambda: public_page(
+                "/lev", (first("vendor"), first("product")),
+                lambda: _lev_page(connection, assess, first("vendor"), first("product"))),
             "/vendor": lambda: _vendor_page(connection, dossier, context, first("name")),
         }
         route = routes.get(path)
