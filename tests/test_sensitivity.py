@@ -478,3 +478,35 @@ def test_the_exposure_spec_refuses_to_measure_without_operator_context():
     # is what the report looks the weight up by.
     produced = score.assess("probe", [_finding()], {"A"}, interface="blocked")
     assert any(p.name == spec.name for p in produced.pillars)
+
+
+@pytest.mark.parametrize('hardcoded,certified,bands', [
+    (False, False, score.BANDS), (False, True, score.BANDS),
+    (True, False, score.BANDS), (True, True, [(80,'PREFER'),(60,'CONDITIONAL'),(0,'AVOID')]),
+])
+def test_fast_weight_trials_match_full_assessments(monkeypatch, hardcoded, certified, bands):
+    import random
+    from collections import Counter
+    from dataclasses import replace
+    finding = _finding(cvss=5, epss=.01, remediation='none_available' if hardcoded else 'vendor_fix')
+    finding.lev = .01
+    if hardcoded: finding.cwe = 'CWE-798'
+    findings = [finding, replace(finding, cve='CVE-2026-0002', cwe='CWE-79')]
+    certificates = [{'scheme':'IEC 62443-4-2','matches_product':True}] if certified else []
+    context = dict(network_exposure='it_ot',interface='exposed',prerequisites='satisfiable',
+                   consequence='control',remediation='affected')
+    rng = random.Random(17)
+    expected = [score.assess('reference', findings, {'A'}, certificates=certificates,
+                weights=sensitivity._random_weights(rng), bands=bands, **context).score for _ in range(100)]
+    calls = []
+    original = sensitivity.assess
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(sensitivity, 'assess', counted)
+    actual = sensitivity.stability(findings, {'A'}, certificates=certificates,
+                                   samples=100, seed=17, bands=bands, **context)
+    assert len(calls) == 1
+    assert actual.verdicts == dict(Counter(sensitivity._band(value,bands) for value in expected))
+    assert actual.score_min == min(expected) and actual.score_max == max(expected)
+    assert actual.score_median == sorted(expected)[len(expected)//2]

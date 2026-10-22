@@ -252,12 +252,16 @@ contract, and tests hold it:
 | Everything escaped | and a CSP of `default-src 'none'` on every response |
 | Host header checked | a DNS-rebinding page in a browser cannot read the index through it |
 | Nothing cached, nothing framed | `Cache-Control: no-store`, `frame-ancestors 'none'` |
-| Stalled connections dropped | one stuck client cannot hold the single-threaded server |
+| Stalled connections dropped | stalled clients release their request workers |
 
-Single-threaded on purpose: a SQLite connection belongs to the thread that
-opened it, and this is one person looking at their own index. Threading would
-buy nothing and cost either a connection pool or `check_same_thread=False`,
-which is how corruption gets in.
+The web server uses eight bounded request workers by default. Each request
+creates its own read-only advisory and screening SQLite connections in the
+worker that uses them, then closes them there. User inputs and results are
+request-specific. The SQLite thread check remains enabled. At the default
+setting, at most 16 requests are active or queued; excess work receives HTTP
+503 with a retry hint. `retrust serve --workers N` accepts 1–32 workers.
+Comparison weight trials reuse measured evidence instead of repeating the
+full analysis for every sampled weighting.
 
 The same posture runs through the rest of the tool. Feeds are fetched over
 https only -- a redirect that lands on plain http is refused -- and reads are

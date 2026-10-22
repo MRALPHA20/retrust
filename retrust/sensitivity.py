@@ -131,7 +131,7 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
     # manufacture a misleading 100% agreement figure.
     probe = assess("probe", findings, advisories, certificates=certificates,
                    screening_gates=screening_gates, vendor_key=vendor_key,
-                   **declared)
+                   bands=bands, **declared)
     if probe.gates:
         return Stability(samples=0, verdicts={"AVOID": 1}, gated=True,
                          score_min=probe.score or 0.0, score_max=probe.score or 0.0,
@@ -150,14 +150,23 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
         return Stability(samples=0, verdicts={probe.verdict: 1}, gated=False,
                          score_min=0.0, score_max=0.0, score_median=0.0)
 
+    # Only exponents change. Re-reading vectors, regrouping CVEs and building
+    # evidence hundreds of times blocked every other hosted request. Reuse
+    # this assessment's unrounded measurements and the scorer's own composite.
+    by_name = {p.name: p for p in probe.pillars if p.scored}
+    usable = [(spec, by_name[spec.name]) for spec in PILLARS if spec.name in by_name]
+    first_party = [finding for finding in findings if not finding.third_party]
+    capped = bool(score_module._unmitigable_cves(first_party or findings))
+    prefer = bands[0][0]
     scores, verdicts = [], {}
     for _ in range(samples):
         weights = _random_weights(rng)
-        result = assess("probe", findings, advisories, weights=weights,
-                        certificates=certificates, screening_gates=screening_gates,
-                        vendor_key=vendor_key, **declared)
-        scores.append(result.score)
-        verdict = _band(result.score, bands)
+        composite = score_module._composite(usable, weights)
+        if capped and composite >= prefer:
+            composite = min(composite, prefer - .1)
+        sampled_score = round(composite, 1)
+        scores.append(sampled_score)
+        verdict = _band(sampled_score, bands)
         verdicts[verdict] = verdicts.get(verdict, 0) + 1
 
     if not scores:                  # --samples 0

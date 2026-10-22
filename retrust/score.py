@@ -690,6 +690,13 @@ def not_assessed(product_label, reason):
     )
 
 
+def _unmitigable_cves(findings):
+    """The same preference cap for a full assessment and weight-only trials."""
+    return sorted({f.cve for group in weakness.classify(findings)
+                   if group.name in weakness.UNMITIGABLE
+                   for f in findings if f.cve in group.cves and not f.fixed})
+
+
 def assess(product_label, findings, advisories=(), weights=None,
            certificates=(), screening_gates=(), bands=None, vendor_key=None,
            network_exposure=None, consequence=None, interface="unknown",
@@ -806,10 +813,7 @@ def assess(product_label, findings, advisories=(), weights=None,
     upper = _composite(upper_usable, weights)
     prefer_threshold = (bands or BANDS)[0][0]
     cap_note = None
-    unmitigable = sorted({
-        f.cve for group in weakness.classify(base)
-        if group.name in weakness.UNMITIGABLE
-        for f in base if f.cve in group.cves and not f.fixed})
+    unmitigable = _unmitigable_cves(base)
     if unmitigable and upper >= prefer_threshold:
         # A credential baked into firmware with no fix shipped is not a
         # weighting question: whatever the other pillars say, this product

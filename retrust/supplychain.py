@@ -275,9 +275,18 @@ class Index:
     vendor is actually screened.
     """
 
-    def __init__(self, data_dir="data"):
+    def __init__(self, data_dir="data", read_only=False):
         self._dir = Path(data_dir)
         self._source = self._dir / "screening.json"
+        self._cache = None
+        self._memory = None
+        self._opened = False
+        self._read_only = read_only
+
+    def close(self):
+        """Release the request-owned SQLite reader in its creating thread."""
+        if self._cache is not None:
+            self._cache.close()
         self._cache = None
         self._memory = None
         self._opened = False
@@ -290,7 +299,7 @@ class Index:
         stamp = _stamp(self._source)
         path = self._dir / CACHE_NAME
         try:
-            connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
             if connection.execute("SELECT stamp FROM meta").fetchone()[0] == stamp:
                 self._cache = connection
                 return
@@ -298,7 +307,8 @@ class Index:
         except (sqlite3.Error, TypeError, IndexError):
             pass
         self._memory = build_index(self._dir)
-        _write_cache(path, self._memory, stamp)
+        if not self._read_only:
+            _write_cache(path, self._memory, stamp)
 
     def get(self, key, default=None):
         self._open()
@@ -333,9 +343,9 @@ class Index:
         return self._source.exists()
 
 
-def load(data_dir="data"):
+def load(data_dir="data", read_only=False):
     """The screening index. Reads nothing until a vendor is screened."""
-    return Index(data_dir)
+    return Index(data_dir, read_only=read_only)
 
 
 def screen(index, vendor):

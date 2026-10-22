@@ -1234,20 +1234,23 @@ def cmd_verify(args):
 
 def cmd_serve(args):
     """Serve the same assessments as pages, on this machine only by default."""
+    workers = getattr(args, 'workers', 8)
+    if not 1 <= workers <= 32:
+        sys.exit('Web workers must be between 1 and 32')
     connection = _open(args.db)
     context = _context(config_path=args.config)
-    handler = serve.build_handler(
-        connection,
-        lambda vendor, product, version=None, order_number=None,
-               network_exposure=None, consequence=None, interface="unknown",
-               assessment_type="purchase", remediation="unknown",
-               prerequisites="unknown": _assess(
-            connection, vendor, product, version, order_number, context=context,
-            network_exposure=network_exposure, consequence=consequence,
-            interface=interface, assessment_type=assessment_type,
-            remediation=remediation, prerequisites=prerequisites),
-        context, dossier, index.stats(connection), index.provenance(connection),
-        args.host, args.port)
+    try:
+        stats, provenance = index.stats(connection), index.provenance(connection)
+        # Warm shared immutable certificate data, the file hash and screening
+        # cache before readers start. Request handlers never write the index.
+        len(context['certificates'])
+        len(context['screening'])
+        identity.data_fingerprint(connection, context.get('data_dir', 'data'))
+    finally:
+        connection.close()
+        context['screening'].close()
+    handler = serve.build_concurrent_handler(
+        args.db, _assess, context, dossier, stats, provenance, args.host, args.port)
 
     print(f"ReTrust on http://{args.host}:{args.port}  (Ctrl-C to stop)")
     if args.host not in ("127.0.0.1", "localhost", "::1"):
@@ -1256,7 +1259,7 @@ def cmd_serve(args):
         print(f"\n  WARNING: {args.host} is not the loopback address, so anyone\n"
               "  who can reach this machine can read your index and run scoring\n"
               "  against it. There is no authentication. Stop it when you are done.\n")
-    serve.serve(handler, args.host, args.port)
+    serve.serve(handler, args.host, args.port, workers=workers)
     return 0
 
 
@@ -1767,6 +1770,8 @@ def build_parser():
 
     p = sub.add_parser("serve", help="a local web interface")
     p.add_argument("--port", type=int, default=serve.DEFAULT_PORT)
+    p.add_argument("--workers", type=int, default=8,
+                   help="concurrent read-only request workers, 1-32 (default: 8)")
     p.add_argument("--host", default=serve.DEFAULT_HOST,
                    help="loopback by default; anything else is announced")
     p.add_argument("--config", help="scoring configuration file")

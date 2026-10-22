@@ -92,10 +92,20 @@ its processing location explicitly.
 ## Limits and checks
 
 The free service sleeps after 15 idle minutes and can take about a minute to
-wake. Open it before a presentation. This deployment uses the existing serial,
-read-only HTTP server behind Render's HTTPS proxy; it is intended for a demo
-or light use. A service designed for substantial concurrent traffic needs a
-separate production-serving change and load testing.
+wake. Open it before a presentation. The server uses eight concurrent request
+workers by default. Each request opens its own read-only advisory and screening
+database connections and closes them in the same worker. It admits at most
+16 active or queued requests at that setting; excess requests receive HTTP 503
+with `Retry-After: 2`. The TCP listen backlog is 64. `--workers` accepts 1–32;
+worker count alone does not increase the instance's CPU or memory allocation.
+
+Weight sensitivity measures the evidence once and varies only the exponents,
+so comparison reports do not rerun the complete vulnerability analysis 300
+times per candidate. Concurrent-load verification should include scoring,
+comparison downloads and health requests together, with no retries concealing
+5xx failures. Record the tested user count and latency; free-instance capacity
+is finite even though independent readers prevent requests from blocking each
+other behind one shared SQLite connection.
 
 The hosted surface is strictly read-only: the server answers GET requests only
 and routes each one through an explicit table of read pages -- search, scoring,

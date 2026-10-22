@@ -19,11 +19,13 @@ a plant network by accident. See SAFETY below for what is enforced.
 import html
 import http.server
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 from datetime import date
 
 from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline, webviews
-from . import webui
+from . import webui, supplychain
 from .webui import page as _page
 from . import index as index_module
 from .index import normalize_name
@@ -63,8 +65,9 @@ Bound to 127.0.0.1 unless --host says otherwise, and that is printed when it is.
 On a loopback bind, the Host header must name this machine to prevent
   DNS-rebinding pages from reading the local index.
 No response is cached (Cache-Control: no-store) and none may be framed.
-A connection that stalls is dropped after 10 seconds, so one stuck client
-  cannot hold the single-threaded server.
+A connection that stalls is dropped after 10 seconds and releases its worker.
+Request workers own independent read-only advisory and screening connections.
+Active and queued work is bounded; excess requests receive 503 with a retry hint.
 """
 
 # The names a loopback-bound server may be addressed by. Anything else in the
@@ -1016,6 +1019,87 @@ def _export(assess, context, provenance, path, vendor, product, version, order_n
                     'retrust-assessment.html', 'text/html')
 
 
+def build_concurrent_handler(database, assessor, context, dossier, stats, provenance, host, port):
+    """Create request-owned readers inside the worker that uses them.
+
+    Shared settings and certificate records are read-only. Both advisory and
+    screening SQLite connections are opened and closed by their request thread.
+    """
+    def handle(request, address, server):
+        reader = index_module.connect_readonly(database)
+        screening = supplychain.load(context.get('data_dir', 'data'), read_only=True)
+        request_context = dict(context, screening=screening)
+        try:
+            def assess(vendor, product, version=None, order_number=None, **options):
+                return assessor(reader, vendor, product, version, order_number,
+                                context=request_context, **options)
+            handler = build_handler(reader, assess, request_context, dossier,
+                                    stats, provenance, host, port)
+            handler(request, address, server)
+        finally:
+            screening.close()
+            reader.close()
+    handle.concurrent_safe = True
+    return handle
+
+
+class ConcurrentHTTPServer(http.server.HTTPServer):
+    """A fixed worker pool and a bounded queue, including stalled clients."""
+    request_queue_size = 64
+    allow_reuse_address = True
+
+    def __init__(self, address, handler, workers=8):
+        if not 1 <= workers <= 32:
+            raise ValueError('Web workers must be between 1 and 32')
+        super().__init__(address, handler)
+        self.workers = workers
+        self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix='retrust-web')
+        self._slots = threading.BoundedSemaphore(workers * 2)
+
+    def process_request(self, request, address):
+        if not self._slots.acquire(blocking=False):
+            # Refuse excess work explicitly instead of growing the queue until
+            # the proxy times out or the process runs out of memory.
+            body = b'The server is busy. Please try again shortly.\n'
+            headers = ('HTTP/1.0 503 Service Unavailable\r\n'
+                       'Content-Type: text/plain; charset=utf-8\r\n'
+                       f'Content-Length: {len(body)}\r\n'
+                       'Retry-After: 2\r\nCache-Control: no-store\r\n'
+                       'X-Content-Type-Options: nosniff\r\n'
+                       'Connection: close\r\n\r\n').encode('ascii')
+            try:
+                request.settimeout(1)
+                request.sendall(headers + body)
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        try:
+            self._pool.submit(self._run_request, request, address)
+        except BaseException:
+            self._slots.release()
+            self.shutdown_request(request)
+            raise
+
+    def _run_request(self, request, address):
+        try:
+            self.finish_request(request, address)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            pass  # a client leaving is not an application failure
+        except Exception:
+            self.handle_error(request, address)
+        finally:
+            self.shutdown_request(request)
+            self._slots.release()
+
+    def server_close(self):
+        super().server_close()
+        pool = getattr(self, '_pool', None)
+        if pool is not None:
+            pool.shutdown(wait=True)
+
+
 def build_handler(connection, assess, context, dossier, stats, provenance,
                   host, port):
     """The request handler, closed over everything a page needs.
@@ -1120,8 +1204,7 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
         server_version = "ReTrust"
         sys_version = ""                  # the Python version is nobody's business
 
-        # A client that connects and never finishes its request would hold
-        # the single thread forever. Ten seconds is generous for a loopback.
+        # Drop incomplete requests so stalled clients release their worker.
         timeout = 10
 
         def do_GET(self):
@@ -1184,6 +1267,7 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             self.send_header("Cache-Control", "no-store")
             # Which code is serving this, independent of the data it serves.
             self.send_header("X-ReTrust-Build", BUILD)
+            self.send_header("X-ReTrust-Workers", str(getattr(self.server, 'workers', 1)))
             self.end_headers()
             if not getattr(self, "_head_only", False):
                 self.wfile.write(payload)
@@ -1206,17 +1290,16 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
     return Handler
 
 
-def serve(handler, host=DEFAULT_HOST, port=DEFAULT_PORT, forever=True):
-    """Run the server. Returns it unstarted when `forever` is false, for tests.
+def serve(handler, host=DEFAULT_HOST, port=DEFAULT_PORT, forever=True, workers=8):
+    """Use concurrent readers for the application; retain injected serial handlers.
 
-    Single-threaded on purpose. A SQLite connection belongs to the thread that
-    opened it, and this is one person looking at their own index: threading would
-    buy nothing and cost either a per-thread connection pool or the
-    check_same_thread escape hatch, which is how corruption gets in. Responses
-    are milliseconds, and HTTP/1.0 without keep-alive means no request can hold
-    the queue.
+    Existing callers that close over their own SQLite connection stay on its
+    owner thread. The CLI uses build_concurrent_handler, which owns no shared
+    database connection and is safe for the bounded worker pool.
     """
-    httpd = http.server.HTTPServer((host, port), handler)
+    httpd = (ConcurrentHTTPServer((host, port), handler, workers)
+             if getattr(handler, 'concurrent_safe', False)
+             else http.server.HTTPServer((host, port), handler))
     if not forever:
         return httpd
     try:

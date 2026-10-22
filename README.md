@@ -90,9 +90,11 @@ assessment queries and never exposes the commands that fetch data or change the
 index.
 
 Try the [hosted ReTrust demo](https://retrust-q2tr.onrender.com/) — a
-free-tier instance that cold-starts in ~30 seconds and serves one request at a
-time. For a live audience, run locally from a snapshot instead: same numbers,
-no network.
+free-tier instance that cold-starts in ~30 seconds. The web server supports
+concurrent users with eight bounded request workers and independent read-only
+SQLite connections. Excess work receives HTTP 503 with a retry hint instead
+of an unbounded queue. Configure local capacity with `retrust serve --workers 8`
+(1–32). For a presentation without network dependencies, run from a local snapshot.
 
 To use the shorter `retrust` command below, install the CLI in a virtual environment:
 

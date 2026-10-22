@@ -107,6 +107,14 @@ def connect(path):
     return connection
 
 
+def connect_readonly(path):
+    """An independent request reader; never create or migrate the index."""
+    connection = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
+    connection.row_factory = sqlite3.Row
+    connection.execute('PRAGMA query_only=ON')
+    return connection
+
+
 def record_provenance(connection, source, detail, captured=None):
     """Note where a slice of the index came from, and when."""
     from datetime import date
