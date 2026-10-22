@@ -198,7 +198,7 @@ def test_readonly_connection_does_not_create_or_modify_files(tmp_path):
 def test_identical_alternatives_build_once_for_eight_http_clients(application, monkeypatch):
     entered, release = threading.Event(), threading.Event()
     calls = []
-    def alternatives_page(connection, assess, vendor, product, version):
+    def alternatives_page(connection, assess, vendor, product, version, **kwargs):
         calls.append((vendor, product, version))
         entered.set()
         assert release.wait(5)
@@ -253,3 +253,22 @@ def test_deployment_formula_report_refuses_stale_fingerprints(application):
         target.write_text(json.dumps(dict(payload, data_fingerprint='stale')))
         stale = json.loads(fetch(base, '/formula-check.json')[2])
         assert not stale['passed'] and not stale['current']
+
+
+def test_distinct_firmware_alternatives_share_only_public_candidates(application, monkeypatch):
+    calls = []
+    original = serve.alternatives.find
+    def candidates(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(serve.alternatives, 'find', candidates)
+    with running(application, workers=8) as (_, base):
+        with ThreadPoolExecutor(max_workers=8) as clients:
+            futures = [clients.submit(fetch, base,
+                       '/alternatives?vendor=Testco+Electric&product=PLC+9000&version=1.'+str(i))
+                       for i in range(8)]
+            for i, future in enumerate(futures):
+                status, _, body = future.result(timeout=10)
+                assert status == 200
+                assert 'firmware 1.'+str(i) in body
+        assert len(calls) == 1

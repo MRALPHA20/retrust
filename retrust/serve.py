@@ -588,7 +588,7 @@ def _compare_page(assess, context, candidates, submitted=False):
                  f'{len(blocks)} candidate(s)')
 
 
-def _alternatives_page(connection, assess, vendor, product, version):
+def _alternatives_page(connection, assess, vendor, product, version, candidate_pages=None, data_dir="data"):
     """Same-family candidates, with the same caveat the terminal prints."""
     form = _lookup_form('/alternatives', 'Find alternatives', vendor, product, version)
     heading = ('<h1>Find other products to review</h1><p class="lead">Explore related products '
@@ -611,10 +611,28 @@ def _alternatives_page(connection, assess, vendor, product, version):
     body += (f'<div class="tw"><p><b>{_esc(subject.product)}</b> &mdash; '
              f'{_esc(subject.verdict)}, {shown}.</p></div>')
 
-    options, skipped = alternatives.find(
-        connection, family_vendor, family_name,
-        lambda v, p: assess(v, p), limit=8,
-        exclude={normalize_name(m.name) for m in resolution.matches})
+    excluded = {normalize_name(m.name) for m in resolution.matches}
+    def candidate_list():
+        return alternatives.find(
+            connection, family_vendor, family_name,
+            lambda v, p: assess(v, p), limit=8, exclude=excluded)
+    if candidate_pages is None:
+        options, skipped = candidate_list()
+    else:
+        # Candidate assessments deliberately have no selected firmware or
+        # owner assertions. Share their public snapshot across firmware-specific
+        # pages; the subject assessment above always uses this request's version.
+        snapshot = identity.data_fingerprint(connection, data_dir)
+        key = (snapshot, date.today().isoformat(), 'alternative-candidates',
+               family_vendor, family_name, tuple(sorted(excluded)))
+        def encoded_candidates():
+            from dataclasses import asdict
+            options, skipped = candidate_list()
+            return json.dumps({'options': [asdict(option) for option in options],
+                               'skipped': skipped})
+        data = json.loads(candidate_pages.get(key, encoded_candidates))
+        options = [alternatives.Option(**option) for option in data['options']]
+        skipped = data['skipped']
     body += '<p>Open a product name to check its exact model and firmware with your engineer.</p>'
     if version:
         body += (f'<p class="notice">Your original product uses firmware {_esc(version)}. '
@@ -1204,7 +1222,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             "/alternatives": lambda: public_page(
                 "/alternatives", (first("vendor"), first("product"), first("version")),
                 lambda: _alternatives_page(
-                    connection, assess, first("vendor"), first("product"), first("version"))),
+                    connection, assess, first("vendor"), first("product"), first("version"),
+                    candidate_pages=public_pages, data_dir=context.get('data_dir', 'data'))),
             "/timeline": lambda: _timeline_page(
                 connection, first("vendor"), first("product")),
             "/annex": lambda: _annex_page(

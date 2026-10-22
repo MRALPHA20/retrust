@@ -178,3 +178,20 @@ and complete input fingerprint. An unresolved product remains unscored and is
 counted explicitly; passing the check does not establish predictive accuracy.
 Assessment and comparison requests always recalculate their results from the
 submitted inputs. The public-page cache covers only alternatives and history.
+
+
+Firmware-specific alternatives pages recalculate their subject assessment but
+share the same public candidate-list computation when the canonical family,
+exclusions, scoring configuration and source snapshot agree. Candidate lists
+contain no operator assertions or selected firmware. They use the same bounded
+cache; each page receives separate decoded records.
+
+
+Repeated firmware-range comparisons reuse at most 2,048 deterministic tri-state
+results, keyed by both the exact advisory range and supplied firmware. True,
+False and Unknown remain distinct. This avoids reparsing the same range across
+hundreds of model variants; changed inputs are evaluated separately. It does
+not cache assessment scores or operator answers.
+The immutable parsed firmware and range representations also have independent
+2,048-entry limits. Their keys include the exact source text, so changing a
+version or advisory range cannot reuse a decision made for different inputs.

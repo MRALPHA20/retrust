@@ -141,3 +141,36 @@ def test_a_board_revision_still_abstains():
     assert affects("Revision 3", "3") is None
     # ...but a rev-suffixed firmware pin is still a version, not a board.
     assert affects("MX-V4.0.2.33.r2", "MX-V4.0.2.33.r2") is True
+
+
+def test_repeated_firmware_comparisons_reuse_work_without_mixing_results(monkeypatch):
+    from retrust import version
+    original = version._normalize
+    calls = []
+    def measured(text):
+        calls.append(text)
+        return original(text)
+    version.affects.cache_clear()
+    monkeypatch.setattr(version, '_normalize', measured)
+    try:
+        for _ in range(5):
+            assert version.affects('<2.0', '1.0') is True
+            assert version.affects('<2.0', '3.0') is False
+            assert version.affects('Rev._1', '1.0') is None
+        assert len(calls) == 3
+    finally:
+        version.affects.cache_clear()
+
+
+def test_normalized_range_cache_is_immutable_and_shared_across_firmware():
+    from retrust import version
+    version.affects.cache_clear()
+    version._normalize.cache_clear()
+    assert version.affects('>=1.0|<2.0', '1.5') is True
+    assert version.affects('>=1.0|<2.0', '2.5') is False
+    info = version._normalize.cache_info()
+    assert info.misses == 1 and info.hits >= 1
+    kind, constraints = version._normalize('>=1.0|<2.0')
+    assert kind == 'constraints' and isinstance(constraints, tuple)
+    version.affects.cache_clear()
+    version._normalize.cache_clear()

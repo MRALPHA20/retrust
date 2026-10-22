@@ -16,6 +16,7 @@ means "not affected" -- treating an unparseable range as safe would hide risk.
 """
 
 import re
+from functools import lru_cache
 
 # Ranges pinned to a serial number or board revision cannot be decided from a
 # version string at all, so we refuse them on purpose rather than guess.
@@ -70,6 +71,7 @@ _MAX_COMPONENT_DIGITS = 18
 _OVERSIZED_DIGITS = re.compile(r"\d{%d,}" % (_MAX_COMPONENT_DIGITS + 1))
 
 
+@lru_cache(maxsize=2048)
 def parse_version(text):
     """Turn "V4.5.1 Update 3" into a sortable tuple, or None if it isn't a version."""
     if not text:
@@ -225,6 +227,7 @@ def _version_at_end(text):
     return None
 
 
+@lru_cache(maxsize=2048)
 def _normalize(range_text):
     """Reduce a range string to ("all", None), ("constraints", [...]), or None.
 
@@ -263,13 +266,16 @@ def _normalize(range_text):
         return None
 
     constraints = _constraints(text)
-    return ("constraints", constraints) if constraints else None
+    return ("constraints", tuple(constraints)) if constraints else None
 
 
+@lru_cache(maxsize=2048)
 def affects(range_text, version_text):
     """Does `version_text` fall inside the affected range `range_text`?
 
     Returns True, False, or None when the question cannot be decided.
+    Identical range/version comparisons reuse a bounded deterministic result;
+    changed firmware or advisory text is a different key.
     """
     match _normalize(range_text):
         case None:
