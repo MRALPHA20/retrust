@@ -29,7 +29,7 @@ def test_unknown_context_requires_verification_even_with_resolved_factors():
     assert result.verdict == 'VERIFY'
     # Matched on meaning, not wording: the item must point the reader at the
     # question that closes it, whatever that question is currently called.
-    question = 'Where will it sit?'
+    question = 'Network exposure'
     assert any(question in item for item in result.verification)
 
 

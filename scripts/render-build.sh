@@ -12,3 +12,6 @@ if [[ "${RETRUST_BUILD_LEV_HISTORY:-1}" == "1" ]]; then
 fi
 
 python -m retrust.cli stats
+
+# Refuse deployment if any indexed product fails the independent formula check.
+python -m retrust.formula_check --output data/formula-validation.json

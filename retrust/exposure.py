@@ -13,35 +13,35 @@ from . import cvss
 # Plain answers a buyer can give without a glossary. The wording is the only
 # thing that changed here: the rubric values are the specification's.
 CONSEQUENCES = {
-    'safety': ('Someone could be hurt, or the environment harmed', 1.0),
-    'control': ('We would lose control of the process', .8),
-    'recoverable': ('Production stops, but we can recover', .5),
-    'minor': ('Minor disruption we can work around', .2),
-    'negligible': ('No real effect on the process', 0.0),
+    'safety': ('Major safety or environmental impact', 1.0),
+    'control': ('Major loss of process control', .8),
+    'recoverable': ('Recoverable production disruption', .5),
+    'minor': ('Minor operational disruption', .2),
+    'negligible': ('No material operational impact', 0.0),
 }
 # The specification groups "Yes" with "No additional requirements" as one
 # answer, because both mean the same thing for A: nothing stands in the way.
 # Splitting them left a buyer with no way to say a weakness needs nothing.
 PREREQUISITES = {
-    'satisfiable': ('Yes — or no extra conditions are needed', 1.0),
-    'unsatisfiable': ('No — a technical review confirmed they cannot', 0.0),
+    'satisfiable': ('Satisfied or not required', 1.0),
+    'unsatisfiable': ('Verified unsatisfied', 0.0),
     'unknown': ('Unknown', None),
 }
 INTERFACES = {
-    'exposed': ('Yes, something could reach it', 1.0),
-    'blocked': ('No, we checked every route and blocked them', 0.0),
+    'exposed': ('Reachable', 1.0),
+    'blocked': ('Verified blocked across all relevant paths', 0.0),
     'unknown': ('Unknown', None),
 }
 REMEDIATIONS = {
-    'affected': ('Affected, and not fixed', 1.0),
-    'applied': ('We installed the fix and checked it', 0.0),
-    'not_affected': ('The maker says this version is not affected', 0.0),
-    'mitigated': ('We added a protection, but have not checked it covers this', None),
-    'available': ('A fix exists, but we have not installed it', 1.0),
-    'planned': ('We plan to fix it, but have not yet', None),
+    'affected': ('Confirmed affected — not remediated', 1.0),
+    'applied': ('Fix verified installed', 0.0),
+    'not_affected': ('Verified not affected', 0.0),
+    'mitigated': ('Mitigation applied — effectiveness unverified', None),
+    'available': ('Fix available — not installed', 1.0),
+    'planned': ('Remediation planned', None),
     'unknown': ('Unknown', None),
 }
-ASSESSMENT_TYPES = {'purchase': 'Buying it', 'installed': 'Already installed'}
+ASSESSMENT_TYPES = {'purchase': 'Procurement assessment', 'installed': 'Installed asset'}
 CONCENTRATION = (1.0, .20, .10)
 
 
@@ -295,9 +295,9 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     labels = {
         'T': 'Exploitation data is missing for these. Refresh the data sources'
              ' -- this is not something you can answer',
-        'A': 'Answer "Could anything reach it to attack it?" and "Could an attacker meet the conditions needed to exploit it?" -- ask whoever runs the network',
-        'H': 'Answer "If it were attacked, what is the worst that could happen?"'
-             ' -- ask operations or safety',
+        'A': 'Answer "Attack reachability (A)" and "Exploitation prerequisites" -- confirm with the network owner',
+        'H': 'Answer "Credible operational impact (H)"'
+             ' -- confirm with operations or safety',
         'U': 'Answer "Is the firmware you are getting already fixed?" -- and give'
              ' the exact firmware version',
     }
@@ -321,10 +321,10 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
             if name == 'A':
                 questions = []
                 if review.get('interface', interface) == 'unknown':
-                    questions.append('"Could anything reach it to attack it?"')
+                    questions.append('"Attack reachability (A)"')
                 if review.get('prerequisites', prerequisites) == 'unknown':
-                    questions.append('"Could an attacker meet the conditions needed to exploit it?"')
-                message = ('Answer ' + ' and '.join(questions) + ' -- ask whoever runs the network'
+                    questions.append('"Exploitation prerequisites"')
+                message = ('Answer ' + ' and '.join(questions) + ' -- confirm with the network owner'
                            if questions else
                            'Review the attack requirements in the advisory; the supplied answers '
                            'do not settle reachability for these weaknesses')
@@ -339,7 +339,7 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
             more = f' and {len(affected)-3} more' if len(affected) > 3 else ''
             missing.add(f'{message} ({sample}{more})')
     if network is None:
-        missing.add('Answer "Where will it sit?" -- recorded as context, and'
+        missing.add('Answer "Network exposure" -- recorded as context, and'
                     ' needed before a verdict is given')
     paths = []
     for group in groups.values():

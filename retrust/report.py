@@ -322,6 +322,49 @@ def _scroll_hint(text, show=True):
     return f'<p class="table-scroll-hint">{text}</p>' if show else ''
 
 
+def _calculation_summary(assessment):
+    """Show the values applied and common reasons for an unchanged score."""
+    if assessment.score is None or assessment.exposure_min is None:
+        return ''
+    def number(low, high, places=1):
+        return f"{low:.{places}f}" if abs(high-low) < 1e-10 else f"{low:.{places}f}–{high:.{places}f}"
+    e = number(assessment.exposure_min, assessment.exposure_max)
+    risk = number(1-assessment.exposure_max/100, 1-assessment.exposure_min/100, 3)
+    network = NETWORK_LABELS.get(assessment.network_exposure, 'Unknown')
+    factors = [entry['factors'] for path in assessment.paths for entry in path['inputs']]
+    def factor(name):
+        values = {tuple(item[name]) for item in factors}
+        if not values:
+            return 'Not available'
+        if len(values) > 1:
+            return 'Varies by vulnerability'
+        low, high = next(iter(values))
+        return number(low, high, 2)
+    parts = ['<section class="calculation-summary"><h3>Applied scoring inputs</h3>',
+             '<p class="tnote"><b>Network exposure:</b> ' + _esc(network)
+             + '. Connectivity is context; verified attack paths determine A.</p>',
+             '<p class="tnote"><b>Effective attack factor A:</b> ' + _esc(factor('A'))
+             + ' · <b>Operational impact H:</b> ' + _esc(factor('H'))
+             + ' · <b>Unresolved applicability U:</b> ' + _esc(factor('U')) + '.</p>',
+             '<p class="tnote"><b>Combined risk R:</b> ' + risk
+             + ' · <b>Exposure safety E:</b> ' + e + '/100. E = 100 × (1 − R).</p>']
+    if factors and all(item['A'][1] == 0 for item in factors):
+        parts.append('<p class="tnote"><b>Why some changes do not move this score:</b> '
+                     'All assessed attack paths are recorded as blocked (A = 0). Their contributions are zero, so changing impact or network context does not change exposure. Reassess reachability if access changes.</p>')
+    elif factors and all(item['H'][1] == 0 for item in factors):
+        parts.append('<p class="tnote">No material operational impact is recorded (H = 0), so these paths contribute no operational risk.</p>')
+    elif factors and all(item['U'][1] == 0 for item in factors):
+        parts.append('<p class="tnote">The assessed vulnerabilities are recorded as fixed or not applicable (U = 0), so these paths contribute zero.</p>')
+    elif assessment.exposure_min == 0:
+        parts.append('<p class="tnote">The conservative risk index has reached its maximum (R = 1). Further increases cannot reduce exposure safety below zero.</p>')
+    if any(note.startswith('Capped below PREFER:') for note in assessment.notes):
+        parts.append('<p class="tnote"><b>Policy cap applies:</b> The final score cannot enter PREFER while the stated unfixable credential issue remains. Exposure can change while the capped score remains the same.</p>')
+    if assessment.gates:
+        parts.append('<p class="tnote">A mandatory purchase blocker determines AVOID regardless of the numerical score.</p>')
+    parts.append('</section>')
+    return ''.join(parts)
+
+
 def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                       weights=None, tools='', hint=True):
     colour = VERDICT_COLOR.get(assessment.verdict, INERT)
@@ -372,6 +415,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     if assessment.score is not None:
         parts.append('<p class="tnote">Higher scores are more favourable under the chosen settings. '
                      'The score is not a percentage chance that the equipment is secure.</p>')
+
+    parts.append(_calculation_summary(assessment))
 
     if assessment.first_party_count and assessment.third_party_count:
         noun = 'vulnerability' if assessment.first_party_count == 1 else 'vulnerabilities'

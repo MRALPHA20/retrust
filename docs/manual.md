@@ -922,6 +922,17 @@ E = 100 × (1 − R)
 S = E^0.60 × P^0.20 × V^0.15 × C^0.05
 ```
 
+The assessment form uses professional terms for deployment context, attack
+reachability, exploitation prerequisites, operational impact and firmware status.
+After editing, select **Update assessment** to recalculate. The result shows
+the applied A, H and U factors, risk index R and exposure safety E. It explains
+when verified blocking, zero impact, a risk ceiling, or a policy cap keeps a
+score unchanged.
+
+The deployment formula check recalculates every indexed product in five input
+scenarios. A numerical mismatch blocks deployment; /formula-check.json records
+its source build, input fingerprint and product counts.
+
 The largest contribution counts fully. The next two contribute 20% and 10%;
 missing paths contribute zero. Only three units count. These are risk-priority
 indices, not probabilities of a device being compromised.

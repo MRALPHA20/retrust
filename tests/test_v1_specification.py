@@ -316,8 +316,8 @@ def test_checklist_does_not_request_an_already_recorded_network_answer():
     result = exposure.analyse([f], network='it_ot', interface='exposed',
                               prerequisites='unknown', consequence='safety', remediation='affected')
     text = ' '.join(result.missing)
-    assert 'Could an attacker meet' in text
-    assert 'Could anything reach' not in text
+    assert 'Exploitation prerequisites' in text
+    assert 'Attack reachability' not in text
 
 
 def test_checklist_explains_why_a_firmware_claim_still_needs_a_version():
@@ -335,4 +335,4 @@ def test_checklist_respects_finding_specific_answers():
     result = exposure.analyse([f], network='it_ot', interface='unknown',
                               prerequisites='unknown', consequence='safety', remediation='affected')
     text = ' '.join(result.missing)
-    assert 'Could an attacker meet' in text and 'Could anything reach' not in text
+    assert 'Exploitation prerequisites' in text and 'Attack reachability' not in text

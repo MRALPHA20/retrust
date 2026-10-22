@@ -96,7 +96,7 @@ wake. Open it before a presentation. The server uses eight concurrent request
 workers by default. Each request opens its own read-only advisory and screening
 database connections and closes them in the same worker. It admits at most
 16 active or queued requests at that setting; excess requests receive HTTP 503
-with `Retry-After: 2`. The TCP listen backlog is 64. `--workers` accepts 1–32;
+with `Retry-After: 2`. Two extra request handlers serve health checks and prompt busy responses while all eight calculation slots are occupied. The TCP listen backlog is 64. `--workers` accepts 1–32;
 worker count alone does not increase the instance's CPU or memory allocation.
 
 Identical alternatives and exploitation-history page requests share one computation
@@ -162,3 +162,19 @@ screenshot are saved locally in `reports/render-live-checks.json` and
 
 [Manage the service](https://dashboard.render.com/web/srv-dattpanavr4c73eu5kp0)
 or [view its deployment](https://dashboard.render.com/web/srv-dattpanavr4c73eu5kp0/deploys/dep-dattpbfavr4c73eu5nu0).
+
+
+## Formula verification on every deployment
+
+After loading current advisory and exploitation data, the build runs
+python -m retrust.formula_check. It recalculates every indexed vendor/model
+under five scenarios: reachable, minor impact, verified blocked, unknown inputs,
+and an unverified fix claim. Expected factor products, top-three concentration,
+exposure safety, geometric score, caps and verdict precedence are checked
+independently. Any arithmetic mismatch stops deployment.
+
+The result is available at /formula-check.json and is tied to the source build
+and complete input fingerprint. An unresolved product remains unscored and is
+counted explicitly; passing the check does not establish predictive accuracy.
+Assessment and comparison requests always recalculate their results from the
+submitted inputs. The public-page cache covers only alternatives and history.

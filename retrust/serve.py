@@ -19,6 +19,8 @@ a plant network by accident. See SAFETY below for what is enforced.
 
 import html
 import http.server
+import json
+from pathlib import Path
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -263,7 +265,8 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
                        owner.get("consequence"), owner.get("interface", "unknown"),
                        owner.get("assessment_type", "purchase"),
                        owner.get("remediation", "unknown"),
-                       prerequisites=owner.get("prerequisites", "unknown"))
+                       prerequisites=owner.get("prerequisites", "unknown"),
+                       update=bool(vendor or product or order_number))
     if not (vendor or product or order_number):
         notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
                   'or a vendor and product, before assessing.</p>' if submitted else '')
@@ -427,42 +430,31 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
     leaving one unanswered keeps it unresolved rather than guessing either way.
     """
     return ('<div class="form-grid">'
-            + _choice('assessment_type' + suffix, 'Are you buying this, or do you have it?',
+            + _choice('assessment_type' + suffix, 'Assessment purpose',
                       score.ASSESSMENT_TYPES, assessment_type,
-                      helper='Recorded with the result. It does not change the score.')
-            + _choice('network_exposure' + suffix, 'Where will it sit?',
-                      score.NETWORK_EXPOSURES, network_exposure,
-                      blank='Unknown — ask your technical team',
-                      helper='Recorded as context. Where it sits does not decide whether '
-                             'a weakness can be reached, so it never moves the score — '
-                             'the next two questions are the ones that do.')
-            + _choice('interface' + suffix, 'Could anything reach it to attack it?',
+                      helper='Recorded for traceability; does not change the calculation.')
+            + _choice('network_exposure' + suffix, 'Network exposure',
+                      score.NETWORK_EXPOSURES, network_exposure, blank='Unknown',
+                      helper='Deployment context; selection alone does not change the score. Internet isolation alone does not establish a blocked attack path. Reachability below determines A.')
+            + _choice('interface' + suffix, 'Attack reachability (A)',
                       score.INTERFACES, interface,
-                      helper='Another computer, a laptop plugged in, or someone standing '
-                             'at the panel. Answer “no” only if someone has checked every '
-                             'route in. Choose “Unknown” if this has not been checked.')
-            + _choice('prerequisites' + suffix, 'Could an attacker meet the conditions needed to exploit it?',
+                      helper='Can a credible attacker reach the vulnerable interface? Select verified blocked only when all relevant network, local and physical paths have been assessed.')
+            + _choice('prerequisites' + suffix, 'Exploitation prerequisites',
                       score.PREREQUISITES, prerequisites,
-                      helper='Conditions can include a login, someone clicking a link, or '
-                             'physical access. Choose “yes” if an attacker could meet them, '
-                             'or if no extra conditions are needed. Choose “no” only after '
-                             'a technical review of every relevant weakness. Otherwise, choose “Unknown”.')
-            + _choice('consequence' + suffix, 'If it were attacked, what is the worst that could happen?',
-                      score.CONSEQUENCES, consequence, blank='Unknown — ask an engineer',
-                      helper='Ask operations or safety. Pick what is believable for these '
-                             'specific weaknesses, not how important the equipment is. '
-                             '“Unknown” gives you a range instead of a single number.')
-            + _choice('remediation' + suffix, 'Is the firmware you are getting already fixed?',
+                      helper='Confirm whether required privileges, user interaction, local or physical access, and other attack conditions can be satisfied.')
+            + _choice('consequence' + suffix, 'Credible operational impact (H)',
+                      score.CONSEQUENCES, consequence, blank='Unknown',
+                      helper='Highest credible consequence of exploiting the assessed vulnerabilities. H: safety 1.0; process control 0.8; recoverable disruption 0.5; minor disruption 0.2; no material impact 0.')
+            + _choice('remediation' + suffix, 'Firmware applicability and remediation (U)',
                       score.REMEDIATIONS, remediation,
-                      helper='A fix being available is not the same as a fix being '
-                             'installed. Answer for every weakness listed, not just one.')
+                      helper='Status of the selected firmware across the listed vulnerabilities. Fix availability alone does not establish that a fix is installed.')
             + '</div>')
 
 
 def _score_form(vendor, product, version, order_number='', network_exposure=None,
                 consequence=None, interface='unknown',
                 assessment_type='purchase', remediation='unknown',
-                prerequisites='unknown'):
+                prerequisites='unknown', update=False):
     using_model = ' open' if (vendor or product) and not order_number else ''
     return ('<form class="form-panel" method="get" action="/score">'
             '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number or full product name', order_number,
@@ -476,13 +468,13 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
             + '<p class="helper">Firmware is the software running on the equipment. Leave blank if unknown; the result will show what still needs checking.</p>'
             '<section class="site-context"><h3>Network access and operating conditions</h3>'
             '<p class="helper">These answers are central to the assessment. '
-            'Leave them unknown if unsure, then ask your technical team. '
-            'ReTrust uses your answers; it does not inspect your network.</p>'
+            'Use Unknown for unverified inputs. ReTrust uses operator-reported evidence; it does not inspect the network.</p>'
             + _owner_fields(network_exposure, consequence, interface,
                             assessment_type, remediation,
                             prerequisites=prerequisites)
             + '</section>'
-            + '<button type="submit">Assess product →</button></form>')
+            + ('<p class="helper">Select Update assessment to recalculate after changing any input.</p>' if update else '')
+            + f'<button type="submit">{"Update assessment" if update else "Assess product"} →</button></form>')
 
 
 def _candidate_rows(params):
@@ -926,6 +918,9 @@ Repeated advisories for a CVE count once; distinct CVEs are not proof of indepen
 <p>A part with no measurable evidence is excluded and the remaining weights are adjusted.
 Each measured pillar participates in the weighted product. Purchase blockers still override the score.
 An 80/100 score does not mean the product is 80% secure or predict the chance of a compromise.</p></details>
+<p><a href="/formula-check.json">Download the all-product deployment formula check</a>.
+It records the checked product count, input scenarios, code build and data fingerprint.
+A failed check blocks deployment; missing or outdated checks are identified in the download.</p>
 <h2>Common terms in plain language</h2>
 <dl class="term-list"><dt>Vulnerability / CVE</dt><dd>A known security weakness. A CVE number is its reference ID.</dd>
 <dt>Severity / CVSS</dt><dd>How serious the weakness could be, rated out of 10. It does not say how likely an attack is.</dd>
@@ -1056,7 +1051,10 @@ class ConcurrentHTTPServer(http.server.HTTPServer):
             raise ValueError('Web workers must be between 1 and 32')
         super().__init__(address, handler)
         self.workers = workers
-        self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix='retrust-web')
+        # Two request handlers remain available for health probes and prompt
+        # busy responses while all calculation slots are occupied.
+        self._pool = ThreadPoolExecutor(max_workers=workers + 2, thread_name_prefix='retrust-web')
+        self._calculations = threading.BoundedSemaphore(workers)
         self._slots = threading.BoundedSemaphore(workers * 2)
 
     def process_request(self, request, address):
@@ -1177,9 +1175,22 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             snapshot = identity.data_fingerprint(connection, context.get('data_dir', 'data'))
             return public_pages.get((snapshot, date.today().isoformat(), route, *fields), render)
 
+        def formula_validation():
+            target = Path(context.get('data_dir', 'data')) / 'formula-validation.json'
+            if not target.exists():
+                result = {'passed': False, 'available': False, 'reason': 'No deployment formula check is available for this snapshot.'}
+            else:
+                result = json.loads(target.read_text())
+                current = (result.get('source_build') == BUILD
+                           and result.get('data_fingerprint') == identity.data_fingerprint(
+                               connection, context.get('data_dir', 'data')))
+                result = dict(result, current=current, passed=bool(result.get('passed') and current))
+            return Download(json.dumps(result, indent=2), 'retrust-formula-validation.json', 'application/json')
+
         routes = {
             "/": lambda: _search_page(connection, stats, first("q")),
             "/healthz": health,
+            "/formula-check.json": formula_validation,
             "/robots.txt": lambda: PlainText("User-agent: *\nDisallow: /\n"),
             "/demo": _demo_page,
             "/about": lambda: _about_page(stats, provenance, host, port),
@@ -1230,6 +1241,19 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                     "so it was refused.</p>"))
                 return
             parsed = urllib.parse.urlparse(self.path)
+            capacity = getattr(self.server, '_calculations', None)
+            if parsed.path == '/healthz' or capacity is None:
+                self._dispatch_get(parsed)
+                return
+            if not capacity.acquire(timeout=.05):
+                self._send(503, PlainText("The server is busy. Please try again shortly.\n"))
+                return
+            try:
+                self._dispatch_get(parsed)
+            finally:
+                capacity.release()
+
+        def _dispatch_get(self, parsed):
             params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             try:
                 page = page_for(parsed.path, params)
@@ -1279,6 +1303,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             # Verdicts and sanctions screening have no business sitting in a
             # browser cache after the tab closes.
             self.send_header("Cache-Control", "no-store")
+            if status == 503:
+                self.send_header("Retry-After", "2")
             # Which code is serving this, independent of the data it serves.
             self.send_header("X-ReTrust-Build", BUILD)
             self.send_header("X-ReTrust-Workers", str(getattr(self.server, 'workers', 1)))

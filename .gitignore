@@ -3,6 +3,7 @@
 # is about 32 MB, and the advisory corpus is a separate upstream project.
 data/CSAF/
 data/retrust.db
+data/formula-validation.json
 data/screening.json
 # Derived from screening.json: the built screening index, so a 7.5 MB list
 # is parsed once per refresh instead of once per command. Rebuilt whenever the
