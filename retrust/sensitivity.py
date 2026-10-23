@@ -221,18 +221,21 @@ def contributions(assessment, weights=None):
     """
     weights = weights or DEFAULT_WEIGHTS
     scored = [p for p in assessment.pillars
-              if p.name != "Evidence quality" and p.scored]
+              if p.name in PILLAR_KEYS_BY_NAME]
     active_keys = [PILLAR_KEYS_BY_NAME[p.name] for p in scored]
     total = sum(weights.get(key, 0) for key in active_keys) or 1.0
     shares = [weights.get(key, 0) / total for key in active_keys]
 
+    def value(pillar):
+        return pillar.score if pillar.scored else score_module.MISSING_PILLAR
+
     def composite(values):
         product = 1.0
-        for value, share in zip(values, shares):
-            product *= max(value, score_module.FLOOR) ** share
+        for value_, share in zip(values, shares):
+            product *= max(value_, score_module.FLOOR) ** share
         return product
 
-    current = [p.score for p in scored]
+    current = [value(p) for p in scored]
     base = composite(current)
 
     out = []
@@ -241,9 +244,9 @@ def contributions(assessment, weights=None):
         perfect[index] = 100.0
         out.append({
             "pillar": pillar.name,
-            "score": round(pillar.score, 1),
+            "score": round(value(pillar), 1),
             "weight": round(share, 3),
-            "points": round(max(pillar.score, score_module.FLOOR) ** share, 4),
+            "points": round(max(value(pillar), score_module.FLOOR) ** share, 4),
             "points_lost": round(composite(perfect) - base, 1),
         })
     return sorted(out, key=lambda row: -row["points_lost"])

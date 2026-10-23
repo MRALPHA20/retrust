@@ -101,8 +101,13 @@ def threat_bounds(finding):
     value = threat(finding)
     if value == 1:
         return Bounds(1, 1)
+    # LEV needs the optional EPSS history download, so on a default install it
+    # is absent for every CVE. The specification computes T from whichever of
+    # KEV, LEV and EPSS exist and reports the missing source as reduced
+    # coverage; treating an absent LEV as T in [value, 1] left every product
+    # permanently provisional, with E spanning 0-95 whatever the owner answered.
     complete = (getattr(finding, 'kev_available', True)
-                and finding.lev is not None and finding.epss is not None)
+                and finding.epss is not None)
     return Bounds(value or 0.0, value if complete else 1.0)
 
 
@@ -381,11 +386,13 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
         if not conditioned:
             inapplicable[-1] += '. That answer changed nothing in this assessment'
 
+    no_lev = sum(1 for f in findings if f.lev is None)
     evidence = ['R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)',
                 f'{len(paths)} review unit(s) across {len(findings)} advisory finding(s); duplicate advisories count once per unit',
                 'Default units are CVEs; independence of different CVEs is not established by this grouping',
                 f'Exposure safety range: {100*(1-r_max):.1f}–{100*(1-r_min):.1f}/100',
                 f'Network context: {network or "Unknown"}; topology alone does not prove reachability',
+                *([f'LEV is not available for {no_lev} of {len(findings)} finding(s); T uses KEV and EPSS only. Load the EPSS history to add LEV'] if no_lev else []),
                 'T = max(KEV, LEV, EPSS); A is verified reachability; H is declared credible OT consequence; U is unremediated applicability']
     evidence.extend(inapplicable)
     if missing:

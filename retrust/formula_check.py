@@ -28,7 +28,7 @@ def validate(assessment, findings, options, weights, bands):
     for f in base:
         signal = [v for v in (1.0 if f.in_kev or f.ransomware else 0.0 if f.kev_available else None, f.lev, f.epss) if v is not None]
         low = max(signal, default=0.0)
-        complete = f.kev_available and f.lev is not None and f.epss is not None
+        complete = f.kev_available and f.epss is not None
         threat = (low, low if low == 1 or complete else 1.0)
         attack = (0.0, 0.0) if options['interface'] == 'blocked' else (0.0, 1.0) if options['interface'] == 'unknown' else (1.0, 1.0)
         h = {'control': .8, 'minor': .2, 'safety': 1.0}.get(options['consequence'])
@@ -50,9 +50,14 @@ def validate(assessment, findings, options, weights, bands):
         for got, want in zip((path['z_min'], path['z_max']), expected):
             assert math.isclose(got, want, abs_tol=1e-8), ('path', got, want)
     keys = {p.name: p.key for p in score.PILLARS}
-    active = [p for p in assessment.pillars if p.scored and p.name in keys]
-    total = sum(weights[keys[p.name]] for p in active)
-    raw = [math.exp(math.fsum(weights[keys[p.name]] / total * math.log(max(1.0, exposure if p.name == 'Exposure' else p.score)) for p in active)) for exposure in exposures]
+    pillars = {keys[p.name]: p for p in assessment.pillars if p.name in keys}
+    total = sum(weights[k] for k in keys.values())
+    def level(key, exposure):
+        pillar = pillars[key]
+        if key == 'exposure':
+            return exposure
+        return pillar.score if pillar.scored else score.MISSING_PILLAR
+    raw = [math.exp(math.fsum(weights[k] / total * math.log(max(1.0, level(k, exposure))) for k in keys.values())) for exposure in exposures]
     unfixable = {f.cve for group in weakness.classify(base) if group.name in weakness.UNMITIGABLE for f in base if f.cve in group.cves and not f.fixed}
     prefer = bands[0][0]
     if unfixable:
