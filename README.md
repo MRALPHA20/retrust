@@ -18,11 +18,11 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.0–87.7/100 (provisional range)
+  VERIFY  ·  87.2–87.7/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
 
   Moxa EDS-405A
-  VERIFY  ·  5.9–92.8/100 (provisional range)
+  VERIFY  ·  89.5–92.8/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.96
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
@@ -122,7 +122,7 @@ Attack reachability comes from each weakness's own CVSS attack vector and the
 conditions it demands, narrowed only by what you have verified — whether the
 affected service is reachable (`--interface`) and whether those conditions can
 be met (`--prerequisites`). Unknown material inputs produce **VERIFY**, a provisional
-score range and concrete checks for your technical team. RT5 uses the raw
+score range and concrete checks for your technical team. RT6 uses the raw
 `T × A × H × U` model and `R = min(1, Z1 + .20 Z2 + .10 Z3)`; repeated advisory
 records for one CVE count once. See [the current scoring explanation](docs/explainers/scoring.html).
 
@@ -210,10 +210,12 @@ The backtest above has been re-run under RT4; it diagnoses disclosure
 correlation and does not validate the new model or its procurement accuracy.
 Gates still apply.
 
-## Current decision model: RT5
+## Current decision model: RT6
 
-RT5 keeps the V1 exposure formula and the 60/20/15/5 weights. It corrects the
-firmware-specific KEV gate and rejects conflicting reviewed path assignments.
+RT6 keeps the V1 exposure formula and the 60/20/15/5 weights. A pillar with no
+evidence keeps its weight and counts as 50 instead of being dropped and
+renormalized, a missing LEV no longer leaves T unresolved when KEV and EPSS
+exist, and the bands are PREFER 80, CONDITIONAL 60, AVOID below 60.
 Saved JSON/CSV assessments record the model, source build and full data-input
 fingerprint. Reassess older results; their RT4 labels do not identify this policy.
 The forms use plain explanations alongside expandable technical evidence.
