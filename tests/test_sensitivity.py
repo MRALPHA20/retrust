@@ -210,7 +210,10 @@ def test_different_seeds_still_agree_on_a_clear_case():
     findings[0].lev = .0001
     context = dict(network_exposure='ot_only', interface='exposed',
                    prerequisites='satisfiable', consequence='control')
-    verdicts = {sensitivity.stability(findings, {"A"}, samples=200, seed=s, **context).dominant
+    certificates = [{"scheme": "IEC 62443-4-1", "matches_product": False},
+                    {"scheme": "IEC 62443-4-2", "matches_product": True}]
+    verdicts = {sensitivity.stability(findings, {"A"}, certificates, vendor_key="siemens",
+                                      samples=200, seed=s, **context).dominant
                 for s in (1, 7, 99)}
     assert len(verdicts) == 1
 

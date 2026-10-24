@@ -88,13 +88,13 @@ ol.qs pre{margin:1.5mm 0 0;font-size:8.2pt;padding:2.5mm 3mm}
 </style>
 
 <div class="plate">
-  <h1>ReTrust</h1><p><b>RT5 update, 20 October 2026:</b> Attack reachability is read from each
+  <h1>ReTrust</h1><p><b>RT6 update, 20 October 2026:</b> Attack reachability is read from each
 weakness's own CVSS attack vector and the conditions it demands; where the equipment sits on the
 network is recorded as context and never moves the score.
 Unknown reachability, OT consequences or firmware status produces VERIFY and a
 provisional range. The current formula is Z=T×A×H×U, R=min(1,Z1+.20Z2+.10Z3),
 E=100(1−R), S=E^.60×P^.20×V^.15×C^.05. Historical benchmark measurements below
-predate RT5. See <a href="explainers/scoring.html">the current scoring explanation</a>.</p>
+predate RT6. See <a href="explainers/scoring.html">the current scoring explanation</a>.</p>
   <p class="sub">Score OT hardware for cyber risk before you buy it.</p>
   <dl>
     <dt>Guide</dt><dd>How it works, how to run it, how to use it</dd>
@@ -127,8 +127,8 @@ $ retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</pre></l
      <code>127.0.0.1:8765</code>, local to your machine and read-only.</p>
   <table class="qs-legend">
     <tr>
-      <td><span class="v-prefer">PREFER</span> &ge;70</td>
-      <td><span class="v-caution">CONDITIONAL</span> &ge;40</td>
+      <td><span class="v-prefer">PREFER</span> &ge;80</td>
+      <td><span class="v-caution">CONDITIONAL</span> &ge;60</td>
       <td><span class="v-caution">VERIFY</span> evidence gaps</td>
       <td><span class="v-avoid">AVOID</span> below, or gated</td>
       <td><span class="v-inert">NOT ASSESSED</span> unresolved</td>
@@ -233,7 +233,7 @@ so abstention is a feature rather than a failure.</p>
 </table>
 
 <p>The weighted result is reported as a band: <span class="v-prefer">PREFER</span>
-at 70 or above, <span class="v-caution">CONDITIONAL</span> at 40 or above,
+at 80 or above, <span class="v-caution">CONDITIONAL</span> at 60 or above,
 <span class="v-avoid">AVOID</span> below. If material reachability, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range; a product that cannot be resolved at all is NOT ASSESSED and gets no score.
 Weights and thresholds are yours to change &mdash; run <code>retrust config --init</code>.</p>
 
@@ -438,11 +438,11 @@ what you typed.</p>
 <pre>  CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.0–87.7/100 (provisional range)
+  VERIFY  ·  87.2–87.7/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
 
   Schneider Electric Modicon M340
-  VERIFY  ·  6.0–69.9/100 (provisional range)
+  VERIFY  ·  69.1–79.9/100 (provisional range)
   CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 1.00
 
   Hikvision IP Camera
@@ -468,7 +468,7 @@ local index. A warning appears when only some candidates specify firmware.</p>
 <table>
   <thead><tr><th>Column</th><th>What it means</th></tr></thead>
   <tbody>
-    <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;70, <span class="v-caution">CONDITIONAL</span> &ge;40, <span class="v-avoid">AVOID</span> below, <span class="v-caution">VERIFY</span> with a provisional range while material evidence is unknown, <span class="v-inert">NOT ASSESSED</span> when it could not resolve the product</td></tr>
+    <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;80, <span class="v-caution">CONDITIONAL</span> &ge;60, <span class="v-avoid">AVOID</span> below, <span class="v-caution">VERIFY</span> with a provisional range while material evidence is unknown, <span class="v-inert">NOT ASSESSED</span> when it could not resolve the product</td></tr>
     <tr><td>SCORE</td><td>The weighted composite, 0&ndash;100, higher is better</td></tr>
     <tr><td>CVES</td><td>Distinct CVEs in scope. Raw total volume is not a scoring penalty</td></tr>
     <tr><td>ROBUST</td><td>The share of sampled weightings supporting the most common verdict; not ranking stability. Shows "not sampled" while a product is VERIFY: resolve the missing evidence first</td></tr>

@@ -185,7 +185,7 @@ Enough to know if you last presented an earlier build.
   advisory findings, with only a vendor certificate behind it, used to score
   well enough to come out PREFER. Absence of evidence is no longer treated as
   evidence.
-- **RT5 checks the selected firmware.** A published patch alone does not clear
+- **RT6 checks the selected firmware.** A published patch alone does not clear
   a KEV blocker. Affected or unresolved firmware still reads AVOID, including
   the HTTPS-only S7-1500 example that previously read VERIFY under RT4. Show the
   assessor the fixed firmware version and supporting evidence; do not present

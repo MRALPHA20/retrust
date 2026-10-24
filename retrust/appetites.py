@@ -73,7 +73,7 @@ APPETITES = (
             "vendor_practice": 0.10, "certification": 0.04,
         }),
         # Stricter on both edges: more score before either favourable verdict.
-        bands=MappingProxyType({"prefer": 75, "conditional": 45}),
+        bands=MappingProxyType({"prefer": 85, "conditional": 65}),
         why=("For processes where a compromise can injure people or destroy"
              " equipment. There the cost of a wrong PREFER is far larger than"
              " the cost of a wrong AVOID, so both bands demand more score"

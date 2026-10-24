@@ -24,11 +24,11 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.0–87.7/100 (provisional range)
+  VERIFY  ·  87.2–87.7/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
 
   Schneider Electric Modicon M340
-  VERIFY  ·  6.0–69.9/100 (provisional range)
+  VERIFY  ·  69.1–79.9/100 (provisional range)
   CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 1.00
 
   Rockwell Automation ControlLogix
@@ -36,7 +36,7 @@ $ retrust compare \
   CVEs 35  ·  ROBUST not sampled  ·  WORST FLAW 1.00
 
   Moxa EDS-405A
-  VERIFY  ·  5.9–92.8/100 (provisional range)
+  VERIFY  ·  89.5–92.8/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.96
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
@@ -769,7 +769,7 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   CVEs 1034
 
   Schneider Electric Modicon M340
-  VERIFY  ·  6.0–69.9/100 (provisional range)
+  VERIFY  ·  69.1–79.9/100 (provisional range)
   CVEs 48
 
   Rockwell Automation ControlLogix
@@ -777,7 +777,7 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   CVEs 35
 
   Moxa EDS-405A
-  VERIFY  ·  5.9–92.8/100 (provisional range)
+  VERIFY  ·  89.5–92.8/100 (provisional range)
   CVEs 10
 
   Johnson Controls iSTAR Ultra G2
@@ -912,7 +912,7 @@ already going to hear about.
 | Vendor practice | 0.15 | whether the vendor runs its own CSAF feed, and advisory completeness |
 | Certification | 0.05 | IEC 62443 (ISASecure) and Common Criteria certificates |
 
-**Exposure in RT5 follows the ReTrust-OT V1 proposal:**
+**Exposure in RT6 follows the ReTrust-OT V1 proposal:**
 
 ```
 T = max(KEV, LEV, EPSS)
@@ -995,12 +995,13 @@ that scope is justified. An engineer must review findings with different effects
 The tool does not infer a verified attack graph from advisory records.
 
 The four-pillar composite uses the stated weighted product. Pillars are floored
-at 1 for that calculation. Missing P, V or C evidence is excluded and the
-remaining weights are renormalized; unknown exposure remains in the range
-rather than disappearing. A measured certification participates directly;
-there is no hidden choice of a better score with or without it.
+at 1 for that calculation. Missing P, V or C evidence keeps its full weight and
+enters the product at a neutral 50, never dropped and renormalized, so absent
+evidence cannot raise a score above what weak evidence would give; unknown
+exposure remains in the range rather than disappearing. A measured
+certification participates directly.
 Existing hard gates and the cap below PREFER for unfixable hardcoded credentials
-still apply. Bands remain PREFER ≥70, CONDITIONAL 40–69.9, AVOID <40.
+still apply. Bands are PREFER ≥80, CONDITIONAL 60–79.9, AVOID <60 (scoring version RT6).
 These proposal-specific weights and consequence values require validation;
 they are not a NIST standard or a measured procurement accuracy guarantee.
 
@@ -1060,7 +1061,7 @@ JSON schema 3 includes `score_min`, `score_max`, `exposure_min`, `exposure_max`,
 `provisional`, `verification`, and full per-unit factors under `paths` in detail
 exports. CSV retains the ranges and verification actions. `--fail-on unassessed`
 returns exit 2 for VERIFY, so a pipeline can reject incomplete assessments.
-Scoring vectors begin `RT5`. RT4 and earlier results must be reassessed under
+Scoring vectors begin `RT6`. RT4 and earlier results must be reassessed under
 this decision policy. The exposure formula and weights are unchanged; the gate
 now follows assessed firmware applicability, rather than vendor patch availability.
 Conflicting reviewed path IDs for one CVE are rejected before scoring.
@@ -1288,7 +1289,7 @@ retrust/
 
 ## Reproducibility
 
-Current CLI and web results record the RT5 model and a source-code fingerprint.
+Current CLI and web results record the RT6 model and a source-code fingerprint.
 Their data token hashes the complete database plus the certification and screening
 lists; it is distinct from the older count/date provenance token. JSON and CSV
 retain these identifiers, and comparisons warn when the model or tool build differs.

@@ -30,7 +30,7 @@ import json
 
 from . import cvss, exposure as exposure_model, weakness
 
-BANDS = [(70, "PREFER"), (40, "CONDITIONAL"), (0, "AVOID")]
+BANDS = [(80, "PREFER"), (60, "CONDITIONAL"), (0, "AVOID")]
 
 # Best first, for every surface that ranks a shortlist. One definition because
 # there were eight: five copies in cli.py, one in serve.py, and two deliberate
@@ -47,7 +47,7 @@ VERDICT_RANK = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2,
 
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
-SCORING_VERSION = "RT5"
+SCORING_VERSION = "RT6"
 
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
@@ -497,17 +497,28 @@ def _exposure_needs_context(*_args, **_kwargs):
 FLOOR = 1.0
 
 
-def _composite(usable, weights):
-    """S = product(pillar ** exponent), exponents renormalized over what we measured.
+# A pillar with no evidence is scored here, never dropped. Dropping it and
+# renormalizing the other exponents let missing evidence about a weak pillar
+# raise the headline score. 50 sits below every certificate-backed value the
+# certification pillar can return, so absence never beats evidence, and it is
+# not zero, so absence is not treated as proof of a bad result either.
+MISSING_PILLAR = 50.0
 
-    Same missing-evidence rule as before: a pillar with no evidence is excluded
-    and the remaining exponents are renormalized to sum to 1, so a product with
-    less data is neither flattered nor punished by a phantom neutral value.
+
+def _composite(usable, weights):
+    """S = product(pillar ** weight) over EVERY pillar, with original exponents.
+
+    Exponents are the configured weights normalised over the full pillar set,
+    not over what we measured. A pillar absent from `usable` contributes
+    MISSING_PILLAR.
     """
-    total = sum(weights.get(spec.key, 0) for spec, _ in usable) or 1.0
+    total = sum(weights.get(spec.key, 0) for spec in PILLARS) or 1.0
+    present = {spec.key: pillar for spec, pillar in usable}
     product = 1.0
-    for spec, pillar in usable:
-        product *= max(pillar.score, FLOOR) ** (weights.get(spec.key, 0) / total)
+    for spec in PILLARS:
+        pillar = present.get(spec.key)
+        value = pillar.score if pillar is not None else MISSING_PILLAR
+        product *= max(value, FLOOR) ** (weights.get(spec.key, 0) / total)
     return product
 
 
@@ -758,10 +769,10 @@ def assess(product_label, findings, advisories=(), weights=None,
     pillars = all_pillars + diagnostics + [confidence]
 
     # One rule for missing evidence, every pillar alike: coverage 0 means the
-    # pillar measured nothing, so it is excluded and the rest renormalized --
-    # never scored as a phantom neutral that moves rankings. `scored` is the
-    # participation flag every renderer and the sensitivity table read, so
-    # the exclusion is visible everywhere the same way.
+    # pillar measured nothing. It keeps its full exponent and enters the
+    # composite at MISSING_PILLAR (see _composite), so absence can never lift a
+    # score. `scored` is False for it, which every renderer and the sensitivity
+    # table read as "no evidence behind this number".
     usable = [(spec, pillar) for spec, pillar in measured if pillar.coverage > 0 or (spec.key == "exposure" and base)]
     dropped = [spec.name for spec, pillar in measured if pillar.coverage == 0 and not (spec.key == "exposure" and base)]
     for spec, pillar in measured:
@@ -921,10 +932,10 @@ def assess(product_label, findings, advisories=(), weights=None,
         )
     if dropped:
         notes.append(
-            ", ".join(dropped) + " had no evidence to measure, so "
-            + ("their exponents were" if len(dropped) > 1 else "its exponent was")
-            + " excluded and the remaining pillars renormalized -- one rule"
-            " for every pillar, never a phantom neutral score.")
+            ", ".join(dropped) + " had no evidence to measure. "
+            + ("Each is" if len(dropped) > 1 else "It is")
+            + f" scored {MISSING_PILLAR:.0f} and keeps its full weight, so"
+            " missing evidence never lifts the score.")
     if consequence is None:
         notes.append(
             "No process consequence was established, so exposure includes"

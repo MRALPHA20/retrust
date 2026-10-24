@@ -171,7 +171,7 @@ def test_complete_input_can_receive_a_numeric_verdict():
     assert not result.provisional
     assert result.score_min == result.score_max
     assert result.verdict in {'PREFER','CONDITIONAL','AVOID'}
-    assert result.vector.startswith('RT5/')
+    assert result.vector.startswith('RT6/')
 
 
 def test_uncertainty_cannot_look_like_stable_approval():
@@ -336,3 +336,22 @@ def test_checklist_respects_finding_specific_answers():
                               prerequisites='unknown', consequence='safety', remediation='affected')
     text = ' '.join(result.missing)
     assert 'Exploitation prerequisites' in text and 'Attack reachability' not in text
+
+
+def test_missing_certification_never_beats_weaker_evidence():
+    f = flaw(epss=.5, lev=.5)
+    vendor_only = score.assess('PLC', [f], certificates=[{'scheme': 'IEC 62443-4-1'}],
+                               vendor_key='siemens', **COMPLETE)
+    absent = score.assess('PLC', [f], certificates=[], vendor_key='siemens', **COMPLETE)
+    assert absent.score < vendor_only.score
+
+
+def test_missing_pillar_keeps_its_original_exponent():
+    pillars = {'exposure': 60, 'patchability': 80, 'vendor_practice': 90}
+    usable = [(s, score.Pillar(s.name, pillars[s.key], 1)) for s in score.PILLARS if s.key in pillars]
+    expected = 60**.6 * 80**.2 * 90**.15 * score.MISSING_PILLAR**.05
+    assert score._composite(usable, score.DEFAULT_WEIGHTS) == pytest.approx(expected)
+
+
+def test_default_bands_follow_the_specification():
+    assert [t for t, _ in score.BANDS] == [80, 60, 0]

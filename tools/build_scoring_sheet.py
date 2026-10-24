@@ -131,7 +131,7 @@ def story(m):
                     ['.48 and .20','.52','48'],['.48, .20 and .10','.53',f'{m["exposure"]:.0f}']], [80*mm,30*mm,55*mm]),
              para('Repeated advisory records for one CVE count once. Different CVEs are review units, not proof of independent attack paths. An engineer can explicitly group a reviewed shared path. Only the largest three units contribute; R clips at 1.', 'Small'),
              para('Combine the four pillars', 'H2'),box('S = E^.60 x P^.20 x V^.15 x C^.05'),
-             para(f'With E={m["exposure"]:.0f}, P=70, V=80 and C=60: <b>S = {m["final"]:.2f}/100</b>. The current 70/40 bands give CONDITIONAL, assuming verified inputs and no mandatory blocker.'),
+             para(f'With E={m["exposure"]:.0f}, P=70, V=80 and C=60: <b>S = {m["final"]:.2f}/100</b>. The current 80/60 bands give CONDITIONAL, assuming verified inputs and no mandatory blocker.'),
              PageBreak()]
     a = m['real']
     flow += [para('Unknown means VERIFY', 'H1'),
@@ -143,7 +143,7 @@ def story(m):
                     ['Affected firmware and installed fixes','Asset owner or product supplier'],
                     ['Missing exploitation data','Security analyst; refresh public sources']], [94*mm,71*mm]),
              para('Decision rules', 'H2'),
-             para('PREFER: 70 or higher. CONDITIONAL: 40 to below 70. VERIFY: material evidence remains unresolved. AVOID: below 40 or a mandatory blocker. NOT ASSESSED: insufficient product evidence to calculate a score.'),
+             para('PREFER: 80 or higher. CONDITIONAL: 60 to below 80. VERIFY: material evidence remains unresolved. AVOID: below 60 or a mandatory blocker. NOT ASSESSED: insufficient product evidence to calculate a score.'),
              para('Pillars enter the final product with a floor of 1. Missing patch, vendor or certification evidence is excluded and the remaining exponents are adjusted. Unknown exposure stays in the range. Measured certification participates directly. Unfixed hardcoded credentials cap the result below PREFER.'),
              para('Evidence and limits', 'H2'),
              para('Save JSON or HTML to retain RT4 settings, factor bounds, advisory citations and source capture dates. Per-finding reviews can retain rationale and evidence. Website answers apply across the findings in scope; review findings individually when their consequences or controls differ.'),

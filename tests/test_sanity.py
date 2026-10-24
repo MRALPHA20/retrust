@@ -54,18 +54,19 @@ def test_a_pillar_without_evidence_cannot_move_a_ranking():
     without = score.assess("B", findings, {"ICSA-26-001-01"}, certificates=[])
     cert = next(p for p in without.pillars if p.name == "Certification")
     assert not cert.scored
-    # The excluded pillar's phantom 50 must appear nowhere: the no-data score
-    # is the renormalized PRODUCT of the pillars that DID measure something.
+    # Missing evidence is scored at MISSING_PILLAR with its full exponent. It
+    # is never dropped and renormalized, because that let absence lift a score.
     keys = {spec.name: spec.key for spec in score.PILLARS}
     weights = score.DEFAULT_WEIGHTS
-    scored = [p for p in without.pillars
-              if p.scored and p.name != "Evidence quality"]
-    total = sum(weights[keys[p.name]] for p in scored)
+    by_key = {keys[p.name]: p for p in without.pillars if p.name in keys}
+    total = sum(weights[k] for k in keys.values())
     expected = 1.0
-    for pillar in scored:
-        expected *= max(pillar.score, score.FLOOR) ** (weights[keys[pillar.name]] / total)
+    for key in keys.values():
+        pillar = by_key[key]
+        level = pillar.score if pillar.scored else score.MISSING_PILLAR
+        expected *= max(level, score.FLOOR) ** (weights[key] / total)
     assert without.score == pytest.approx(expected, abs=0.1)
-    assert with_data.score != without.score   # evidence moved it; absence did not
+    assert with_data.score > without.score   # absence never beats evidence
 
 
 def test_disclosing_a_component_stack_never_lowers_the_score():
@@ -160,9 +161,11 @@ def test_missing_epss_does_not_drop_the_exposure_pillar():
     b = score.assess("B", with_epss, {"ICSA-26-001-01"})
     exposure = next(p for p in a.pillars if p.name == "Exposure")
     assert exposure.scored and exposure.coverage > 0
-    # The verdict must not flip on EPSS availability alone.
+    # The verdict must not flip on EPSS availability alone, and missing EPSS
+    # must never score better than having it: T stays unresolved, so the
+    # conservative end of the range is lower.
     assert a.verdict == b.verdict
-    assert abs(a.score - b.score) < 5
+    assert a.score <= b.score
 
 
 def test_a_bundled_kev_cautions_even_with_no_first_party_findings():

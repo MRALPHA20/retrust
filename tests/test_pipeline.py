@@ -150,15 +150,16 @@ def test_evidence_quality_is_not_in_the_score(db):
 
     weights = score.DEFAULT_WEIGHTS
     keys = {spec.name: spec.key for spec in score.PILLARS}
-    risk = [p for p in assessment.pillars
-            if p.name != "Evidence quality" and p.scored]
-    # Only pillars that measured something participate; the rest are excluded
-    # and the remaining exponents renormalized -- one rule for every pillar.
-    # The composite is a PRODUCT of pillar ** exponent, not a mean.
-    total = sum(weights[keys[p.name]] for p in risk)
+    # Every weighted pillar participates with its original exponent; a pillar
+    # with no evidence is scored at MISSING_PILLAR, never dropped and
+    # renormalized. The composite is a PRODUCT of pillar ** exponent.
+    by_key = {keys[p.name]: p for p in assessment.pillars if p.name in keys}
+    total = sum(weights[k] for k in keys.values())
     expected = 1.0
-    for pillar in risk:
-        expected *= max(pillar.score, score.FLOOR) ** (weights[keys[pillar.name]] / total)
+    for key in keys.values():
+        pillar = by_key[key]
+        level = pillar.score if pillar.scored else score.MISSING_PILLAR
+        expected *= max(level, score.FLOOR) ** (weights[key] / total)
     assert assessment.score == pytest.approx(expected, abs=0.1)
 
     # Evidence quality is present in the output but carries no weight key.

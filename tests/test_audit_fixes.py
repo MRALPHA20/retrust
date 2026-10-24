@@ -156,7 +156,7 @@ def test_data_identity_changes_even_when_counts_stay_the_same(tmp_path):
 def test_saved_records_keep_code_model_and_data_identity():
     a = score.assess('PLC', [flaw()], snapshot='d'*64)
     r = batch.to_record(a, match.Resolution(query='PLC'))
-    assert r['model_version'] == 'RT5'
+    assert r['model_version'] == 'RT6'
     assert r['source_build'] == identity.build_fingerprint()
     assert r['data_fingerprint'] == 'd'*64
     assert batch.envelope([r])['source_build'] == r['source_build']
