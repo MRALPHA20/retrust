@@ -409,8 +409,12 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             "for this assessment. Your answers are recorded. Review the firmware and supporting "
             "security notices; network answers alone cannot establish a cybersecurity score."
             if resolution.resolved else
-            "Your answers are recorded, but the product has not been identified in the advisory data. "
-            "Choose a matching product below, or correct the manufacturer order number, vendor or model.")
+            # No "choose one below": this block is also the downloaded report and
+            # the CLI output, where there is no form and no suggestion list. The
+            # web page adds its own invitation where matches actually exist.
+            "Your answers are recorded, but the product has not been identified in the advisory "
+            "data. Check the manufacturer order number, vendor and model against the equipment "
+            "nameplate, then assess it again.")
     parts.append(f'<p class="result-help">{_esc(explanation)}</p>')
     if assessment.score is not None:
         parts.append('<p class="tnote">Higher scores are more favourable under the chosen settings. '

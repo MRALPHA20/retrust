@@ -773,6 +773,33 @@ def test_an_absent_order_number_explains_exact_matching(handler):
     assert 'product name rather than' not in flat, 'a short code is not a name'
 
 
+def test_the_page_never_points_at_a_list_that_is_not_there(handler):
+    """Found by smoke-testing the live site: three pages told the reader to
+    "choose a matching product below" and then said "Nothing close was found"
+    two lines further down. An invitation to choose is only printed when there
+    is something to choose -- on this page, in the downloaded report, and in
+    the CLI output, which all share one renderer."""
+    for query in ('order_number=Zzqq+Wwxx+Yyvv+Uutt+Ssrr',
+                  'order_number=6ES7999-9ZZ99-9ZZ9',
+                  'vendor=Nope&product=Nothing',
+                  'vendor=Testco+Electric&product=Nonesuch+1'):
+        _, _, body = _get(handler, '/score?' + query)
+        flat = " ".join(body.split())
+        if 'Choose a matching product below' in flat:
+            assert 'Did you mean' in flat, query
+        if 'Nothing close was found' in flat:
+            assert 'Choose a matching product below' not in flat, query
+
+
+def test_an_unidentified_product_is_not_told_to_look_below(handler):
+    """The same block is the downloaded report and the terminal output, where
+    there is no form and no suggestions, so the advice cannot say "below"."""
+    _, _, body = _get(handler, '/score?vendor=Nope&product=Nothing')
+    flat = " ".join(body.split())
+    assert 'Check the manufacturer order number, vendor and model' in flat
+    assert 'Choose a matching product below' not in flat
+
+
 def test_a_failed_lookup_always_says_something(handler):
     """Whatever was typed, the page offers a next step rather than stopping."""
     for query in ('order_number=Testco+Electric+TestPLC+9000+Alpha',

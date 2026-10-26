@@ -323,9 +323,14 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         suggestions = search.suggest(connection, vendor=vendor, product=product,
                                      order_number=order_number)
         if suggestions['mistyped_order_number']:
+            # Only invite a choice when there is something to choose. A name the
+            # corpus does not know reaches here too, and "choose one below"
+            # followed by "nothing close was found" contradicts itself.
             body += ('<p class="notice" role="alert">That product name could not '
-                     'be identified. Choose a matching product below, or refine it '
-                     'under &ldquo;Use vendor and model instead&rdquo;.</p>')
+                     'be identified. '
+                     + ('Choose a matching product below, or refine it'
+                        if suggestions['products'] else 'Refine it')
+                     + ' under &ldquo;Use vendor and model instead&rdquo;.</p>')
         elif order_number and not (vendor or product):
             body += ('<p class="notice" role="alert">No advisory in this corpus '
                      'names that order number. Check the digits, or search by '
