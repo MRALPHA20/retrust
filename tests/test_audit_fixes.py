@@ -87,16 +87,18 @@ def test_transport_connects_to_the_vetted_sockaddr_and_keeps_tls_name(monkeypatc
         def setsockopt(self, *args): pass
         def connect(self, address): calls.append(('connect', address))
         def close(self): pass
-    class Context:
-        def wrap_socket(self, sock, server_hostname):
-            calls.append(('tls', server_hostname)); return sock
+    context = ssl.create_default_context()
+    def wrap_socket(sock, server_hostname):
+        calls.append(('tls', server_hostname)); return sock
+    monkeypatch.setattr(context, 'wrap_socket', wrap_socket)
     monkeypatch.setattr(socket, 'getaddrinfo', resolve)
     monkeypatch.setattr(socket, 'socket', lambda *a: Sock())
-    connection = bootstrap._PinnedHTTPSConnection('audit.invalid', 8443, context=Context())
+    connection = bootstrap._PinnedHTTPSConnection('audit.invalid', 8443, context=context)
     connection.connect()
     assert calls == [('dns', 'audit.invalid', 8443), ('connect', ('93.184.216.34', 8443)), ('tls', 'audit.invalid')]
-    assert bootstrap._PinnedHTTPSHandler()._context.verify_mode == ssl.CERT_REQUIRED
-    assert bootstrap._PinnedHTTPSHandler()._context.check_hostname
+    default = bootstrap._PinnedHTTPSConnection('audit.invalid')
+    assert default._context.verify_mode == ssl.CERT_REQUIRED
+    assert default._context.check_hostname
 
 
 @pytest.mark.parametrize('operation', ['inspect', 'restore'])
@@ -185,3 +187,47 @@ def test_snapshot_create_refuses_an_unrestorable_manifest(tmp_path, monkeypatch)
     with pytest.raises(SystemExit, match='Shorten'):
         snapshot.create(tmp_path, destination, note='x'*2048)
     assert not destination.exists()
+
+
+class _WithoutSerialize:
+    """Expose the connection API available before Python 3.11."""
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __getattr__(self, name):
+        if name == 'serialize':
+            raise AttributeError(name)
+        return getattr(self.connection, name)
+
+
+@pytest.mark.parametrize('memory', [True, False])
+def test_legacy_fingerprint_includes_uncommitted_rows_without_changing_transaction(tmp_path, memory):
+    db = index.connect(':memory:' if memory else tmp_path/'legacy.db')
+    legacy = _WithoutSerialize(db)
+    try:
+        db.execute("INSERT INTO advisory(id,title) VALUES('A','first')")
+        before = identity.data_fingerprint(legacy, tmp_path)
+        db.execute("UPDATE advisory SET title='second' WHERE id='A'")
+        assert identity.data_fingerprint(legacy, tmp_path) != before
+        assert db.in_transaction
+        db.rollback()
+        assert db.execute('SELECT COUNT(*) FROM advisory').fetchone()[0] == 0
+    finally:
+        db.close()
+
+
+def test_legacy_fingerprint_reads_committed_wal_changes(tmp_path):
+    db = index.connect(tmp_path/'wal.db')
+    db.execute('PRAGMA journal_mode=WAL')
+    reader = index.connect_readonly(tmp_path/'wal.db')
+    try:
+        with db:
+            db.execute("INSERT INTO advisory(id,title) VALUES('A','first')")
+        before = identity.data_fingerprint(_WithoutSerialize(reader), tmp_path)
+        with db:
+            db.execute("UPDATE advisory SET title='second' WHERE id='A'")
+        assert identity.data_fingerprint(_WithoutSerialize(reader), tmp_path) != before
+        assert not reader.in_transaction
+    finally:
+        reader.close()
+        db.close()

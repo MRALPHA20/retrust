@@ -42,7 +42,18 @@ def data_fingerprint(connection, data_dir='data'):
             and not Path(database + '-wal').exists()):
         db_digest = file_digest(database)
     else:
-        db_digest = hashlib.sha256(connection.serialize()).hexdigest()
+        serialize = getattr(connection, 'serialize', None)
+        if serialize is not None:
+            db_digest = hashlib.sha256(serialize()).hexdigest()
+        else:
+            # Python 3.10 has no Connection.serialize(). A logical dump also
+            # includes this connection's uncommitted rows and visible WAL data;
+            # hashing the file alone would silently miss those changes.
+            digest = hashlib.sha256(b'sqlite logical dump\n')
+            for statement in connection.iterdump():
+                digest.update(statement.encode('utf-8'))
+                digest.update(b'\n')
+            db_digest = digest.hexdigest()
     inputs = {'database': db_digest}
     for name in ('certifications.json', 'screening.json'):
         inputs[name] = file_digest(Path(data_dir) / name)
