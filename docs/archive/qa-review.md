@@ -1,5 +1,8 @@
 # Terminal polish and verification — 28 September 2026
 
+> Historical record. Scores and checks describe the dated review, not the
+> current release. See the [documentation index](../README.md) for current guides.
+
 ReTrust now has named interactive commands, cyan headings, semantic verdict
 colors, aligned pillar bars, and wrapped assessment evidence. Numeric menu
 inputs remain compatible. Terminal background and fonts remain controlled by
@@ -22,7 +25,7 @@ backtesting, configuration, shell completion, advisory integrity, supplier
 questions, timelines, VEX, CVE lookup, and error exit codes against the local
 corpus. The automated suite also covers the HTTP routes and exports.
 
-Logs: [tests](../reports/qa/tests.txt), [smoke checks](../reports/qa/smoke.txt).
+Logs: tests (local evidence: `reports/qa/tests.txt`), smoke checks (local evidence: `reports/qa/smoke.txt`).
 
 ## Visual and interaction review
 
@@ -34,8 +37,8 @@ inspection. These images show actual command output on a dark preview
 background, not a native terminal-window screenshot. Verified no-color output
 and 52-column wrapping through automated tests.
 
-![Terminal menu](../reports/qa/terminal-menu.png)
-![Assessment output](../reports/qa/terminal-score.png)
+Terminal menu (local evidence: `reports/qa/terminal-menu.png`)
+Assessment output (local evidence: `reports/qa/terminal-score.png`)
 
 ### 2. Assessment form and result — passed
 
@@ -45,8 +48,8 @@ The corrected result reports four distinct KEV CVEs, matching the four listed
 identifiers. It remains AVOID; deduplicating exploitation counts changes its
 composite score from 39.3 to 40.2. Hard gates override the numeric band.
 
-![Assessment form](../reports/qa/01-assessment-form.png)
-![Corrected assessment](../reports/qa/02-assessment-result.png)
+Assessment form (local evidence: `reports/qa/01-assessment-form.png`)
+Corrected assessment (local evidence: `reports/qa/02-assessment-result.png`)
 
 ### 3. Comparison — passed
 
@@ -56,7 +59,7 @@ robustness column: the web now runs 300 seeded weight samples, showing 93% and
 77% for these candidates. Clarified that robustness measures each product's
 most common verdict, not the stability of the overall ranking.
 
-![Comparison](../reports/qa/03-comparison.png)
+Comparison (local evidence: `reports/qa/03-comparison.png`)
 
 ### 4. Mobile assessment and navigation — passed for the tested viewport
 
@@ -71,7 +74,7 @@ the tables. Confirmed keyboard focus and ArrowRight scrolling on a named table
 region. The mobile navigation opens with Enter. Restored the normal viewport
 after testing.
 
-![Mobile assessment](../reports/qa/04-mobile-assessment.png)
+Mobile assessment (local evidence: `reports/qa/04-mobile-assessment.png`)
 
 ## Functional fixes from this pass
 
@@ -97,7 +100,7 @@ Screenshots and passing tests do not prove that every possible input is correct.
 
 ## Documentation and benchmark snapshot
 
-The [PDF overview](ReTrust-Guide.pdf), [benchmark report](benchmark-report.md) and
-[tool comparison](tool-comparison.md) were refreshed on 28 September 2026.
+The [PDF overview](../ReTrust-Guide.pdf), [benchmark report](../benchmark-report.md) and
+[tool comparison](../tool-comparison.md) were refreshed on 28 September 2026.
 Benchmark JSON/text is retained in `docs/benchmarks/`. The nine-page PDF was
 rendered and every page inspected for layout, readability and overflow.

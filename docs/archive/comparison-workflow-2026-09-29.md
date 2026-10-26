@@ -1,5 +1,8 @@
 # Comparison workflow update — 29 September 2026
 
+> Historical record. Scores and checks describe the dated review, not the
+> current release. See the [documentation index](../README.md) for current guides.
+
 A record of one change, kept as it was written. The behaviour below still holds;
 the numbers do not. Scores move with the scoring version, the weights and the
 loaded snapshot, so treat every figure here as evidence that the export path

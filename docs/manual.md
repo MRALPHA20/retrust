@@ -24,11 +24,11 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  87.2–87.7/100 (provisional range)
+  VERIFY  ·  68.0–87.7/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
 
   Schneider Electric Modicon M340
-  VERIFY  ·  69.1–79.9/100 (provisional range)
+  VERIFY  ·  6.0–79.9/100 (provisional range)
   CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 1.00
 
   Rockwell Automation ControlLogix
@@ -36,7 +36,7 @@ $ retrust compare \
   CVEs 35  ·  ROBUST not sampled  ·  WORST FLAW 1.00
 
   Moxa EDS-405A
-  VERIFY  ·  89.5–92.8/100 (provisional range)
+  VERIFY  ·  5.9–92.8/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.96
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
@@ -748,7 +748,7 @@ procurement system. Column names are matched loosely, so `Manufacturer`,
 `Part Number` and `Firmware Version` all work without reshaping. A **CycloneDX
 SBOM** works directly too -- the component list an integrator ships is exactly
 a candidate list, with `supplier` as the vendor and `mpn` as the order number
-([examples/system-bom.json](examples/system-bom.json) shows the shape).
+([examples/system-bom.json](../examples/system-bom.json) shows the shape).
 
 ```bash
 retrust batch candidates.csv --json results.json --csv results.csv --html review.html
@@ -769,7 +769,7 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   CVEs 1034
 
   Schneider Electric Modicon M340
-  VERIFY  ·  69.1–79.9/100 (provisional range)
+  VERIFY  ·  6.0–79.9/100 (provisional range)
   CVEs 48
 
   Rockwell Automation ControlLogix
@@ -777,7 +777,7 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   CVEs 35
 
   Moxa EDS-405A
-  VERIFY  ·  89.5–92.8/100 (provisional range)
+  VERIFY  ·  5.9–92.8/100 (provisional range)
   CVEs 10
 
   Johnson Controls iSTAR Ultra G2
@@ -1384,4 +1384,4 @@ Verify any gate against the cited source before acting on it.
 
 ## Licence
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](../LICENSE).

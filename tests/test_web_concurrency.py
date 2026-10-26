@@ -158,7 +158,7 @@ def test_calculation_overload_gives_retry_and_keeps_health_usable(application):
         entered.set()
         assert release.wait(5)
         return cli._assess(connection, *args, **kwargs)
-    with running(application, assess, workers=1) as (_, base):
+    with running(application, assess, workers=1) as (server, base):
         with ThreadPoolExecutor(max_workers=1) as client:
             first = client.submit(fetch, base, query())
             try:
@@ -167,6 +167,12 @@ def test_calculation_overload_gives_retry_and_keeps_health_usable(application):
                     fetch(base, query())
                 assert error.value.code == 503
                 assert error.value.headers['Retry-After'] == '2'
+                error.value.close()
+                # Headers can arrive before the rejected handler releases its
+                # admission slot. Wait for cleanup before probing health while
+                # the first calculation is still deliberately occupied.
+                assert server._slots.acquire(timeout=1)
+                server._slots.release()
                 assert fetch(base, '/healthz', timeout=1)[0] == 200
             finally:
                 release.set()

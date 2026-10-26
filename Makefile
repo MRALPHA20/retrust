@@ -1,7 +1,7 @@
 # Bootstrap everything from nothing. Requires git, curl and python3.
 DATA ?= data
 
-.PHONY: all data ingest refresh test eval backtest demo docs guide batch snapshot ci deploy live clean
+.PHONY: all data ingest refresh test eval backtest demo docs guide batch snapshot ci deploy live clean smoke formula-check
 
 all: ingest refresh test
 
@@ -28,6 +28,14 @@ refresh:
 
 test:
 	python3 -m pytest tests/ -q
+
+# Broad CLI checks against the downloaded local data.
+smoke:
+	bash smoke.sh
+
+# Validate scoring across all indexed products without fetching new sources.
+formula-check:
+	python3 -m retrust.formula_check --db $(DATA)/retrust.db --data $(DATA) --output $(DATA)/formula-validation.json
 
 eval:
 	python3 -m retrust.cli eval --sample 4000

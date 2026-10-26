@@ -42,7 +42,7 @@ Verify every step against the loaded snapshot on the day: scores move with the d
 - Authored buyer queries: 20/21. This is a small internal set.
 - Latest functionality verification: 961 automated tests and 94 real-data smoke checks passed, including regression guards against injection, SSRF and decompression-bomb inputs. Two of those guards exist because the thing they cover once passed without them: a forged `BADSIG` survived the whole suite until the gpg verdict tree was tested directly, and four mutations of the rendered findings table survived until its cap, ranking, non-emptiness and disclosure were asserted.
 - Median assessment time: approximately 505 ms end-to-end per CLI invocation for ABB AC 800M, of which about 2 ms is the assessment itself; the remainder is interpreter start-up and opening the index. Measured 28 September 2026 under shared-machine conditions.
-- [Methods and raw measurements](benchmark-report.md), [official-source tool comparison](tool-comparison.md), [PDF overview](ReTrust-Guide.pdf), [QA review](qa-review.md).
+- [Methods and raw measurements](benchmark-report.md), [official-source tool comparison](tool-comparison.md), [PDF overview](ReTrust-Guide.pdf), [QA review](archive/qa-review.md).
 - Three self-contained explainer pages for reviewers who want the model without the code: [what it is](explainers/overview.html), [every command](explainers/commands.html), [the scoring methodology](explainers/scoring.html) with the formula worked through on a real result.
 
 ## Boundaries
