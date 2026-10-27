@@ -170,7 +170,7 @@ def build():
     for num,title,url in sources:
         story += [p(f'<b>[{num}] {title}</b><br/><link href="{url}" color="#087E83">{url}</link>','Small'),Spacer(1,4)]
     story += [Spacer(1,13),p('Evidence retained with the project','H2'),
-        p('docs/benchmarks/evaluation.json and evaluation.txt<br/>docs/benchmarks/backtest.json and backtest.txt<br/>docs/benchmarks/latency.json<br/>docs/benchmark-report.md<br/>docs/tool-comparison.md<br/>docs/archive/qa-review.md<br/>tools/build_overview.py','Code'),
+        p('docs/benchmarks/evaluation.json and evaluation.txt<br/>docs/benchmarks/backtest.json and backtest.txt<br/>docs/benchmarks/latency.json<br/>docs/benchmark-report.md<br/>docs/tool-comparison.md<br/>tools/build_overview.py','Code'),
         p('Comparison sources [3-9] were read on 28 September 2026. CISA data claims come from the locally indexed corpus and provenance; the public KEV page was not retrievable during report preparation. Product descriptions are summaries, not endorsements or exhaustive feature inventories.','Small'),
         p('The benchmark cohort is derived from this tool\'s indexed public corpus. Source publication dates and local capture dates differ. The historical feasibility plan is kept as an explicitly labeled archive.','Small')]
     OUT.parent.mkdir(parents=True,exist_ok=True)

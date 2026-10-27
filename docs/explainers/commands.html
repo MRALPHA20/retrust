@@ -130,7 +130,7 @@
         still land — <code>--vendor ABB --product "800M AC"</code> reaches <em>AC 800M</em>, because every
         word of what you typed appears in the name. A <em>misspelling</em> does not:
         <code>retrust search Siemems</code> prints <em>No product in the corpus matches 'Siemems'</em> and exits 1,
-        and <code>score --vendor Siemems …</code> returns NOT ASSESSED with no shortlist. That is deliberate —
+        and <code>score --vendor Siemems …</code> returns a full-range VERIFY (4.8–75.8) with no shortlist. That is deliberate —
         guessing which manufacturer you meant would put a report under the wrong company's advisories, so
         ReTrust abstains and <code>retrust eval</code> counts the abstention as a pass. Only
         <code>retrust vendor Siemems</code> offers near-name suggestions (<em>Siemens, similar 0.86</em>);
@@ -147,7 +147,7 @@
         vector demands) and <code>--remediation</code> (is the fix actually on the box).
         <code>--assessment-type</code> says whether this is a purchase or an installed asset.
         Leave any out and it stays unresolved rather than guessed — ABB AC 800M bare is
-        <em>VERIFY 68.0–87.7</em>; <code>--consequence control</code> lifts the floor to 72.2, and
+        <em>VERIFY 71.6–87.7</em>; <code>--consequence control</code> lifts the floor to 75.0, and
         <code>--interface blocked</code> collapses the range to a single 87.7.</p>
       <p class="when" style="margin-top:.45rem"><code>--prerequisites</code> is the one that settles
         reachability for <em>every</em> attack vector. <code>--interface exposed</code> answers a network
@@ -156,7 +156,7 @@
         Without that distinction an AV:P flaw would score exactly like an unauthenticated remote one.</p>
       <p class="when" style="margin-top:.45rem"><code>--network-exposure</code> is recorded as context and
         <em>never</em> scored: topology is not a reachability discount, so <code>isolated</code>,
-        <code>it_ot</code> and <code>internet_ot</code> all return the same 68.0–87.7 on that product.
+        <code>it_ot</code> and <code>internet_ot</code> all return the same 71.6–87.7 on that product.
         It is still worth declaring — it goes into the assessment vector and the record — but an unanswered
         one leaves a verification item rather than moving the number.</p></div></div>
     <div class="cmd"><div class="name">compare</div><div class="body">
@@ -330,7 +330,7 @@
   </div>
 
   <footer>
-    <span class="mono">ReTrust RT6 · 20 October 2026</span>
+    <span class="mono">ReTrust RT7 · 27 October 2026</span>
     <span>One program, many verbs.</span>
     <span>Apache-2.0 · runs offline after <span class="mono">setup</span></span>
     <span><a href="overview.html">Overview</a> · <a href="scoring.html">Scoring</a></span>

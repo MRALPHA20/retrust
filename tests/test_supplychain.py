@@ -94,12 +94,13 @@ def test_blocked_verdict_needs_no_resolution():
 def test_not_assessed_gets_no_score():
     """The bug this guards: an unresolvable product scoring ~100 and ranking top.
 
-    Every pillar reads "no CVEs" as good news, so an unresolved product must be
-    kept out of scoring entirely rather than allowed to inherit that.
+    Every pillar reads "no CVEs" as good news, so an unresolved product must
+    never inherit that: nothing about it is measured, it is VERIFY across the
+    full range, and the headline is the conservative low end.
     """
     assessment = score.not_assessed("Unknown PLC", "vendor not in corpus")
-    assert assessment.verdict == "NOT ASSESSED"
-    assert assessment.score is None
+    assert assessment.verdict == "VERIFY" and not assessment.resolved
+    assert assessment.score == assessment.score_min < 10
     assert assessment.pillars == []
 
 
@@ -108,10 +109,11 @@ def test_not_assessed_gets_no_score():
 def test_certification_absence_is_never_a_penalty():
     """Most OT products are never certified; that is not evidence of insecurity."""
     pillar = score._certification([])
-    assert pillar.coverage == 0.0        # excluded from the composite entirely
-    assert any("excluded from the score" in e for e in pillar.evidence)
-    # The exclusion IS the non-penalty: a missing certificate changes nothing,
-    # where the old neutral 50 moved rankings between equally certified vendors.
+    assert pillar.coverage == 0.0        # unmeasured
+    assert pillar.score == score.MISSING_PILLAR
+    assert any("neutral 50" in e for e in pillar.evidence)
+    # The neutral value IS the non-penalty: it keeps its full weight like any
+    # missing pillar, and sits below every certificate-backed score.
 
 
 def test_certification_rewards_iec_62443():

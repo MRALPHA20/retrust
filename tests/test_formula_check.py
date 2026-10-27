@@ -75,5 +75,6 @@ def test_impact_changes_score_when_a_path_exists():
     safety = score.assess('PLC', [f], consequence='safety', **answers)
     minor = score.assess('PLC', [f], consequence='minor', **answers)
     assert safety.score < minor.score
-    assert safety.exposure_min == pytest.approx(40)
-    assert minor.exposure_min == pytest.approx(88)
+    # T = max(EPSS .12, LEV .6, wormable floor .5) = .6; I = 7.5 / 10.
+    assert safety.exposure_min == pytest.approx(100 * (1 - .6 * .75 * 1.0))
+    assert minor.exposure_min == pytest.approx(100 * (1 - .6 * .75 * .2))

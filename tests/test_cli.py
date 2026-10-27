@@ -94,7 +94,9 @@ def test_score_by_order_number(workspace, capsys):
 def test_score_abstains_with_exit_two(workspace, capsys):
     """An unknown vendor must not be reported as a clean result."""
     assert run(["score", "--vendor", "Nobody", "--product", "Nothing"]) == 2
-    assert "NOT ASSESSED" in capsys.readouterr().out
+    out = " ".join(capsys.readouterr().out.split())
+    assert "VERIFY · 4.8–75.8/100 (provisional range)" in out
+    assert "Could not identify this product" in out
 
 
 def test_score_json_to_stdout_is_parseable(workspace, capsys):
@@ -128,8 +130,9 @@ def test_json_keeps_owner_choices_even_without_a_score(workspace, vendor, versio
     assert f"FW:{version}" in result["vector"]
     assert "DS:unset" not in result["vector"]
     if vendor == "Nobody" or version == "2.5":
-        assert result["score"] is None
-        assert result["verdict"] == "NOT ASSESSED"
+        # No evidence: VERIFY across the full range, headlined by its low end.
+        assert result["verdict"] == "VERIFY" and result["provisional"]
+        assert result["score"] == result["score_min"] < 10
 
 
 def test_diff_replays_the_saved_owner_choices(workspace):
@@ -199,7 +202,7 @@ def test_compare_ranks_and_reports(workspace, capsys):
                 "--candidate", "Nobody|Nothing", "--no-sensitivity"]) == 0
     out = capsys.readouterr().out
     assert "CANDIDATE" in out
-    assert "NOT ASSESSED" in out
+    assert "Nobody Nothing" in out and "VERIFY" in out
     # An unresolvable candidate must rank below a real one, never above.
     assert out.index("TestPLC 9000") < out.index("Nobody Nothing")
 
@@ -375,7 +378,7 @@ def test_unassessable_product_still_says_so():
     markup = report.render([(assessment, resolution, [])],
                            weights=score.DEFAULT_WEIGHTS)
     assert "product not identified" in markup
-    assert "Not assessed." in markup
+    assert "Not identified." in markup
 
 
 def test_no_empty_pillar_table_is_rendered():
@@ -435,7 +438,7 @@ def test_score_offers_a_way_forward_when_nothing_resolves(workspace, capsys):
     assert main(["score", "--order-number", "Testco Electric TestPLC 9000 Alpha",
                  "--no-sensitivity"]) == 2
     out = " ".join(capsys.readouterr().out.split())
-    assert "NOT ASSESSED" in out
+    assert "VERIFY" in out and "Could not identify this product" in out
     assert "product name rather than a manufacturer order number" in out
     assert "Closest products in the corpus" in out
     assert "TestPLC 9000" in out

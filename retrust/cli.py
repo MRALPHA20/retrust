@@ -116,7 +116,8 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
         assessment = (score.blocked(label, screening_gates, resolution.reason
                                    if not resolution.resolved else "")
                       if screening_gates else
-                      score.not_assessed(label, resolution.reason))
+                      score.not_assessed(label, resolution.reason,
+                                         weights=context["weights"]))
         for name, value in declared.items():
             setattr(assessment, name, value)
         assessment.vector = score.vector(version=version, snapshot=snapshot,
@@ -211,10 +212,10 @@ def _render_one(assessment, resolution, findings, context=None):
             f"{resolution.advisory_count} advisor"
             f"{'y' if resolution.advisory_count == 1 else 'ies'}"
             f" · {len({f.cve for f in findings})} CVE(s)", style="label"))
-    elif assessment.verdict == "NOT ASSESSED":
+    elif not assessment.resolved:
         lines += [console.prose(f"Reason: {resolution.reason}"), "",
-                  console.prose("ReTrust abstains rather than guessing. Try the "
-                                "manufacturer's order number or check the vendor spelling.")]
+                  console.prose("Nothing about an unidentified product is measured. Try "
+                                "the manufacturer's order number or check the vendor spelling.")]
     for gate in assessment.gates:
         lines += ["", console.prose(f"HARD GATE: {gate['gate']}", style="avoid"),
                   console.prose(gate['detail'], indent="    "),
@@ -603,7 +604,7 @@ def cmd_batch(args):
     if code:
         print(f"\n  exit {code}: "
               + ("a candidate is disqualified" if code == batch.EXIT_AVOID
-                 else "a candidate could not be assessed"))
+                 else "a candidate needs verification or could not be identified"))
     return code
 
 

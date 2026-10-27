@@ -39,15 +39,16 @@ BANDS = [(80, "PREFER"), (60, "CONDITIONAL"), (0, "AVOID")]
 # candidate a buyer could actually pursue -- the sort of disagreement that is
 # invisible until two surfaces are read side by side.
 #
-# A hard-disqualified AVOID never outranks a VERIFY that merely needs checks,
-# and NOT ASSESSED ranks below AVOID: an unknown is not a recommendation, and a
-# blocked product is not a candidate.
+# A hard-disqualified AVOID never outranks a VERIFY that merely needs checks.
+# NOT ASSESSED is no longer produced (RT7 gives an evidence-free product a
+# provisional VERIFY range instead); it stays here so results saved by earlier
+# versions still sort, below AVOID, as they did.
 VERDICT_RANK = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2,
                 "AVOID": 3, "NOT ASSESSED": 4}
 
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
-SCORING_VERSION = "RT6"
+SCORING_VERSION = "RT7"
 
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
@@ -139,6 +140,12 @@ class Assessment:
     provisional: bool = False
     verification: list = field(default_factory=list)
     paths: list = field(default_factory=list)
+    # False when the product itself could not be identified. Renderers key the
+    # "did you mean" help on this, never on the verdict.
+    resolved: bool = True
+    # True when no risk evidence was weighed, so the range is everything the
+    # missing evidence allows (what earlier versions called NOT ASSESSED).
+    evidence_free: bool = False
 
 
 def _exploitation(findings):
@@ -382,13 +389,13 @@ def _certification(certificates):
     neutral value as one we have no data for -- the difference shows in coverage.
     """
     if not certificates:
-        # Coverage 0 excludes the pillar from the composite. Scoring the gap
-        # as a neutral 50 let a vendor with one certificate out-rank an
-        # equally certified vendor the loaded lists happened not to cover.
+        # Coverage 0 marks the pillar unmeasured. _composite then scores it at
+        # MISSING_PILLAR with its full weight -- the one rule for every
+        # pillar -- so the gap is neutral, never dropped and renormalized.
         return Pillar("Certification", 50.0, 0.0,
                       ["no certificate found in the loaded sources (ISASecure,"
-                       " Common Criteria, curated) -- excluded from the score"
-                       " rather than scored neutral"])
+                       " Common Criteria, curated) -- scored at the neutral 50"
+                       " with its full weight; absence is evidence neither way"])
 
     schemes = sorted({c["scheme"] for c in certificates})
     product_level = [c for c in certificates if c.get("matches_product")]
@@ -685,20 +692,53 @@ def blocked(product_label, gates, unresolved_reason=""):
                       gates=list(gates), notes=notes)
 
 
-def not_assessed(product_label, reason):
-    """A product we could not resolve gets no score at all.
+def _evidence_free(product_label, measured=(), weights=None, verification=(),
+                   notes=(), resolved=True, **fields):
+    """A provisional VERIFY for a product with no risk evidence to weigh.
 
-    Returning a number here would be worse than useless: every pillar treats
-    "no CVEs found" as good news, so an unresolvable product would score near
-    100 and rank top of a comparison. Absence of data is not a clean bill of
-    health, and the verdict has to say so.
+    Earlier versions called this NOT ASSESSED and printed no number, which left
+    the buyer at a dead end -- worst of all for a vendor's fixed release, which
+    no advisory lists as affected. The verdict is VERIFY and the score is the
+    whole range the missing evidence allows: exposure anywhere from FLOOR to
+    100, every other pillar as measured or MISSING_PILLAR. The headline is the
+    low end, so absence of data still reads as the worst case and never as
+    safety: the reason NOT ASSESSED existed is kept, the dead end is not.
     """
+    weights = weights or DEFAULT_WEIGHTS
+    exposure_spec = next(spec for spec in PILLARS if spec.key == "exposure")
+    others = [(spec, pillar) for spec, pillar in measured
+              if spec.key != "exposure" and pillar.coverage > 0]
+
+    def at(value):
+        return _composite([(exposure_spec, Pillar("Exposure", value, 0.0))] + others,
+                          weights)
+
+    low, high = round(at(FLOOR), 1), round(at(100.0), 1)
     return Assessment(
-        product=product_label, verdict="NOT ASSESSED", score=None,
-        notes=[f"Could not assess this product: {reason}.",
-               "This is not a good result or a bad one -- it means ReTrust has "
-               "nothing to go on. Try the manufacturer's order number."],
-    )
+        product=product_label, verdict="VERIFY", score=low, score_min=low,
+        score_max=high, exposure_min=0.0, exposure_max=100.0, provisional=True,
+        verification=list(verification), notes=list(notes), resolved=resolved,
+        evidence_free=True, **fields)
+
+
+def not_assessed(product_label, reason, weights=None):
+    """A product we could not identify: VERIFY across the whole possible range.
+
+    A confident number here would be worse than useless -- every pillar treats
+    "no CVEs found" as good news, so an unresolvable product would score near
+    100 and top a comparison. Nothing about it is measured, so the range spans
+    everything that allows and the headline is its conservative low end.
+    """
+    return _evidence_free(
+        product_label, weights=weights, resolved=False,
+        verification=["Identify the product: give the manufacturer order number"
+                      " or the exact catalogue name, so its advisory history can"
+                      " be looked up"],
+        notes=[f"Could not identify this product: {reason}.",
+               "Nothing about it was measured, so the range spans everything the"
+               " missing evidence allows and the low end is the headline. This"
+               " is not a good result or a bad one. Try the manufacturer's order"
+               " number."])
 
 
 def _unmitigable_cves(findings):
@@ -798,24 +838,33 @@ def assess(product_label, findings, advisories=(), weights=None,
     cautions = _cautions(third)
 
     if not risk_usable:
-        notes = ["No pillar had measurable risk evidence, so no score is"
-                 " computed. Absence of findings is not a clean bill of"
-                 " health: nobody may have published about this product."]
+        counts = dict(
+            findings_count=len({f.cve for f in findings}),
+            first_party_count=len({f.cve for f in first}),
+            third_party_count=len({f.cve for f in third} - {f.cve for f in first}))
+        if gates:
+            return Assessment(
+                product=product_label, verdict="AVOID", score=None,
+                pillars=pillars, gates=gates, cautions=cautions,
+                notes=["Screening gates still apply without a score."],
+                **counts, **declared)
+        notes = ["No pillar had measurable risk evidence, so the score is the"
+                 " full provisional range and its low end is the headline."
+                 " Absence of findings is not a clean bill of health: nobody may"
+                 " have published about this product."]
         if any(pillar.coverage > 0 for spec, pillar in measured
                if spec.key == "certification"):
             notes.append(
-                "A certificate is on file, but assurance with no advisory"
-                " record to weigh it against is not scored -- a certificate"
-                " cannot stand in for the missing risk evidence.")
-        if gates:
-            notes.insert(0, "Screening gates still apply without a score.")
-        return Assessment(
-            product=product_label, verdict="AVOID" if gates else "NOT ASSESSED",
-            score=None, pillars=pillars, gates=gates, cautions=cautions,
-            findings_count=len({f.cve for f in findings}),
-            first_party_count=len({f.cve for f in first}),
-            third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
-            notes=notes, **declared)
+                "A certificate is on file and counts at its usual weight, but it"
+                " cannot stand in for the missing risk evidence, so the verdict"
+                " stays VERIFY.")
+        return _evidence_free(
+            product_label, measured, weights,
+            verification=["No advisory records an affected CVE for this product"
+                          " entry. It is usually the vendor's fixed or unaffected"
+                          " release: confirm the delivered firmware is that release,"
+                          " and ask the supplier for its security advisory history"],
+            notes=notes, pillars=pillars, cautions=cautions, **counts, **declared)
 
     composite = _composite(usable, weights)
 

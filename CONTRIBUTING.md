@@ -32,7 +32,6 @@ assessments use the downloaded snapshot.
 | `retrust/formula_check.py` | Independent all-product formula validation |
 | `tests/test_*.py` | Automated regression cases |
 | `docs/` | Current guides and retained benchmark evidence |
-| `docs/archive/` | Dated reviews and earlier plans |
 | `examples/` | Small sample inputs without confidential information |
 | `scripts/` | Build and deployment operations |
 | `tools/` | Documentation generation and benchmark utilities |

@@ -343,7 +343,9 @@ def _calculation_summary(assessment):
     parts = ['<section class="calculation-summary"><h3>Applied scoring inputs</h3>',
              '<p class="tnote"><b>Network exposure:</b> ' + _esc(network)
              + '. Connectivity is context; verified attack paths determine A.</p>',
-             '<p class="tnote"><b>Effective attack factor A:</b> ' + _esc(factor('A'))
+             '<p class="tnote"><b>Threat T:</b> ' + _esc(factor('T'))
+             + ' · <b>Severity I:</b> ' + _esc(factor('I'))
+             + ' · <b>Effective attack factor A:</b> ' + _esc(factor('A'))
              + ' · <b>Operational impact H:</b> ' + _esc(factor('H'))
              + ' · <b>Unresolved applicability U:</b> ' + _esc(factor('U')) + '.</p>',
              '<p class="tnote"><b>Combined risk R:</b> ' + risk
@@ -392,6 +394,9 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         # The range only; "Provisional range" is said in the detail line below,
         # so repeating the note beside the number would say it twice.
         shown_score = score_label(assessment, note='')
+        if getattr(assessment, "evidence_free", False):
+            detail = ("product not identified" if not assessment.resolved
+                      else "no applicable vulnerability recorded")
         if assessment.provisional:
             detail = "Provisional range · " + detail
         summary = (f'<span class="s">{shown_score}/100</span>'
@@ -403,17 +408,20 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     parts.append(f'<div class="verdict"><span class="v">'
                  f'{_esc(assessment.verdict)}</span>{summary}</div>')
     explanation = VERDICT_HELP.get(assessment.verdict, "Review the evidence below.")
-    if assessment.verdict == "NOT ASSESSED" and resolution is not None:
+    if getattr(assessment, "evidence_free", False) and resolution is not None:
         explanation = (
-            "The product was identified, but there is no usable vulnerability evidence to score "
-            "for this assessment. Your answers are recorded. Review the firmware and supporting "
-            "security notices; network answers alone cannot establish a cybersecurity score."
+            "The product was identified, but no advisory records an affected vulnerability "
+            "for it, so the range spans everything the missing evidence allows and its low "
+            "end is the headline. Your answers are recorded. This is often the vendor's "
+            "fixed release: confirm the delivered firmware and ask the supplier for its "
+            "advisory history."
             if resolution.resolved else
             # No "choose one below": this block is also the downloaded report and
             # the CLI output, where there is no form and no suggestion list. The
             # web page adds its own invitation where matches actually exist.
             "Your answers are recorded, but the product has not been identified in the advisory "
-            "data. Check the manufacturer order number, vendor and model against the equipment "
+            "data, so nothing about it is measured and the range spans everything that allows. "
+            "Check the manufacturer order number, vendor and model against the equipment "
             "nameplate, then assess it again.")
     parts.append(f'<p class="result-help">{_esc(explanation)}</p>')
     if assessment.score is not None:
@@ -459,7 +467,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                 rows.append('<tr><td>' + _esc(entry['cve']) + '</td>' + cells
                             + '<td>' + _esc(entry['advisory']) + '</td></tr>')
         parts.append('<details><summary>How each vulnerability contributes</summary>'
-                     '<p>T = threat evidence; A = attack access; H = operational harm; '
+                     '<p>T = threat evidence, floored for service life; I = CVSS severity; '
+                     'A = attack access; H = operational harm; '
                      'U = affected and unfixed. A range means evidence is missing. '
                      'Repeated advisories for the same CVE count once. Separate CVEs '
                      'are review units; independent attack paths have not been established.</p>'
@@ -470,7 +479,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                      '<div class="tw" tabindex="0" role="region" aria-label="Factor contributions per vulnerability, scroll horizontally for more columns">'
                      + _scroll_hint('Scroll sideways to see every factor →', hint)
                      + '<table><thead><tr><th>Vulnerability</th>'
-                     '<th>T</th><th>A</th><th>H</th><th>U</th><th>Advisory</th></tr></thead><tbody>'
+                     '<th>T</th><th>I</th><th>A</th><th>H</th><th>U</th><th>Advisory</th></tr></thead><tbody>'
                      + ''.join(rows) + '</tbody></table></div></details>')
 
     if stability is not None:
@@ -493,7 +502,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                 f'{plural(resolution.advisory_count, "advisory", "advisories")}'
                 ' (security notices)</p>')
         elif not assessment.gates:
-            parts.append(f'<div class="note"><b>Not assessed.</b> '
+            parts.append(f'<div class="note"><b>Not identified.</b> '
                          f'{_esc(resolution.reason)}</div>')
 
     for gate in assessment.gates:

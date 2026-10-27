@@ -12,7 +12,9 @@ COMPLETE = dict(network_exposure='ot_only', interface='exposed',
 
 
 def flaw(**overrides):
-    values = dict(cve='CVE-2026-0001', advisory_id='A', cvss=9.8,
+    # CVSS 10.0, so I = 1 and the documented worked example (T=.6, I=1, A=1,
+    # H=.8 -> Z=.48, E=52) holds exactly.
+    values = dict(cve='CVE-2026-0001', advisory_id='A', cvss=10.0,
                   cwe='CWE-787', epss=.12, lev=.6, in_kev=False,
                   ransomware=False, version_range='<2.0', decided=True,
                   remediation='vendor_fix', vector=VECTOR,
@@ -25,6 +27,7 @@ def test_documented_single_path_example_is_exact():
     f = flaw()
     result = exposure.analyse([f], network='ot_only', interface='exposed', consequence='control')
     assert exposure.threat(f) == .6
+    assert exposure.severity(f).values() == [1, 1]
     assert result.paths[0]['z_min'] == pytest.approx(.48)
     assert result.paths[0]['z_max'] == pytest.approx(.48)
     assert result.safety_min == result.safety_max == pytest.approx(52)
@@ -155,7 +158,8 @@ def test_missing_threat_sources_are_labelled_not_zero():
     f = flaw(epss=None, lev=None, kev_available=False)
     result = exposure.analyse([f], network='ot_only', interface='exposed', consequence='control')
     assert result.paths[0]['inputs'][0]['epss'] is None
-    assert result.paths[0]['inputs'][0]['factors']['T'] == [0,1]
+    # Unknown, not zero: the interval runs from the wormable service-life floor.
+    assert result.paths[0]['inputs'][0]['factors']['T'] == [.5, 1]
     assert result.provisional and any('Exploitation data' in item for item in result.missing)
 
 
@@ -171,7 +175,7 @@ def test_complete_input_can_receive_a_numeric_verdict():
     assert not result.provisional
     assert result.score_min == result.score_max
     assert result.verdict in {'PREFER','CONDITIONAL','AVOID'}
-    assert result.vector.startswith('RT6/')
+    assert result.vector.startswith('RT7/')
 
 
 def test_uncertainty_cannot_look_like_stable_approval():
@@ -212,15 +216,18 @@ def test_a_certificate_alone_never_bands_a_verdict():
     rendered a confident, non-provisional PREFER 85.0 banded on the
     Certification pillar alone, on the same page as "absence is not proof of
     safety". Certification is assurance, not risk evidence; with nothing to
-    weigh it against the product is NOT ASSESSED.
+    weigh it against the product is VERIFY across the full range, headlined
+    by its conservative low end.
     """
     certs = [{"scheme": "IEC 62443-4-2", "matches_product": True}]
     a = score.assess('Ghost', [], certificates=certs)
-    assert a.verdict == 'NOT ASSESSED' and a.score is None
+    assert a.verdict == 'VERIFY' and a.provisional and a.evidence_free
+    assert a.score == a.score_min < 10 and a.score_max < score.BANDS[0][0]
     assert any('certificate' in n.lower() for n in a.notes)
-    # and without the certificate, identical outcome
+    # and without the certificate, the same verdict with no assurance credit
     bare = score.assess('Ghost', [])
-    assert bare.verdict == 'NOT ASSESSED' and bare.score is None
+    assert bare.verdict == 'VERIFY' and bare.evidence_free
+    assert bare.score_max < a.score_max
 
 
 def test_a_partially_reviewed_cve_still_forms_one_unit():

@@ -37,7 +37,6 @@ loaded data; it does not validate the model's ability to predict compromise.
 
 - [Render deployment](render-deployment.md) — build, runtime, concurrency and release verification.
 - [Presentation submission](arsenal-submission.md) — project description and demo material.
-- [Historical plans and reviews](archive/README.md) — dated records, separated from current guidance.
 
 ## Documentation sources
 

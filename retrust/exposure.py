@@ -1,4 +1,4 @@
-"""ReTrust V1 exposure: evidence-based T x A x H x U with explicit bounds.
+"""ReTrust V1 exposure: evidence-based T x I x A x H x U with explicit bounds.
 
 Unknown factors are intervals, never guessed fractions. Network topology is
 required context; it cannot establish whether an attack path is reachable.
@@ -43,6 +43,22 @@ REMEDIATIONS = {
 }
 ASSESSMENT_TYPES = {'purchase': 'Procurement assessment', 'installed': 'Installed asset'}
 CONCENTRATION = (1.0, .20, .10)
+
+# A flaw nobody is exploiting this month is not a flaw nobody will exploit over
+# a controller's service life. EPSS forecasts the next thirty days and sits near
+# 0.003 for most OT CVEs, so T = max(KEV, LEV, EPSS) alone left Z near zero for
+# almost every product: exposure read ~99/100 whatever the operator answered,
+# and a switch with four unfixed CVSS 9.8s scored PREFER (RT6). T is therefore
+# floored by how the flaw is reached, read from its own CVSS vector. The order
+# follows this corpus's KEV rate by access profile (wormable 1.3%, other remote
+# 0.9%, local 0.6%, physical 0.0%); the magnitudes are a service-life policy,
+# not a measured probability -- the same standing as the consequence values.
+THREAT_FLOORS = {
+    'wormable': ('Network-reachable, no privileges, no user action', .50),
+    'remote': ('Network or adjacent, with conditions', .30),
+    'local': ('Needs local execution on the device', .15),
+    'physical': ('Needs physical access to the device', .05),
+}
 
 
 @dataclass(frozen=True)
@@ -97,6 +113,20 @@ def threat(finding):
     return max(available) if available else None
 
 
+def access_profile(finding):
+    """The THREAT_FLOORS row a finding belongs to, read from its CVSS vector.
+
+    A missing or unreadable vector takes the wormable row: absence of evidence
+    must never lower a risk term.
+    """
+    vector = cvss.parse(finding.vector) if finding.vector else None
+    if vector is None or vector.attack_vector is None:
+        return 'wormable'
+    if vector.attack_vector in ('local', 'physical'):
+        return vector.attack_vector
+    return 'wormable' if vector.wormable else 'remote'
+
+
 def threat_bounds(finding):
     value = threat(finding)
     if value == 1:
@@ -108,7 +138,22 @@ def threat_bounds(finding):
     # permanently provisional, with E spanning 0-95 whatever the owner answered.
     complete = (getattr(finding, 'kev_available', True)
                 and finding.epss is not None)
-    return Bounds(value or 0.0, value if complete else 1.0)
+    floor = THREAT_FLOORS[access_profile(finding)][1]
+    return Bounds(max(value or 0.0, floor), max(value if complete else 1.0, floor))
+
+
+def severity(finding):
+    """Technical severity I = CVSS base / 10: how much this flaw can deliver.
+
+    H says what the process stands to lose; I says how much of that a given
+    weakness can reach. Without it a CVSS 2.7 information leak and a 9.8 remote
+    code execution on the same controller carried exactly the same weight. A
+    missing score takes 1: absence never lowers a risk term.
+    """
+    if finding.cvss is None:
+        return Bounds(1, 1)
+    value = min(1.0, max(0.0, float(finding.cvss) / 10))
+    return Bounds(value, value)
 
 
 def impact(finding, consequence=None):
@@ -211,6 +256,7 @@ def factors(finding, consequence=None, interface='unknown', assessment_type='pur
     remediation = review.get('remediation', remediation)
     h = impact(finding, consequence)
     return {'T': threat_bounds(finding),
+            'I': severity(finding),
             'A': reach_bounds(finding, interface, network, prerequisites),
             'H': Bounds(0, 1) if h is None else Bounds(h, h),
             'U': applicability_bounds(finding, assessment_type, remediation)}
@@ -246,7 +292,7 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
         return Exposure(100, 100, 0, evidence=['No advisory findings to measure; absence is not proof of safety'])
     groups = {}
     missing = set()
-    unresolved = {name: set() for name in ('T', 'A', 'H', 'U')}
+    unresolved = {name: set() for name in ('T', 'I', 'A', 'H', 'U')}
     measured = total = 0
     # A reviewed path id must claim EVERY record of its CVEs: grouping by
     # "path_id or cve" alone would split one CVE into two units when a reviewer
@@ -279,7 +325,7 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
         group['z_min'] = max(group['z_min'], z.low)
         group['z_max'] = max(group['z_max'], z.high)
         measured += sum(v.resolved for v in values.values())
-        total += 4
+        total += len(values)
         absent = [name for name, bounds in values.items() if not bounds.resolved]
         if not z.resolved:
             for name in absent:
@@ -300,6 +346,7 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
     labels = {
         'T': 'Exploitation data is missing for these. Refresh the data sources'
              ' -- this is not something you can answer',
+        'I': 'The CVSS base score is missing for these. Ask the vendor to score them',
         'A': 'Answer "Attack reachability (A)" and "Exploitation prerequisites" -- confirm with the network owner',
         'H': 'Answer "Credible operational impact (H)"'
              ' -- confirm with operations or safety',
@@ -393,7 +440,7 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
                 f'Exposure safety range: {100*(1-r_max):.1f}–{100*(1-r_min):.1f}/100',
                 f'Network context: {network or "Unknown"}; topology alone does not prove reachability',
                 *([f'LEV is not available for {no_lev} of {len(findings)} finding(s); T uses KEV and EPSS only. Load the EPSS history to add LEV'] if no_lev else []),
-                'T = max(KEV, LEV, EPSS); A is verified reachability; H is declared credible OT consequence; U is unremediated applicability']
+                'Z = T × I × A × H × U. T = max(KEV, LEV, EPSS, service-life floor by attack vector); I = CVSS base / 10; A is verified reachability; H is declared credible OT consequence; U is unremediated applicability']
     evidence.extend(inapplicable)
     if missing:
         evidence.append('Verify unresolved inputs before using the result as a purchase recommendation')

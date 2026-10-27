@@ -58,21 +58,24 @@ python3 -m retrust.cli score --vendor ABB --product 'AC 800M'
 
 ```
   ABB AC 800M
-  VERIFY  ·  68.0–87.7/100 (provisional range)
+  VERIFY  ·  71.6–87.7/100 (provisional range)
 
   WHAT TO CHECK NEXT ─────────────────────────────────────────────────────────
-  - Ask an operations engineer what exploiting each weakness could do to the
-  process (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7 more)
-  - Ask the network owner whether an attacker can reach the weakness and meet
-  its requirements (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7 more)
-  - Confirm the exact firmware and whether the published fixes are installed
-  (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7 more)
-  - Network context has not been supplied
+  - Answer "Attack reachability (A)" and "Exploitation prerequisites" --
+  confirm with the network owner (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478
+  and 7 more)
+  - Answer "Credible operational impact (H)" -- confirm with operations or
+  safety (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7 more)
+  - Answer "Is the firmware you are getting already fixed?" -- and give the
+  exact firmware version (CVE-2020-8472, CVE-2020-8473, CVE-2020-8478 and 7
+  more)
+  - Answer "Network exposure" -- recorded as context, and needed before a
+  verdict is given
 ```
 
 Network context (isolated, IT–OT or Internet–OT) is required before a banded
 verdict is possible, but it is context only and never moves the number: this
-product scores 68.0–87.7 whether you declare isolated, IT–OT or Internet–OT.
+product scores 71.6–87.7 whether you declare isolated, IT–OT or Internet–OT.
 Reachability is read from each weakness's own CVSS attack vector and narrowed
 only by what the operator has verified. Reporting the affected service as
 reachable settles a network or adjacent flaw; for a local or physical one it
@@ -89,19 +92,24 @@ python3 -m retrust.cli score --vendor ABB --product 'AC 800M' \
 
 ```
   ABB AC 800M
-  PREFER  ·  72.2/100
+  CONDITIONAL  ·  75.0/100
 ```
 
 with this note attached:
 
 ```
-  NOTE: This PREFER rests on operator assertions ReTrust cannot verify: attack
-  reachability: Reachable; exploitation prerequisites: An attacker can satisfy
-  them; operational consequence: Major loss of process control; firmware
-  remediation: Confirmed affected, not fixed. On the published evidence alone
-  this product is VERIFY, 68.0-87.7/100. Retain supporting evidence for each
-  answer before procurement.
+  NOTE: This CONDITIONAL rests on operator assertions ReTrust cannot verify:
+  attack reachability: Reachable; exploitation prerequisites: Satisfied or not
+  required; operational consequence: Major loss of process control; firmware
+  remediation: Confirmed affected — not remediated. On the published evidence
+  alone this product is VERIFY, 71.6-87.7/100. Retain supporting evidence for
+  each answer before procurement.
 ```
+
+Then run the same answers against Moxa EDS-405A: CONDITIONAL 60.5. Moxa has
+shipped every fix (patch availability 100 against ABB's 52) and still lands
+14.5 points lower, because its flaws are worse -- CVSS 9.8s against ABB's 8.4.
+A complete patch record cannot buy back dangerous flaws.
 
 Presenter note: that attribution note is the feature, not an apology -- read
 it aloud. The tool reaches a verdict only on the operator's answers, says
@@ -113,8 +121,8 @@ questions appear on the score page's edit panel.
 Open the guided demo's comparison. Order number, vendor, model, and firmware each have their
 own field; edit the shortlist without learning command syntax. Known-exploited
 vulnerabilities can trigger an AVOID gate regardless of the weighted score.
-The ranking runs PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED: a
-disqualified product never outranks one that still needs checks.
+The ranking runs PREFER, CONDITIONAL, VERIFY, AVOID: a disqualified product
+never outranks one that still needs checks.
 
 The supplied demo includes different equipment classes to show different
 assessment outcomes. It is **not a list of functionally interchangeable
@@ -138,7 +146,8 @@ plain-text link for copying into a requisition.
 
 The tool evaluates public evidence. It does not certify safety, scan a plant,
 or establish that a product without advisories is secure. Unresolved products
-are NOT ASSESSED. Version ranges that cannot be decided stay in scope.
+are VERIFY across the full range, headlined by its low end. Version ranges
+that cannot be decided stay in scope.
 
 The product round-trip benchmark checks that the originating advisory appears
 among the matches. It does not count every spurious match. The version metric
@@ -156,7 +165,7 @@ Keep these distinctions in the presentation.
 - Exercise the examples using the exact snapshot you will present; verdicts
   and counts may change after a data refresh.
 - If you script the checks, know the exit codes: a plain-terminal `score`
-  exits 2 on VERIFY or NOT ASSESSED, while the default with `--json` is 0. An
+  exits 2 on VERIFY, while the default with `--json` is 0. An
   explicit `--fail-on` wins identically in both modes.
 - If doctor does report a stale feed by then, refresh before the event, then
   verify the corpus with `python3 -m retrust.cli verify` and review its
@@ -181,11 +190,11 @@ Enough to know if you last presented an earlier build.
   are only reached once the operator has answered, and the result lists those
   assertions and restates the evidence-only range beside them. Read that note
   aloud; it is the feature.
-- **Empty findings are NOT ASSESSED.** A product that resolved but carries no
+- **Empty findings are a full-range VERIFY.** A product that resolved but carries no
   advisory findings, with only a vendor certificate behind it, used to score
   well enough to come out PREFER. Absence of evidence is no longer treated as
   evidence.
-- **RT6 checks the selected firmware.** A published patch alone does not clear
+- **RT7 checks the selected firmware.** A published patch alone does not clear
   a KEV blocker. Affected or unresolved firmware still reads AVOID, including
   the HTTPS-only S7-1500 example that previously read VERIFY under RT4. Show the
   assessor the fixed firmware version and supporting evidence; do not present

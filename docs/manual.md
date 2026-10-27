@@ -24,24 +24,24 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.0–87.7/100 (provisional range)
-  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
+  VERIFY  ·  71.6–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.25
 
   Schneider Electric Modicon M340
-  VERIFY  ·  6.0–79.9/100 (provisional range)
-  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 1.00
-
-  Rockwell Automation ControlLogix
-  VERIFY  ·  5.9–92.8/100 (provisional range)
-  CVEs 35  ·  ROBUST not sampled  ·  WORST FLAW 1.00
+  VERIFY  ·  51.0–79.9/100 (provisional range)
+  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 0.50
 
   Moxa EDS-405A
-  VERIFY  ·  5.9–92.8/100 (provisional range)
-  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.96
+  VERIFY  ·  50.5–92.8/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.49
+
+  Rockwell Automation ControlLogix
+  VERIFY  ·  34.6–92.8/100 (provisional range)
+  CVEs 35  ·  ROBUST not sampled  ·  WORST FLAW 0.66
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  5.6–89.4/100 (provisional range)
-  CVEs 942  ·  ROBUST gated  ·  WORST FLAW 1.00
+  AVOID  ·  16.2–88.7/100 (provisional range)
+  CVEs 1227  ·  ROBUST gated  ·  WORST FLAW 0.78
   Known exploited vulnerability
 
   Hikvision IP Camera
@@ -377,7 +377,7 @@ retrust search --vendor Moxa EDS            # products from one vendor only
 
 **A lookup that fails suggests what to try instead.** This is the part that
 saves the most time: `score` and `vendor` both fall back to it, so a misspelling
-ends in a shortlist instead of `NOT ASSESSED`.
+ends in a shortlist instead of a dead end.
 
 ```
 $ retrust vendor Siemems
@@ -761,32 +761,32 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   Siemens SIMATIC IPC477E Pro
-  VERIFY  ·  44.7–99.2/100 (provisional range)
+  VERIFY  ·  89.4–99.2/100 (provisional range)
   CVEs 14
 
-  Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
-  VERIFY  ·  6.2–98.5/100 (provisional range)
-  CVEs 1034
-
   Schneider Electric Modicon M340
-  VERIFY  ·  6.0–79.9/100 (provisional range)
+  VERIFY  ·  51.0–79.9/100 (provisional range)
   CVEs 48
 
-  Rockwell Automation ControlLogix
-  VERIFY  ·  5.9–92.8/100 (provisional range)
-  CVEs 35
-
   Moxa EDS-405A
-  VERIFY  ·  5.9–92.8/100 (provisional range)
+  VERIFY  ·  50.5–92.8/100 (provisional range)
   CVEs 10
 
+  Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
+  VERIFY  ·  47.0–94.7/100 (provisional range)
+  CVEs 1121
+
+  Rockwell Automation ControlLogix
+  VERIFY  ·  34.6–92.8/100 (provisional range)
+  CVEs 35
+
   Johnson Controls iSTAR Ultra G2
-  VERIFY  ·  5.5–69.9/100 (provisional range)
+  VERIFY  ·  5.5–79.9/100 (provisional range)
   CVEs 8
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  5.6–89.4/100 (provisional range)
-  CVEs 942
+  AVOID  ·  16.2–88.7/100 (provisional range)
+  CVEs 1227
   Known exploited vulnerability
 
   Hikvision IP Camera
@@ -798,7 +798,7 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   exit 1: a candidate is disqualified
 ```
 
-**Read the caution, wherever the MFP lands.** It carries 1,034 CVEs and still
+**Read the caution, wherever the MFP lands.** It carries 1,121 CVEs and still
 ranks beside candidates carrying a few dozen rather than at the bottom, which looks wrong until you see why: all but a handful arrive in
 third-party component-bundle advisories — the Linux and OpenSSL stack the device
 ships — and a bundle establishes that a component is present, not that each of
@@ -869,7 +869,7 @@ notes and weight-robustness calculations also hold the owner choices fixed.
 
 `score` and `compare` also take `--fail-on`. `compare` defaults to `never`
 because it is interactive; `batch` defaults to `avoid` because it is a gate.
-`score` without the flag exits 2 on VERIFY or NOT ASSESSED when printing the
+`score` without the flag exits 2 on VERIFY when printing the
 terminal table, and 0 when `--json` was asked for, because a pipeline that
 asked for JSON parses the verdict itself. An explicit `--fail-on` wins
 identically in both modes.
@@ -912,11 +912,13 @@ already going to hear about.
 | Vendor practice | 0.15 | whether the vendor runs its own CSAF feed, and advisory completeness |
 | Certification | 0.05 | IEC 62443 (ISASecure) and Common Criteria certificates |
 
-**Exposure in RT6 follows the ReTrust-OT V1 proposal:**
+**Exposure in RT7 follows the ReTrust-OT V1 proposal, with a service-life
+threat floor and a severity factor:**
 
 ```
-T = max(KEV, LEV, EPSS)
-Z = T × A × H × U
+T = max(KEV, LEV, EPSS, floor by attack vector)
+I = CVSS base / 10
+Z = T × I × A × H × U
 R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)
 E = 100 × (1 − R)
 S = E^0.60 × P^0.20 × V^0.15 × C^0.05
@@ -939,7 +941,8 @@ indices, not probabilities of a device being compromised.
 
 | Factor | Rule | Evidence needed |
 |---|---|---|
-| T: threat | Maximum available KEV, LEV and EPSS; confirmed exploitation is 1 | Source values and capture dates |
+| T: threat | Maximum of KEV, LEV, EPSS and a service-life floor -- wormable .50, other network or adjacent .30, local .15, physical .05; confirmed exploitation is 1 | Source values, capture dates and the CVSS vector |
+| I: severity | CVSS base score / 10; a missing score is 1 | The vendor's CVSS score |
 | A: attack access | Read against the flaw's own CVSS attack vector: 1 for an established path; 0 for a verified block; unknown is [0,1] | That vector, plus whether the access it demands -- network, local or physical -- has actually been established |
 | H: operational harm | Safety 1; control .8; recoverable .5; minor .2; negligible 0 | Credible consequence of this specific weakness |
 | U: affected and unfixed | Affected/unpatched 1; verified fixed/not affected 0; unknown [0,1] | Selected firmware and fix evidence |
@@ -972,10 +975,23 @@ independently verify the plant network.
 CVSS prerequisites are checked per finding. A no-privilege, no-interaction flaw
 cannot be ruled out by declaring other prerequisites impossible. An unreadable
 vector stays unresolved unless actual requirements are established.
-CVSS severity is retained as context; H is not CVSS/10.
+H is not CVSS/10: H is what the process could lose, and CVSS severity enters
+separately as I, how much of that this weakness can deliver.
+
+**Why T has a floor.** EPSS forecasts exploitation over the next thirty days,
+and for most OT CVEs it is near 0.003. Used alone as T, it held Z near zero for
+almost every product: in RT6 exposure read about 99/100 whatever the operator
+answered, the median change between best- and worst-case site answers was 0.9
+points, and a switch with four unfixed CVSS 9.8s scored PREFER 90.2 when
+internet-facing and safety-critical. A procured controller stays in service
+for a decade or more, so a flaw nobody exploits this month still counts. The
+floor's order follows this corpus's KEV rate by access profile (wormable 1.3%,
+other remote 0.9%, local 0.6%, physical 0.0%); its size is a service-life
+policy, not a measured probability, with the same standing as the H values.
+An unreadable vector takes the wormable floor, so absence never lowers risk.
 A firewall can change A, but does not count as a firmware patch in U.
 
-Unknown factors are intervals. With T=.6, A=1, H=.8 and U=1, Z=.48 and E=52.
+Unknown factors are intervals. With T=.6, I=1, A=1, H=.8 and U=1, Z=.48 and E=52.
 With U unknown, Z is [0,.48] and E is [52,100]. Adding contributions .20 and
 .10 to the resolved .48 gives R=.53 and E=47. For P=70, V=80, C=60,
 S = 47^.60 × 70^.20 × 80^.15 × 60^.05 = 55.80/100 (illustrative).
@@ -1001,7 +1017,7 @@ evidence cannot raise a score above what weak evidence would give; unknown
 exposure remains in the range rather than disappearing. A measured
 certification participates directly.
 Existing hard gates and the cap below PREFER for unfixable hardcoded credentials
-still apply. Bands are PREFER ≥80, CONDITIONAL 60–79.9, AVOID <60 (scoring version RT6).
+still apply. Bands are PREFER ≥80, CONDITIONAL 60–79.9, AVOID <60 (scoring version RT7).
 These proposal-specific weights and consequence values require validation;
 they are not a NIST standard or a measured procurement accuracy guarantee.
 
@@ -1009,7 +1025,7 @@ they are not a NIST standard or a measured procurement accuracy guarantee.
 are assertions ReTrust cannot verify, so a PREFER, CONDITIONAL or AVOID that
 rests on them carries an "assertions" list and a note beside the verdict:
 "This PREFER rests on operator assertions ReTrust cannot verify: ... On the
-published evidence alone this product is VERIFY, 5.9-92.8/100." The
+published evidence alone this product is VERIFY, 71.6-87.7/100." The
 evidence-only range is computed with every assertion withdrawn, so the reader
 sees exactly what the answers bought. JSON and CSV exports carry the same
 `assertions` field, so a stored decision record keeps the attribution.
@@ -1020,22 +1036,24 @@ supplied version the claim resolves nothing: U stays an interval, and the U
 verification item asks for the version instead. A dropdown answer alone cannot
 clear applicability for every finding.
 
-**A certificate with zero advisory findings is NOT ASSESSED, never banded.**
+**A certificate with zero advisory findings is a full-range VERIFY, never banded.**
 Certification is assurance, not risk evidence, and with no advisory record to
 weigh it against it cannot carry a verdict on its own. Found live: a product
 with no findings and one vendor certificate rendered PREFER 85.0, which is
 absence of data reading as safety -- the exact inversion this tool exists to
 prevent. The result now says so in its notes instead of banding.
 
-**Rankings order verdicts PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED.**
+**Rankings order verdicts PREFER, CONDITIONAL, VERIFY, AVOID.**
 `compare`, `alternatives` and the web interface all sort this way. AVOID sits
 below VERIFY because a disqualified product must never outrank one that merely
 needs its checks finished: VERIFY is unfinished work, not a worse answer.
-NOT ASSESSED stays last for the usual reason -- no evidence must not read as
-safety.
+Within a verdict, the conservative headline score decides, so a product with
+no evidence -- VERIFY at the bottom of its full range -- sorts at the foot of
+the VERIFY group: no evidence must not read as safety. Results saved by earlier
+versions as NOT ASSESSED still sort last.
 
 **The `score` exit code depends on who is reading.** At the terminal the
-default exits 2 on VERIFY or NOT ASSESSED, so an incomplete assessment cannot
+default exits 2 on VERIFY, so an incomplete assessment cannot
 pass silently through a script that never read the table. With `--json` the
 default is 0, because a pipeline that asked for JSON parses the verdict
 itself. An explicit `--fail-on` wins identically in both modes.
@@ -1061,9 +1079,10 @@ JSON schema 3 includes `score_min`, `score_max`, `exposure_min`, `exposure_max`,
 `provisional`, `verification`, and full per-unit factors under `paths` in detail
 exports. CSV retains the ranges and verification actions. `--fail-on unassessed`
 returns exit 2 for VERIFY, so a pipeline can reject incomplete assessments.
-Scoring vectors begin `RT6`. RT4 and earlier results must be reassessed under
-this decision policy. The exposure formula and weights are unchanged; the gate
-now follows assessed firmware applicability, rather than vendor patch availability.
+Scoring vectors begin `RT7`. Results from earlier versions must be reassessed:
+RT7 adds the severity factor I and the service-life threat floor, so exposure
+moves for almost every product. Weights and bands are unchanged, and the gate
+follows assessed firmware applicability rather than vendor patch availability.
 Conflicting reviewed path IDs for one CVE are rejected before scoring.
 
 The question “Could an attacker meet the conditions needed to exploit it?” asks
@@ -1125,9 +1144,11 @@ how much to trust the verdict, not how safe the product is.
   themselves published.
 - **Unparseable version ranges stay in scope and are flagged**, never assumed
   safe.
-- **A product we cannot resolve gets no score at all.** Every pillar reads "no
-  CVEs found" as good news, so an unresolvable product would otherwise score
-  near 100 and rank top of a comparison. `NOT ASSESSED` sorts below `AVOID`.
+- **A product we cannot resolve gets no confident score.** Every pillar reads
+  "no CVEs found" as good news, so an unresolvable product would otherwise
+  score near 100 and rank top of a comparison. It is VERIFY across the full
+  range instead, headlined by the conservative low end, and sorts at the foot
+  of the VERIFY group.
 - **Missing certification is never a penalty.** Most OT products are never
   submitted, so absence says nothing. A measured certificate participates directly in the weighted product.
 - **A pillar that cannot discriminate is a bug, not a feature.** Sensitivity
@@ -1289,7 +1310,7 @@ retrust/
 
 ## Reproducibility
 
-Current CLI and web results record the RT6 model and a source-code fingerprint.
+Current CLI and web results record the RT7 model and a source-code fingerprint.
 Their data token hashes the complete database plus the certification and screening
 lists; it is distinct from the older count/date provenance token. JSON and CSV
 retain these identifiers, and comparisons warn when the model or tool build differs.

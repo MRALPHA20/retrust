@@ -47,17 +47,51 @@ def test_missing_threat_sources_are_an_interval():
     f = _finding(epss=None, lev=None)
     f.kev_available = False
     assert exposure.threat(f) is None
-    assert exposure.threat_bounds(f).values() == [0, 1]
+    # Unknown is an interval, never a measured zero. Its low end is the
+    # service-life floor; a finding with no vector takes the wormable one.
+    assert exposure.threat_bounds(f).values() == [.5, 1]
 
 
 # --- T: threat amplifies, it never zeroes the rest ---------------------------
 
-def test_raw_threat_is_used_without_a_floor_or_transform():
+def test_threat_is_floored_for_service_life():
+    # EPSS .005 forecasts thirty days. Used raw, it held a reachable CVSS 9.8
+    # at Z=.004 -- the RT6 defect. A wormable flaw is held at the .50 floor.
     f = _finding(epss=.005, lev=0, vector=_NEEDS_NOTHING)
-    assert exposure.risk(f, consequence='control', interface='exposed') == pytest.approx(.004)
+    assert exposure.threat_bounds(f).values() == [.5, .5]
+    assert exposure.risk(f, consequence='control', interface='exposed') == pytest.approx(.5 * .98 * .8)
     f.in_kev = True
-    assert exposure.risk(f, consequence='control', interface='exposed') == pytest.approx(.8)
+    assert exposure.risk(f, consequence='control', interface='exposed') == pytest.approx(.98 * .8)
     assert exposure.reach_bounds(_finding(vector=None)).values() == [0, 1]
+
+
+def test_a_signal_above_the_floor_wins():
+    f = _finding(epss=.7, lev=0, vector=_NEEDS_NOTHING)
+    assert exposure.threat_bounds(f).values() == [.7, .7]
+
+
+@pytest.mark.parametrize("vector, floor", [
+    ("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", .50),
+    ("CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H", .30),
+    ("CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H", .30),
+    ("CVSS:3.1/AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", .30),
+    ("CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", .15),
+    ("CVSS:3.1/AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", .05),
+    (None, .50),
+    ("not a vector", .50),
+])
+def test_the_floor_follows_how_the_flaw_is_reached(vector, floor):
+    f = _finding(epss=.001, lev=0, vector=vector)
+    assert exposure.threat_bounds(f).values() == [floor, floor]
+
+
+def test_severity_scales_each_flaw_by_its_cvss():
+    inputs = dict(consequence='control', interface='exposed')
+    leak = _finding(cvss=2.7, epss=.75, lev=0, vector=_NEEDS_NOTHING)
+    rce = _finding(cvss=9.8, epss=.75, lev=0, vector=_NEEDS_NOTHING)
+    assert exposure.risk(leak, **inputs) == pytest.approx(.75 * .27 * .8)
+    assert exposure.risk(rce, **inputs) == pytest.approx(.75 * .98 * .8)
+    assert exposure.severity(_finding(cvss=None)).values() == [1, 1]
 
 
 def test_confirmed_exploitation_is_one():
@@ -293,8 +327,8 @@ def test_worst_flaw_retains_the_uncapped_largest_contribution():
     worse = bad + [_finding(cve='CVE-2026-9999', in_kev=True, vector=_NEEDS_NOTHING)]
     inputs = dict(consequence='safety', interface='exposed')
     assert exposure.concentrate([exposure.risk(f, **inputs) for f in bad]) == 1
-    assert exposure.worst(bad, **inputs) == .8
-    assert exposure.worst(worse, **inputs) == 1
+    assert exposure.worst(bad, **inputs) == pytest.approx(.8 * .98)
+    assert exposure.worst(worse, **inputs) == pytest.approx(.98)
 
 
 def test_the_worst_flaw_is_none_when_there_is_nothing_to_rank():

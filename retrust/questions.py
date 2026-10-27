@@ -61,7 +61,7 @@ def build(assessment, findings, profile=None):
     # findings_count as well as the list: a caller summarising a batch may
     # pass no Finding objects for a product it still knows has history.
     if not findings and not assessment.findings_count:
-        if assessment.verdict == "NOT ASSESSED":
+        if not getattr(assessment, "resolved", True):
             # The resolver abstained, so "no advisory names it" was never
             # established -- the honest ask is for the identifiers that would
             # let anyone look it up at all.

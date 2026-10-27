@@ -88,7 +88,8 @@ def test_interactive_order_assessment_keeps_replayable_query(workspace, capsys):
 def test_unassessed_html_export_is_written(workspace):
     assert cli.main(['score', '--vendor', 'Nobody', '--product', 'Nothing',
                      '--html', 'unresolved.html']) == 2
-    assert 'NOT ASSESSED' in (workspace / 'unresolved.html').read_text()
+    markup = (workspace / 'unresolved.html').read_text(encoding='utf-8')
+    assert 'VERIFY' in markup and 'product not identified' in markup
 
 
 def test_web_comparison_samples_verdict_robustness(workspace):

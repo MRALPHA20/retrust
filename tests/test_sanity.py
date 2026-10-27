@@ -132,18 +132,24 @@ def test_undecided_is_counted_in_cves_never_in_rows():
 
 
 def test_no_findings_is_never_a_verdict():
+    # No evidence never bands: VERIFY across the full range, and the headline
+    # is its conservative low end, so silence cannot read as safety.
     assessment = score.assess("Ghost", [], {"A"})
-    assert assessment.verdict == "NOT ASSESSED"
-    assert assessment.score is None
+    assert assessment.verdict == "VERIFY" and assessment.evidence_free
+    assert assessment.score == assessment.score_min < 10
 
 
 def test_network_exposure_alone_never_produces_a_score():
     """A deployment assumption is not vulnerability evidence: a product with no
-    findings must stay NOT ASSESSED even when network exposure is supplied."""
+    findings must stay an evidence-free VERIFY even when network exposure is
+    supplied, and the answer must not move its range."""
+    ranges = set()
     for exposure in ("isolated", "it_ot", "internet_ot"):
         a = score.assess("Blank", [], network_exposure=exposure)
-        assert a.verdict == "NOT ASSESSED", exposure
-        assert a.score is None, exposure
+        assert a.verdict == "VERIFY" and a.evidence_free, exposure
+        assert a.score == a.score_min < 10, exposure
+        ranges.add((a.score_min, a.score_max))
+    assert len(ranges) == 1
 
 
 def test_missing_epss_does_not_drop_the_exposure_pillar():

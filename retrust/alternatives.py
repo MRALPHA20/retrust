@@ -143,7 +143,10 @@ def find(connection, vendor, product, assess, limit=8, exclude=()):
             # and find more data about a product the tool had already ruled out.
             skipped["gated"] += 1
             continue
-        if assessment.score is None or assessment.verdict not in RANK:
+        # An unidentified product now carries a full-range VERIFY rather than
+        # no score; it is still one that could not be assessed.
+        if (assessment.score is None or assessment.verdict not in RANK
+                or not getattr(assessment, "resolved", True)):
             skipped["unassessable"] += 1
             continue
         # The inversion this module exists not to make. Every pillar reads "no

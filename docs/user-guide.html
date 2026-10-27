@@ -88,13 +88,16 @@ ol.qs pre{margin:1.5mm 0 0;font-size:8.2pt;padding:2.5mm 3mm}
 </style>
 
 <div class="plate">
-  <h1>ReTrust</h1><p><b>RT6 update, 20 October 2026:</b> Attack reachability is read from each
+  <h1>ReTrust</h1><p><b>RT7 update, 27 October 2026:</b> Threat evidence is floored for the equipment's
+service life by how each flaw is reached, and CVSS severity scales each flaw's
+contribution, so an unexploited-today critical flaw is no longer scored as harmless.
+Attack reachability is read from each
 weakness's own CVSS attack vector and the conditions it demands; where the equipment sits on the
 network is recorded as context and never moves the score.
 Unknown reachability, OT consequences or firmware status produces VERIFY and a
-provisional range. The current formula is Z=T×A×H×U, R=min(1,Z1+.20Z2+.10Z3),
+provisional range. The current formula is Z=T×I×A×H×U, R=min(1,Z1+.20Z2+.10Z3),
 E=100(1−R), S=E^.60×P^.20×V^.15×C^.05. Historical benchmark measurements below
-predate RT6. See <a href="explainers/scoring.html">the current scoring explanation</a>.</p>
+predate RT7. See <a href="explainers/scoring.html">the current scoring explanation</a>.</p>
   <p class="sub">Score OT hardware for cyber risk before you buy it.</p>
   <dl>
     <dt>Guide</dt><dd>How it works, how to run it, how to use it</dd>
@@ -131,7 +134,6 @@ $ retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</pre></l
       <td><span class="v-caution">CONDITIONAL</span> &ge;60</td>
       <td><span class="v-caution">VERIFY</span> evidence gaps</td>
       <td><span class="v-avoid">AVOID</span> below, or gated</td>
-      <td><span class="v-inert">NOT ASSESSED</span> unresolved</td>
     </tr>
   </table>
 </div>
@@ -234,7 +236,7 @@ so abstention is a feature rather than a failure.</p>
 
 <p>The weighted result is reported as a band: <span class="v-prefer">PREFER</span>
 at 80 or above, <span class="v-caution">CONDITIONAL</span> at 60 or above,
-<span class="v-avoid">AVOID</span> below. If material reachability, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range; a product that cannot be resolved at all is NOT ASSESSED and gets no score.
+<span class="v-avoid">AVOID</span> below. If material reachability, consequence or firmware evidence remains unknown, the result is VERIFY with a provisional range; a product that cannot be resolved at all is VERIFY across the full range, headlined by its conservative low end.
 Weights and thresholds are yours to change &mdash; run <code>retrust config --init</code>.</p>
 
 <p><b>Network access &mdash; context only.</b> If where the equipment sits is not
@@ -407,9 +409,9 @@ what you typed.</p>
 
   Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0) (firmware
   3.1.6)
-  VERIFY  ·  79.4–82.6/100 (provisional range)
-  Matched by order_number (confidence 0.98) · 1 product(s) across 16
-  advisories · 477 CVE(s)
+  VERIFY  ·  62.3–82.6/100 (provisional range)
+  Matched by order_number (confidence 0.98) · 1 product(s) across 18
+  advisories · 485 CVE(s)
 
   CAUTION: KEV-listed CVE(s) in third-party component bundles
     4 CVE(s) with confirmed exploitation and no vendor fix arrive via
@@ -420,11 +422,13 @@ what you typed.</p>
     Source: CISA KEV against component bundle advisories
 
   WHAT TO CHECK NEXT ─────────────────────────────────────────────────────────
-  - Ask an operations engineer what exploiting each weakness could do to the
-  process (CVE-2022-38773)
-  - Ask the network owner whether an attacker can reach the weakness and meet
-  its requirements (CVE-2022-38773)
-  - Network context has not been supplied
+  - Answer "Attack reachability (A)" and "Exploitation prerequisites" --
+  confirm with the network owner (CVE-2022-38773, CVE-2026-63350,
+  CVE-2026-63351 and 6 more)
+  - Answer "Credible operational impact (H)" -- confirm with operations or
+  safety (CVE-2022-38773, CVE-2026-63350, CVE-2026-63351 and 6 more)
+  - Answer "Network exposure" -- recorded as context, and needed before a
+  verdict is given
 
   EVIDENCE BY PILLAR ─────────────────────────────────────────────────────────
 
@@ -438,12 +442,12 @@ what you typed.</p>
 <pre>  CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  68.0–87.7/100 (provisional range)
-  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.28
+  VERIFY  ·  71.6–87.7/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.25
 
   Schneider Electric Modicon M340
-  VERIFY  ·  6.0–79.9/100 (provisional range)
-  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 1.00
+  VERIFY  ·  51.0–79.9/100 (provisional range)
+  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 0.50
 
   Hikvision IP Camera
   AVOID  ·  no score
@@ -468,7 +472,7 @@ local index. A warning appears when only some candidates specify firmware.</p>
 <table>
   <thead><tr><th>Column</th><th>What it means</th></tr></thead>
   <tbody>
-    <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;80, <span class="v-caution">CONDITIONAL</span> &ge;60, <span class="v-avoid">AVOID</span> below, <span class="v-caution">VERIFY</span> with a provisional range while material evidence is unknown, <span class="v-inert">NOT ASSESSED</span> when it could not resolve the product</td></tr>
+    <tr><td>VERDICT</td><td><span class="v-prefer">PREFER</span> &ge;80, <span class="v-caution">CONDITIONAL</span> &ge;60, <span class="v-avoid">AVOID</span> below, <span class="v-caution">VERIFY</span> with a provisional range while material evidence is unknown, and across the full range when the product could not be resolved</td></tr>
     <tr><td>SCORE</td><td>The weighted composite, 0&ndash;100, higher is better</td></tr>
     <tr><td>CVES</td><td>Distinct CVEs in scope. Raw total volume is not a scoring penalty</td></tr>
     <tr><td>ROBUST</td><td>The share of sampled weightings supporting the most common verdict; not ranking stability. Shows "not sampled" while a product is VERIFY: resolve the missing evidence first</td></tr>
@@ -476,7 +480,7 @@ local index. A warning appears when only some candidates specify firmware.</p>
   </tbody>
 </table>
 
-<p>Comparisons rank PREFER, CONDITIONAL, VERIFY, AVOID, NOT ASSESSED. AVOID
+<p>Comparisons rank PREFER, CONDITIONAL, VERIFY, AVOID. AVOID
 ranks below VERIFY because a disqualified product is not a candidate; one that
 still needs checks is.</p>
 
@@ -516,12 +520,12 @@ a gate rather than a report somebody has to read.</p>
 <ul>
 <li><b>Raw CVE counts are never scored.</b> A vendor that discloses diligently
     would rank below one that stays quiet &mdash; exactly backwards.</li>
-<li><b>A product it cannot resolve gets no score at all.</b> Every pillar reads
+<li><b>A product it cannot resolve gets no confident score.</b> Every pillar reads
     "no CVEs found" as good news, so an unresolvable product would otherwise
-    score near 100 and top the comparison. <span class="v-inert">NOT ASSESSED</span>
-    sorts below <span class="v-avoid">AVOID</span>.</li>
+    score near 100 and top the comparison. It is <span class="v-caution">VERIFY</span>
+    across the full range instead, headlined by the conservative low end.</li>
 <li><b>Missing certification is never a penalty.</b> Most OT products are never
-    submitted, so absence says nothing. Missing certificates are excluded. A measured certificate participates in the weighted product.</li>
+    submitted, so absence says nothing. Missing certificates score a neutral 50 at full weight. A measured certificate participates in the weighted product.</li>
 <li><b>Unparseable version ranges stay in scope and are flagged</b>, never
     assumed safe.</li>
 <li><b>Sanctions screening never fuzzy-matches.</b> Wrongly flagging a real

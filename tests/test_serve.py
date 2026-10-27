@@ -9,6 +9,7 @@ table. The rendering is report.py's and is tested there.
 import json
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -759,7 +760,7 @@ def test_a_product_name_in_the_order_number_box_offers_a_way_out(handler):
     names the mistake and lists the product the text actually describes.
     """
     _, _, body = _get(handler, '/score?order_number=Testco+Electric+TestPLC+9000+Alpha')
-    assert 'NOT ASSESSED' in body
+    assert 'VERIFY' in body and 'product not identified' in body
     flat = " ".join(body.split())
     assert 'That product name could not be identified' in flat
     assert 'Did you mean' in body
@@ -880,6 +881,81 @@ def test_known_product_without_applicable_findings_explains_the_difference(db, t
     _, _, output = _get(handler, '/score?vendor=Testco&product=TestPLC+9000&version=9.0'
                         '&network_exposure=it_ot&interface=exposed&consequence=safety'
                         '&prerequisites=satisfiable&remediation=not_affected')
-    assert 'NOT ASSESSED' in output and 'no applicable risk evidence' in output
+    assert 'VERIFY' in output and 'no applicable vulnerability recorded' in output
     assert 'The product was identified' in output and 'Your answers are recorded' in output
     assert 'not enough data to assess' not in output
+
+
+@pytest.fixture
+def scoring_handler(db, tmp_path):
+    """The real handler over the real scorer, for pages whose text depends on it."""
+    from retrust import cli, dossier
+    context = cli._context(data_dir=str(tmp_path))
+
+    def assess(vendor, product, version=None, order_number=None, **owner):
+        return cli._assess(db, vendor, product, version, order_number, context=context, **owner)
+    return serve.build_handler(db, assess, context, dossier, index.stats(db),
+                               index.provenance(db), '127.0.0.1', 0)
+
+
+def _update(handler, was, now):
+    """Submit the edit form the way a browser does: new answers plus the carried ones."""
+    query = dict(now, was='1', **{f'was_{key}': value for key, value in was.items()})
+    return _get(handler, '/score?' + urllib.parse.urlencode(query))[2]
+
+
+START = dict(vendor='Testco', product='TestPLC 9000', order_number='', version='',
+             network_exposure='', assessment_type='purchase', interface='unknown',
+             prerequisites='unknown', consequence='', remediation='unknown')
+
+
+def test_the_edit_form_carries_the_answers_it_was_assessed_with(scoring_handler):
+    _, _, page = _get(scoring_handler, '/score?vendor=Testco&product=TestPLC+9000'
+                      '&interface=exposed&consequence=minor')
+    assert '<input type="hidden" name="was" value="1">' in page
+    assert 'name="was_interface" value="exposed"' in page
+    assert 'name="was_consequence" value="minor"' in page
+    assert 'Since your last update' not in page
+
+
+def test_an_unscored_answer_says_why_the_result_did_not_move(scoring_handler):
+    page = _update(scoring_handler, START, dict(START, network_exposure='internet_ot'))
+    assert 'Since your last update' in page and 'The result is unchanged' in page
+    assert 'Network exposure</b>: Unknown &rarr; Direct Internet exposure' in page
+    assert 'Deployment context' in page and 'Attack reachability (A) is the answer' in page
+
+
+def test_a_worst_case_answer_explains_the_range_and_what_still_holds_it_open(scoring_handler):
+    page = _update(scoring_handler, START, dict(START, consequence='safety'))
+    assert 'Confirms the worst case for this factor' in page
+    assert 'The range stays open until these are answered:' in page
+    assert 'Attack reachability (A)' in page
+
+
+def test_a_fix_claim_without_firmware_asks_for_the_version(scoring_handler):
+    page = _update(scoring_handler, START, dict(START, remediation='applied'))
+    assert 'counts only for a named firmware' in page
+
+
+def test_an_answer_that_moves_the_result_says_so(scoring_handler):
+    page = _update(scoring_handler, START, dict(START, consequence='negligible'))
+    assert 'Result: VERIFY' in page and 'Moved the result.' in page
+
+
+def test_several_changes_are_each_tried_on_their_own(scoring_handler):
+    page = _update(scoring_handler, START, dict(START, consequence='negligible',
+                                                 assessment_type='installed'))
+    assert 'On its own, moves the result to' in page
+    assert 'Recorded for traceability only' in page
+
+
+def test_a_different_product_is_not_compared_with_the_last_one(scoring_handler):
+    page = _update(scoring_handler, START, dict(START, product='Something Else',
+                                                 consequence='negligible'))
+    assert 'Since your last update' not in page
+
+
+def test_carried_answers_are_validated_and_escaped(scoring_handler):
+    hostile = dict(START, interface='<script>', version='"><img src=x>')
+    page = _update(scoring_handler, hostile, dict(START, version='"><img src=x>'))
+    assert '<img src=x>' not in page and '<script>' not in page

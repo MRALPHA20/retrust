@@ -247,8 +247,193 @@ def _owner_from(params_first):
     )
 
 
+# The form's labels, one definition for the form and for the panel that reports
+# what each answer did, so the two can never name the same field differently.
+FIELD_LABELS = {
+    'version': 'Firmware version',
+    'network_exposure': 'Network exposure',
+    'interface': 'Attack reachability (A)',
+    'prerequisites': 'Exploitation prerequisites',
+    'consequence': 'Credible operational impact (H)',
+    'remediation': 'Firmware applicability and remediation (U)',
+    'assessment_type': 'Assessment purpose',
+}
+ANSWER_TABLES = {
+    'network_exposure': score.NETWORK_EXPOSURES, 'interface': score.INTERFACES,
+    'prerequisites': score.PREREQUISITES, 'consequence': score.CONSEQUENCES,
+    'remediation': score.REMEDIATIONS, 'assessment_type': score.ASSESSMENT_TYPES,
+}
+IDENTITY_FIELDS = ('vendor', 'product', 'order_number')
+
+# The answer that equals what the conservative end of the range already
+# assumes. Giving it cannot lower the low end, and the high end only comes
+# down once every other open factor is answered too -- which is why a buyer
+# could make four edits in a row and see nothing move.
+CONSERVATIVE = {'consequence': ('safety',), 'interface': ('exposed',),
+                'prerequisites': ('satisfiable',),
+                'remediation': ('affected', 'available')}
+
+# Phrases in an assessment's verification list, and the form field that
+# closes each. The checklist words some questions differently from the form.
+OPEN_QUESTIONS = (
+    ('"Network exposure"', 'network_exposure'),
+    ('"Attack reachability (A)"', 'interface'),
+    ('"Exploitation prerequisites"', 'prerequisites'),
+    ('"Credible operational impact (H)"', 'consequence'),
+    ('"Is the firmware you are getting already fixed?"', 'remediation'),
+    ('exact firmware version', 'version'),
+    ('Re-check the version', 'version'),
+    ('Resolve the conflict', 'version'),
+)
+DATA_GAPS = ('Exploitation data is missing', 'CVSS base score is missing',
+             'Review the attack requirements')
+
+
+def _previous_from(params_first):
+    """The answers the last page was showing, carried in the edit form."""
+    if params_first('was') != '1':
+        return None
+    network = params_first('was_network_exposure')
+    return dict(
+        {key: params_first('was_' + key) for key in IDENTITY_FIELDS},
+        version=params_first('was_version'),
+        network_exposure=network if network in score.NETWORK_EXPOSURES else None,
+        **_owner_from(lambda name: params_first('was_' + name)))
+
+
+def _answer_text(field, value):
+    if field == 'version':
+        return value or 'not specified'
+    entry = ANSWER_TABLES[field].get(value)
+    if entry is None:
+        return 'Unknown'
+    return entry[0] if isinstance(entry, tuple) else entry
+
+
+def _shown(assessment):
+    """The headline a reader compares between two updates."""
+    label = report.score_label(assessment, unit='/100', note='', missing='')
+    return f'{assessment.verdict} {label}'.strip()
+
+
+def _assess_state(assess, state):
+    owner = {key: state[key] for key in UNDECLARED}
+    return _run_assessment(assess, state['vendor'], state['product'], state['version'],
+                           state['order_number'], state['network_exposure'], owner)[0]
+
+
+def _why_unmoved(field, value, state, result):
+    """Why one answer, applied on its own, left the headline where it was."""
+    if field == 'assessment_type':
+        return 'Recorded for traceability only; it never changes the calculation.'
+    if field == 'network_exposure':
+        return ('Deployment context: recorded with the result but not scored, because a'
+                ' network route alone does not establish an attack path. Attack'
+                ' reachability (A) is the answer the score uses.')
+    if field == 'remediation' and value in ('applied', 'not_affected'):
+        if not state['version']:
+            return ('A fixed or not-affected claim counts only for a named firmware. Add'
+                    ' the firmware version so the claim can be checked against the'
+                    ' published affected ranges.')
+        return ('The firmware you gave is inside a published affected range, which'
+                ' contradicts this answer. See what to check next.')
+    if field == 'remediation' and value in ('mitigated', 'planned', 'unknown'):
+        return ('Treated as Unknown: an unverified mitigation or a planned fix does not'
+                ' settle whether the firmware is affected.')
+    if value in CONSERVATIVE.get(field, ()):
+        return ('Confirms the worst case for this factor, which the low end already'
+                ' assumed, so it cannot go lower. The high end comes down once the other'
+                ' open answers are given.')
+    if field == 'prerequisites' and value == 'unsatisfiable':
+        return ('Did not apply: these weaknesses need no extra conditions, or their'
+                ' requirements are unknown, so ruling conditions out removes nothing.'
+                ' See the assessment notes.')
+    # Below FLOOR every exposure enters the composite as FLOOR, so a change down
+    # there is real but cannot show.
+    if result.exposure_min is not None and result.exposure_min < score.FLOOR:
+        return ('Exposure stays at its floor: enough severe flaws remain applicable that'
+                ' this answer alone cannot lift it.')
+    if any(note.startswith('Capped below PREFER') for note in result.notes):
+        return ('Exposure did change, but the score is capped just below PREFER by a'
+                ' hardcoded-credential flaw with no vendor fix, and no answer can lift'
+                ' that cap. See the assessment notes.')
+    return 'Other open answers still set both ends of the range.'
+
+
+def _still_open(assessment):
+    """Form fields still holding a provisional range open, and any data gaps."""
+    fields, gaps = [], False
+    for item in assessment.verification:
+        gaps = gaps or any(phrase in item for phrase in DATA_GAPS)
+        for phrase, field in OPEN_QUESTIONS:
+            if phrase in item and field not in fields:
+                fields.append(field)
+    return [f for f in FIELD_LABELS if f in fields], gaps
+
+
+def _edit_effects(assess, previous, state, current):
+    """Say what the last update changed, and why an answer moved nothing.
+
+    The range is an interval over every unanswered factor, so most single
+    answers leave the headline exactly where it was until the last open factor
+    closes. Without this, an unchanged number reads as a form that ignored the
+    edit. Each changed answer is re-scored on its own against the previous
+    answers, so the panel reports what that answer did, not what it might do.
+    """
+    if previous is None or any(previous[k] != state[k] for k in IDENTITY_FIELDS):
+        return ''
+    changed = [field for field in FIELD_LABELS if previous[field] != state[field]]
+    if not changed:
+        return ''
+    before = _assess_state(assess, previous)
+    moved_overall = _shown(before) != _shown(current)
+    lead = (f'Result: {_esc(_shown(before))} &rarr; <b>{_esc(_shown(current))}</b>.'
+            if moved_overall else
+            f'The result is unchanged at <b>{_esc(_shown(current))}</b>.')
+    frozen = None
+    if not current.resolved:
+        frozen = ('The product was not identified, so no answer has anything to act on.'
+                  ' Identify it by order number or exact model name.')
+    elif current.evidence_free:
+        frozen = ('No recorded vulnerability applies to this product, so no answer has'
+                  ' anything to act on and the range stays the full range.')
+    elif current.score is None:
+        frozen = 'A purchase blocker decides this outright, whatever is answered.'
+    items = ''
+    for field in changed:
+        old, new = previous[field], state[field]
+        if frozen:
+            effect = ''
+        else:
+            trial = current if len(changed) == 1 else _assess_state(
+                assess, dict(previous, **{field: new}))
+            if _shown(trial) != _shown(before):
+                effect = ('Moved the result.' if len(changed) == 1 else
+                          f'On its own, moves the result to {_esc(_shown(trial))}.')
+            else:
+                effect = 'No visible effect. ' + _why_unmoved(field, new, state, trial)
+        items += (f'<li><b>{FIELD_LABELS[field]}</b>: {_esc(_answer_text(field, old))}'
+                  f' &rarr; {_esc(_answer_text(field, new))}. {effect}</li>')
+    tail = ''
+    if frozen:
+        tail = f'<p class="helper">{frozen}</p>'
+    elif current.provisional:
+        fields, gaps = _still_open(current)
+        if fields:
+            tail = ('<p class="helper">The range stays open until these are answered: '
+                    + ', '.join(FIELD_LABELS[f] for f in fields) + '.'
+                    + (' Some checks are data gaps that no answer can close; see what'
+                       ' to check next.' if gaps else '') + '</p>')
+        elif gaps:
+            tail = ('<p class="helper">Only data gaps hold the range open, and no answer'
+                    ' can close them; see what to check next.</p>')
+    return ('<section class="panel edit-effects" aria-live="polite">'
+            '<h2>Since your last update</h2>'
+            f'<p>{lead}</p><ul>{items}</ul>{tail}</section>')
+
+
 def _score_page(connection, assess, context, vendor, product, version, order_number="",
-                submitted=False, network_exposure=None, owner=None):
+                submitted=False, network_exposure=None, owner=None, previous=None):
     """A verdict first, with editable inputs and the evidence below it."""
     if network_exposure not in score.NETWORK_EXPOSURES:
         network_exposure = None
@@ -261,12 +446,18 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         recognised = search.product_query(connection, order_number)
         if recognised:
             vendor, product, order_number = recognised.vendor, recognised.name, ""
+    # Everything the page was assessed with, defaults filled in, so the next
+    # update can be compared against exactly this.
+    state = dict(vendor=vendor, product=product, order_number=order_number,
+                 version=version, network_exposure=network_exposure,
+                 **{key: owner.get(key, default) for key, default in UNDECLARED.items()})
     form = _score_form(vendor, product, version, order_number, network_exposure,
                        owner.get("consequence"), owner.get("interface", "unknown"),
                        owner.get("assessment_type", "purchase"),
                        owner.get("remediation", "unknown"),
                        prerequisites=owner.get("prerequisites", "unknown"),
-                       update=bool(vendor or product or order_number))
+                       update=bool(vendor or product or order_number),
+                       carried=state if (vendor or product or order_number) else None)
     if not (vendor or product or order_number):
         notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
                   'or a vendor and product, before assessing.</p>' if submitted else '')
@@ -284,6 +475,7 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     if recognised:
         body += ('<p class="notice">Product name recognised. Assessing '
                  + _esc(recognised.vendor) + ' / ' + _esc(recognised.name) + '.</p>')
+    body += _edit_effects(assess, previous, state, assessment)
     tools = (f'<details class="assessment-edit"><summary>{EDIT_PANEL}</summary>' + form + '</details>'
              '<details class="assessment-downloads"><summary>Save or share this assessment</summary>'
              '<p class="helper">Download a report to discuss with your supplier or purchasing team.</p>'
@@ -435,33 +627,39 @@ def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
     leaving one unanswered keeps it unresolved rather than guessing either way.
     """
     return ('<div class="form-grid">'
-            + _choice('assessment_type' + suffix, 'Assessment purpose',
+            + _choice('assessment_type' + suffix, FIELD_LABELS['assessment_type'],
                       score.ASSESSMENT_TYPES, assessment_type,
                       helper='Recorded for traceability; does not change the calculation.')
-            + _choice('network_exposure' + suffix, 'Network exposure',
+            + _choice('network_exposure' + suffix, FIELD_LABELS['network_exposure'],
                       score.NETWORK_EXPOSURES, network_exposure, blank='Unknown',
                       helper='Deployment context; selection alone does not change the score. Internet isolation alone does not establish a blocked attack path. Reachability below determines A.')
-            + _choice('interface' + suffix, 'Attack reachability (A)',
+            + _choice('interface' + suffix, FIELD_LABELS['interface'],
                       score.INTERFACES, interface,
                       helper='Can a credible attacker reach the vulnerable interface? Select verified blocked only when all relevant network, local and physical paths have been assessed.')
-            + _choice('prerequisites' + suffix, 'Exploitation prerequisites',
+            + _choice('prerequisites' + suffix, FIELD_LABELS['prerequisites'],
                       score.PREREQUISITES, prerequisites,
                       helper='Confirm whether required privileges, user interaction, local or physical access, and other attack conditions can be satisfied.')
-            + _choice('consequence' + suffix, 'Credible operational impact (H)',
+            + _choice('consequence' + suffix, FIELD_LABELS['consequence'],
                       score.CONSEQUENCES, consequence, blank='Unknown',
                       helper='Highest credible consequence of exploiting the assessed vulnerabilities. H: safety 1.0; process control 0.8; recoverable disruption 0.5; minor disruption 0.2; no material impact 0.')
-            + _choice('remediation' + suffix, 'Firmware applicability and remediation (U)',
+            + _choice('remediation' + suffix, FIELD_LABELS['remediation'],
                       score.REMEDIATIONS, remediation,
-                      helper='Status of the selected firmware across the listed vulnerabilities. Fix availability alone does not establish that a fix is installed.')
+                      helper='Status of the selected firmware across the listed vulnerabilities. Fix availability alone does not establish that a fix is installed. Fix verified installed and Verified not affected count only when the firmware version is given.')
             + '</div>')
 
 
 def _score_form(vendor, product, version, order_number='', network_exposure=None,
                 consequence=None, interface='unknown',
                 assessment_type='purchase', remediation='unknown',
-                prerequisites='unknown', update=False):
+                prerequisites='unknown', update=False, carried=None):
     using_model = ' open' if (vendor or product) and not order_number else ''
-    return ('<form class="form-panel" method="get" action="/score">'
+    # The answers this page was assessed with ride along unseen, so the update
+    # can report what changed without the server keeping any session.
+    hidden = '' if not carried else (
+        '<input type="hidden" name="was" value="1">'
+        + ''.join(f'<input type="hidden" name="was_{key}" value="{_esc(value or "")}">'
+                  for key, value in carried.items()))
+    return ('<form class="form-panel" method="get" action="/score">' + hidden +
             '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number or full product name', order_number,
                                                  'e.g. 6ES7518-4AX00-1AB0') + '</div>'
             f'<details class="form-options"{using_model}><summary>Use vendor and model instead</summary>'
@@ -906,14 +1104,13 @@ which information is still missing.</p>
 <dt>PREFER — consider for your shortlist</dt><dd>Complete the supplier checks and confirm that the product is suitable before approving a purchase.</dd>
 <dt>CONDITIONAL — review before deciding</dt><dd>Ask your technical team to review the risks and missing information.</dd>
 <dt>AVOID — advised against purchase</dt><dd>A purchase blocker or a low score makes this an unfavourable assessment. Read the stated reasons.</dd>
-<dt>VERIFY — technical checks needed</dt><dd>Resolve missing network, consequence or firmware evidence before choosing. A provisional range shows what remains uncertain.</dd>
-<dt>NOT ASSESSED — more information needed</dt><dd>Confirm the exact product and firmware, then ask for missing evidence.</dd>
+<dt>VERIFY — technical checks needed</dt><dd>Resolve missing network, consequence or firmware evidence before choosing. A provisional range shows what remains uncertain; a product with no evidence at all gets the full range, with its low end as the headline.</dd>
 </dl>
 <section class="panel"><h2>How a verdict is reached</h2>
 <ol class="steps">
 <li><span class="step-number">1</span><div><b>Identify the exact product</b>
 <p>Use the order number from the supplier’s quotation and add the firmware version.
-If ReTrust cannot match the product, it reports NOT ASSESSED. Unconfirmed firmware
+If ReTrust cannot match the product, it reports VERIFY across the full range. Unconfirmed firmware
 ranges remain visible for review.</p></div></li>
 <li><span class="step-number">2</span><div><b>Check for purchase blockers</b>
 <p>Confirmed exploitation affecting the device firmware and supplier restrictions can
@@ -932,8 +1129,10 @@ result.</p></div></li>
 <p><code>S = E^0.60 × P^0.20 × V^0.15 × C^0.05</code>, using scores from 1 to 100.
 E is exposure safety, P is available fixes, V is vendor practices, and C is certification evidence.
 These are the default weights; individual reports show the weights actually used.</p>
-<p><code>Z = T × A × H × U; R = min(1, Z1 + 0.20Z2 + 0.10Z3); E = 100(1 − R)</code>.
-The highest-risk review unit counts fully; only the next two add weight. T uses the maximum of KEV, LEV and EPSS.
+<p><code>Z = T × I × A × H × U; R = min(1, Z1 + 0.20Z2 + 0.10Z3); E = 100(1 − R)</code>.
+The highest-risk review unit counts fully; only the next two add weight. T uses the maximum of KEV, LEV and EPSS,
+floored for the equipment's service life by how the flaw is reached (wormable .50, other network .30, local .15,
+physical .05). I is the CVSS base score divided by 10.
 A is 1 for a feasible attack path, 0 for a verified block, or an unresolved range.
 H is the credible operational consequence; U records whether the selected firmware remains affected.
 Network topology is context, not a fractional discount. Missing inputs produce VERIFY and a provisional range.
@@ -1182,7 +1381,7 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                                submitted=any(key in params for key in
                                              ("vendor", "product", "version", "order_number")),
                                network_exposure=first("network_exposure"),
-                               owner=_owner_from(first))
+                               owner=_owner_from(first), previous=_previous_from(first))
 
         def compare_page():
             return _compare_page(assess, context, _candidate_rows(params),

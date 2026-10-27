@@ -112,9 +112,10 @@ def test_disabling_one_pillar_keeps_other_defaults(tmp_path):
     path.write_text(json.dumps({'weights': {'exposure': 0}}))
     weights, _, _ = config.load(path)
     assert weights == {**score.DEFAULT_WEIGHTS, 'exposure': 0}
-    # Empty findings no longer score: absence of evidence is excluded,
+    # Empty findings never band: absence of evidence is a full-range VERIFY,
     # not read as safety. The config mechanics still round-trip.
-    assert score.assess('Example', [], weights=weights).verdict == 'NOT ASSESSED'
+    empty = score.assess('Example', [], weights=weights)
+    assert empty.verdict == 'VERIFY' and empty.evidence_free
 
 
 @pytest.mark.parametrize('document', [[], {'weights': {'exposure': 'nan'}},

@@ -83,7 +83,8 @@ def test_eight_clients_keep_their_own_answers_and_readers(application):
                 result = json.loads(body)['results'][0]
                 assert result['interface'] == ('blocked' if i % 2 else 'exposed')
                 assert result['assessment_type'] == ('installed' if i % 2 else 'purchase')
-                assert result['exposure_min'] == pytest.approx(100 if i % 2 else 76)
+                # T = max(LEV .3, wormable floor .5); I = 7.5 / 10; H = control .8.
+                assert result['exposure_min'] == pytest.approx(100 if i % 2 else 100 * (1 - .5 * .75 * .8))
         assert len(owners) >= 4  # calculation slots may use the extra health-capable handler threads
 
 

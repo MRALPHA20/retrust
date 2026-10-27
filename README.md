@@ -61,25 +61,30 @@ installation of the shorter `retrust` command.
 3. Calculate exposure and combine it with patch, vendor and certification
    evidence. Show the inputs, gaps and reasons behind the recommendation.
 
-The current **RT6** model uses:
+The current **RT7** model uses:
 
 ```text
-Z = T × A × H × U
+Z = T × I × A × H × U
 R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)
 E = 100 × (1 − R)
 S = E^0.60 × P^0.20 × V^0.15 × C^0.05
 ```
 
-`T` is the threat index, `A` attack reachability, `H` credible operational
-impact, and `U` unresolved applicability. The top three review units determine
-exposure. The other pillars are patch capability (`P`), vendor practices (`V`)
-and certification evidence (`C`). Network location is recorded as context;
-verified reachability determines `A`. In RT6, a missing patch, vendor or
-certification pillar keeps its weight and contributes a neutral score of 50.
+`T` is the threat index: the strongest of KEV, LEV and EPSS, floored for the
+equipment's service life by how the flaw is reached (wormable .50, other network
+.30, local .15, physical .05). `I` is technical severity (CVSS base / 10), `A`
+attack reachability, `H` credible operational impact, and `U` unresolved
+applicability. The top three review units determine exposure. The other pillars
+are patch capability (`P`), vendor practices (`V`) and certification evidence
+(`C`). Network location is recorded as context; verified reachability
+determines `A`. A missing patch, vendor or certification pillar keeps its
+weight and contributes a neutral score of 50.
 
 Default bands are **PREFER ≥80**, **CONDITIONAL 60–<80** and **AVOID <60**.
 Mandatory blockers override the numeric band. Unresolved material evidence
-produces **VERIFY**; insufficient product evidence produces **NOT ASSESSED**.
+produces **VERIFY**. A product with no usable evidence -- unidentified, or
+named in advisories with no affected CVE -- is VERIFY across the full range,
+with its conservative low end as the headline.
 Read the [full scoring explanation](docs/explainers/scoring.html) for unknown
 inputs, grouping, floors, missing pillars and policy caps.
 

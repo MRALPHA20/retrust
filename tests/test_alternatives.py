@@ -53,8 +53,8 @@ def _assessor(verdicts, findings=3):
         verdict, value = verdicts.get(product, ("NOT ASSESSED", None))
         if value is None:
             return score.not_assessed(f"{vendor} {product}", "no data"), None, []
-        assessment = score.not_assessed(f"{vendor} {product}", "")
-        assessment.verdict, assessment.score = verdict, value
+        assessment = score.Assessment(product=f"{vendor} {product}",
+                                      verdict=verdict, score=value)
         assessment.findings_count = findings
         return assessment, None, []
     return assess
@@ -173,9 +173,8 @@ def _flat(text):
 
 
 def _subject(verdict="AVOID", value=39.1):
-    assessment = score.not_assessed("Testco TestPLC 9000 Alpha", "")
-    assessment.verdict, assessment.score = verdict, value
-    return assessment
+    return score.Assessment(product="Testco TestPLC 9000 Alpha",
+                            verdict=verdict, score=value)
 
 
 def test_the_caveat_comes_before_any_suggestion():
@@ -222,8 +221,7 @@ def test_the_comparison_line_counts_only_genuine_improvements():
 
 def test_provisional_sibling_remains_available_for_engineering_review(db):
     def assess(vendor, product):
-        result = score.not_assessed(f'{vendor} {product}', '')
-        result.verdict, result.score = 'VERIFY', 20
+        result = score.Assessment(product=f'{vendor} {product}', verdict='VERIFY', score=20)
         result.score_min, result.score_max = 20, 90
         result.provisional, result.findings_count = True, 1
         return result, None, []
