@@ -1,7 +1,7 @@
 # Bootstrap everything from nothing. Requires git, curl and python3.
 DATA ?= data
 
-.PHONY: all data ingest refresh test eval backtest demo docs guide screenshots batch snapshot ci deploy live clean smoke formula-check
+.PHONY: all data ingest refresh test eval backtest demo docs guide screenshots screenshots-review batch snapshot ci deploy live clean smoke formula-check
 
 all: ingest refresh test
 
@@ -54,6 +54,10 @@ demo:
 # own Chromium. Install .[docs], then `python3 -m playwright install chromium`.
 screenshots:
 	python3 tools/capture_screenshots.py
+
+# Review matrix (pages x widths x modes) into a scratch dir; never docs/.
+screenshots-review:
+	python3 tools/capture_screenshots.py --set review --out $${OUT:-/tmp/retrust-review}
 
 # Build the illustrated overview from retained measurements. Install .[docs].
 guide: screenshots
