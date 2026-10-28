@@ -3,11 +3,104 @@
 import html
 from collections import Counter
 
-from . import dossier, lev, ssvc, timeline
+import re
+
+from . import components, dossier, lev, ssvc, timeline
 
 
 def _esc(value):
     return html.escape(str(value), quote=True)
+
+
+# Layout for the secondary pages. The shared stylesheet (webui.PAGE_CSS) is not
+# this module's to edit, so these rules ship as a constant that webui appends
+# after PAGE_CSS. Tokens only; 12px floor; radii from the token scale.
+CSS = """
+.rt-counts{font-family:var(--font-mono);font-size:.8125rem;line-height:1.5;color:var(--muted);margin:var(--s12) 0 0}
+.rt-searchbox{max-width:48rem}
+.rt-searchbox .search-line{align-items:flex-start}
+.rt-searchbox .search-line .rt-btn{margin-top:26px}
+.rt-searchbox .rt-field{flex:1 1 auto;min-width:0}
+.rt-searchbox .rt-input{min-height:48px;max-width:none;font-family:var(--font-mono);font-size:1rem}
+.lookup-form .rt-input--mono{font-family:var(--font-mono);font-size:.8125rem}
+.lookup-form .rt-btn{margin-top:var(--s12)}
+.rt-searchbox .rt-btn{min-height:48px}
+.hit.hit--product{display:grid;grid-template-columns:minmax(8rem,16rem) minmax(0,1fr) auto;gap:var(--s2) var(--s16);align-items:baseline;min-height:40px}
+.hit__id{font-family:var(--font-mono);font-size:.8125rem;color:var(--action);overflow-wrap:anywhere}
+.hit__id--solo{grid-column:1/3}
+.hit__name{color:var(--text-2);overflow-wrap:anywhere}
+.hit__vendor{grid-column:3;justify-self:end;text-align:right;font-family:var(--font-mono);font-size:.75rem;color:var(--muted)}
+.hit .hit__m{color:var(--text);font-weight:600}
+.hit.hit--product .w{grid-column:1/-1;margin:0}
+.rt-sample{display:flex;flex-wrap:wrap;gap:var(--s8);align-items:center;margin:var(--s12) 0 0}
+.rt-sample>span{color:var(--muted);font-size:.8125rem}
+.rt-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:var(--s12);margin:var(--s16) 0;padding:0;border:0}
+.rt-stat{padding:var(--s12) var(--s16);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-card)}
+.rt-stat dt{font-size:.75rem;color:var(--muted)}
+.rt-stat dd{margin:var(--s4) 0 0;font-family:var(--font-mono);font-size:1.125rem;font-weight:500;font-variant-numeric:tabular-nums;color:var(--text);overflow-wrap:anywhere}
+.rt-qcard{max-width:75ch}
+.rt-qlist{list-style:decimal;margin:0;padding-left:var(--s32)}
+.rt-qlist>li{padding:var(--s12) 0;border-bottom:1px solid var(--rule-row)}
+.rt-qlist>li::marker{font-family:var(--font-mono);font-size:.75rem;color:var(--muted)}
+.rt-q__row{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s16)}
+.rt-q__text{margin:0;font-size:.875rem;line-height:1.6;color:var(--text)}
+.rt-q__tag{flex:none;font-family:var(--font-mono);font-weight:600;font-size:.75rem;line-height:1.6;letter-spacing:.06em;color:var(--verify);white-space:nowrap}
+.rt-q__foot{display:flex;flex-wrap:wrap;gap:var(--s8);margin-top:var(--s16)}
+.rt-qcard details{background:transparent;border:0;padding:0;margin:var(--s4) 0 0}
+.rt-qcard summary{min-height:0;padding:var(--s4) 0;font-size:.8125rem}
+.rt-h3{margin-top:var(--s24)}
+.rt-related{margin:0 0 var(--s20);font-size:.8125rem}
+.rt-formula{font-family:var(--font-mono);font-size:.8125rem;overflow-wrap:anywhere}
+.rt-about-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16);margin:0 0 var(--s16)}
+.rt-about-grid .rt-card{margin:0}
+.rt-section{margin:var(--s24) 0 0}
+.rt-section>h2{margin-bottom:var(--s12)}
+@media(max-width:639px){
+.hit.hit--product{grid-template-columns:minmax(0,1fr)}
+.hit__id--solo,.hit__vendor{grid-column:1}
+.hit__vendor{justify-self:start;text-align:left}
+.section-title{flex-wrap:wrap;gap:var(--s4) var(--s12)}
+.rt-q__row{flex-direction:column;gap:var(--s4)}
+.rt-qlist{padding-left:var(--s24)}
+.rt-about-grid{grid-template-columns:1fr}
+.rt-searchbox .search-line{flex-direction:column;align-items:stretch}
+.rt-searchbox .search-line .rt-btn{margin-top:0}
+}
+"""
+
+
+def highlight(text, query):
+    """Escape `text`, wrapping the parts that match the query in <strong>.
+
+    Matching runs on the raw text and each piece is escaped separately: escaping
+    first would let a query such as "amp" match inside "&amp;".
+    """
+    text = str(text)
+    words = sorted({w for w in str(query or "").split() if w}, key=len, reverse=True)
+    whole = str(query or "").strip()
+    needles = ([whole] if whole and whole not in words else []) + words
+    if not needles:
+        return _esc(text)
+    pattern = re.compile("(" + "|".join(re.escape(n) for n in needles) + ")", re.I)
+    return "".join(
+        f'<strong class="hit__m">{_esc(piece)}</strong>' if index % 2 else _esc(piece)
+        for index, piece in enumerate(pattern.split(text)) if piece)
+
+
+def search_row(href, ident, name="", vendor="", meta="", query=""):
+    """One result row (spec 4.3): order number or name, product, vendor right.
+
+    Without an order number the product name takes the Mono slot and the Sans
+    slot is left out, so the same string is never printed twice.
+    """
+    if name:
+        main = (f'<span class="hit__id">{highlight(ident, query)}</span>'
+                f'<span class="hit__name">{highlight(name, query)}</span>')
+    else:
+        main = f'<span class="hit__id hit__id--solo">{highlight(ident, query)}</span>'
+    return (f'<a class="hit hit--product" href="{_esc(href)}">{main}'
+            + (f'<span class="hit__vendor">{highlight(vendor, query)}</span>' if vendor else '')
+            + (f'<span class="w">{_esc(meta)}</span>' if meta else '') + '</a>')
 
 
 def _percent(value):
@@ -27,21 +120,43 @@ def _confirmation(in_kev, kev_loaded):
             'Not listed by CISA' if kev_loaded else 'Not checked — CISA records unavailable')
 
 
-def _facts(items):
-    return '<dl class="reading-facts">' + ''.join(
-        f'<div><dt>{_esc(label)}</dt><dd>{_esc(value)}</dd></div>'
+def stat_tiles(items):
+    """Label/value tiles: muted label, Mono value.
+
+    reading-facts stays as a second class so a page rendered without CSS above
+    still lays the pairs out as a grid.
+    """
+    return '<dl class="reading-facts rt-stats">' + ''.join(
+        f'<div class="rt-stat"><dt>{_esc(label)}</dt><dd>{_esc(value)}</dd></div>'
         for label, value in items) + '</dl>'
 
 
-def _table(headers, rows, caption):
+_facts = stat_tiles
+
+
+def table(headers, rows, caption, numeric=(), badges=()):
+    """The shared scrolling table. `numeric` columns are right-aligned Mono;
+    `badges` columns hold a verdict word and are drawn as the verdict badge."""
+    def head(index, label):
+        css = ' class="n"' if index in numeric else ''
+        return f'<th scope="col"{css}>{_esc(label)}</th>'
+
+    def cell(index, value):
+        if index in badges:
+            return f'<td>{components.verdict_badge(value, "s")}</td>'
+        return f'<td class="n">{_esc(value)}</td>' if index in numeric else f'<td>{_esc(value)}</td>'
+
     return ('<div class="tw" tabindex="0" role="region" '
             f'aria-label="{_esc(caption)}; scroll sideways for more columns">'
             '<p class="table-scroll-hint">Scroll sideways to see all columns →</p>'
             f'<table><caption>{_esc(caption)}</caption><thead><tr>'
-            + ''.join(f'<th scope="col">{_esc(label)}</th>' for label in headers)
+            + ''.join(head(i, label) for i, label in enumerate(headers))
             + '</tr></thead><tbody>' + ''.join(
-                '<tr>' + ''.join(f'<td>{_esc(cell)}</td>' for cell in row) + '</tr>'
+                '<tr>' + ''.join(cell(i, value) for i, value in enumerate(row)) + '</tr>'
                 for row in rows) + '</tbody></table></div>')
+
+
+_table = table
 
 
 def _technical(text, label="Technical report and source details"):
@@ -61,7 +176,7 @@ def exploitation(product, estimates, corpus_share=None, kev_loaded=True):
     flagged = [e for e in measured if e.unlisted]
     confirmed = sum(e.in_kev for e in ranked)
     missing = len(ranked) - len(measured)
-    parts.append('<section class="reading-summary"><h3>What this means</h3>')
+    parts.append('<section class="reading-summary"><h3 class="rt-h3">What this means</h3>')
     if confirmed:
         parts.append(f'<p>CISA’s public records confirm exploitation of '
                      f'<strong>{_count(confirmed, "vulnerability", "vulnerabilities")}</strong>.</p>')
@@ -69,8 +184,9 @@ def exploitation(product, estimates, corpus_share=None, kev_loaded=True):
         parts.append('<p>No vulnerabilities in this selection are listed in CISA’s '
                      'confirmed-exploitation catalogue. This does not prove that attacks never happened.</p>')
     else:
-        parts.append('<p class="notice">CISA exploitation records are not loaded. '
-                     'Public confirmation has not been checked.</p>')
+        parts.append(components.alert(
+            "review", "CISA exploitation records are not loaded",
+            "Public confirmation has not been checked."))
     if flagged:
         parts.append(f'<p>The model flags <strong>{_count(len(flagged), "vulnerability", "vulnerabilities")} '
                      'for investigation</strong>. Ask your security team or supplier '
@@ -87,7 +203,7 @@ def exploitation(product, estimates, corpus_share=None, kev_loaded=True):
         ('Historical estimates available', f'{len(measured)} of {len(ranked)}'),
         ('Confirmed in CISA records', str(confirmed) if kev_loaded or confirmed else 'Not checked'),
     ]))
-    parts.append('<h3>Read each vulnerability</h3><p>A CVE number identifies a known '
+    parts.append('<h3 class="rt-h3">Read each vulnerability</h3><p>A CVE number identifies a known '
                  'security weakness. The percentage is a model estimate of earlier exploitation, '
                  'not a confirmed incident count.</p>')
     parts.append(_table(
@@ -123,16 +239,49 @@ def exploitation(product, estimates, corpus_share=None, kev_loaded=True):
     return ''.join(parts)
 
 
-def supplier_questions(product, items):
-    parts = [f'<h2 class="subject">{_esc(product)}</h2><ol class="supplier-questions">']
-    for question in items:
-        parts.append(f'<li><p>{_esc(question.text)}</p><details>'
-                     '<summary>Why ask this? View supporting evidence</summary>'
-                     f'<p>{_esc(question.why)}</p>')
-        if question.evidence:
-            parts.append('<ul>' + ''.join(f'<li>{_esc(item)}</li>' for item in question.evidence) + '</ul>')
-        parts.append('</details></li>')
-    parts.append('</ol><details><summary>Terms your supplier may use</summary><dl class="term-list">'
+# Question.gap codes, spelled out for screen readers next to the visible tag.
+GAP_NAMES = {'E': 'exposure', 'P': 'patch availability', 'V': 'vendor practice',
+             'C': 'certification', 'ID': 'product identity'}
+
+
+def _gap_tag(code):
+    """`GAP · C` as plain text: the linked form needs the JS layer (WP9)."""
+    if not code:
+        return ''
+    name = GAP_NAMES.get(code)
+    return (f'<span class="rt-q__tag">GAP · {_esc(code)}'
+            + (f'<span class="rt-sr"> ({_esc(name)})</span>' if name else '') + '</span>')
+
+
+def supplier_questions(product, items, export_href='', text_href=''):
+    """The supplier-questions panel (spec 4.19) without its script-only parts.
+
+    Copy all and the mark-as-sent checkbox need JavaScript, so the baseline has
+    the two links that do not: the plain-text page and the .txt download.
+    """
+    parts = [f'<h2 class="subject">{_esc(product)}</h2>']
+    items = list(items)
+    if not items:
+        body = '<p class="empty">No open questions. Every material input is verified.</p>'
+    else:
+        rows = []
+        for question in items:
+            row = (f'<li><div class="rt-q__row"><p class="rt-q__text">{_esc(question.text)}</p>'
+                   f'{_gap_tag(getattr(question, "gap", ""))}</div><details>'
+                   '<summary>Why ask this? View supporting evidence</summary>'
+                   f'<p>{_esc(question.why)}</p>')
+            if question.evidence:
+                row += '<ul>' + ''.join(f'<li>{_esc(item)}</li>' for item in question.evidence) + '</ul>'
+            rows.append(row + '</details></li>')
+        body = '<ol class="supplier-questions rt-qlist">' + ''.join(rows) + '</ol>'
+    links = ''.join(filter(None, (
+        components.link_button('Open as plain text', text_href, 'secondary') if text_href else '',
+        components.link_button('Export as .txt', export_href, 'secondary') if export_href else '')))
+    if links:
+        body += f'<div class="rt-q__foot">{links}</div>'
+    parts.append('<div class="rt-qcard">'
+                 + components.card(body, label='Supplier questions') + '</div>')
+    parts.append('<details><summary>Terms your supplier may use</summary><dl class="term-list">'
                  '<dt>Firmware</dt><dd>The software running inside the equipment.</dd>'
                  '<dt>Mitigation or workaround</dt><dd>A protective measure used when a permanent fix is not yet in place.</dd>'
                  '<dt>PSIRT</dt><dd>The manufacturer’s team that handles product security issues.</dd>'
@@ -168,19 +317,22 @@ def response_priority(product, decisions, exposure, automatable, impact, undecid
     if not decisions:
         return ''.join(parts) + '<p>No vulnerabilities are available to prioritise for this selection.</p>'
     if not kev_loaded:
-        parts.append('<p class="notice">CISA exploitation records are not loaded. '
-                     'The response recommendations have incomplete exploitation evidence.</p>')
+        parts.append(components.alert(
+            "review", "CISA exploitation records are not loaded",
+            "The response recommendations have incomplete exploitation evidence."))
     counts = Counter(d.outcome for d in decisions)
-    parts.append('<h3>What to do next</h3><dl class="priority-list">')
+    parts.append('<h3 class="rt-h3">What to do next</h3><dl class="priority-list">')
     for key in sorted(counts, key=ssvc.PRIORITY.get):
         label, action = PRIORITIES[key]
         parts.append(f'<dt>{_esc(label)} · {_count(counts[key], "vulnerability", "vulnerabilities")}</dt>'
                      f'<dd>{_esc(action)}</dd>')
     parts.append('</dl>')
     if undecided:
-        parts.append(f'<p class="notice">Whether your firmware is affected remains unconfirmed in '
-                     f'{_count(undecided, "advisory entry", "advisory entries")}. '
-                     'Verify the firmware before deciding that a vulnerability applies.</p>')
+        parts.append(components.alert(
+            "review", "Firmware applicability is unconfirmed",
+            f'Whether your firmware is affected remains unconfirmed in '
+            f'{_count(undecided, "advisory entry", "advisory entries")}. '
+            'Verify the firmware before deciding that a vulnerability applies.'))
     parts.append('<p>Public exploit code is not checked by this tool. Missing that evidence '
                  'can make a response look less urgent than it should be; review the supplier’s '
                  'advisories before acting.</p>')
@@ -233,19 +385,23 @@ def vendor_profile(profile):
     else:
         parts.append('<p>No advisories in this dataset name this manufacturer. Check the name '
                      'or ask the supplier for its security notices; missing data does not establish safety.</p>')
-    parts.append('<h3>Supplier checks</h3>')
+    parts.append('<h3 class="rt-h3">Supplier checks</h3>')
     if profile.screening_gates is None:
         parts.append('<p>Supplier restrictions were not checked because the screening data is not loaded.</p>')
     elif profile.screening_gates:
         for gate in profile.screening_gates:
-            parts.append(f'<div class="notice"><strong>Supplier screening match — review before purchase.</strong>'
-                         f'<p>{_esc(gate["detail"])}</p><p>Source: {_esc(gate["source"])}</p></div>')
+            parts.append(components.alert(
+                "restriction", "Supplier screening match: review before purchase",
+                gate["detail"],
+                body_html=f'<p class="rt-alert__text">Source: {_esc(gate["source"])}</p>'))
     else:
         parts.append('<p>No supplier restriction match was found in the loaded lists. '
                      'This result applies only to the lists and dates available in this workspace.</p>')
     if profile.screening_gates is not None and not profile.sanctions_checked:
-        parts.append('<p class="notice">The sanctions dataset is not loaded. Supplier checks are incomplete.</p>')
-    parts.append('<h3>Certification evidence</h3>')
+        parts.append(components.alert(
+            "review", "Supplier checks are incomplete",
+            "The sanctions dataset is not loaded."))
+    parts.append('<h3 class="rt-h3">Certification evidence</h3>')
     if profile.certificates is None:
         parts.append('<p>Certification records were not checked because that dataset is not loaded.</p>')
     elif not profile.certificates:
@@ -262,7 +418,7 @@ def vendor_profile(profile):
     if profile.remediation:
         labels = {'vendor_fix': 'A vendor fix is available', 'mitigation_only': 'Workaround or other protective measure only',
                   'no_fix': 'No fix available', 'nothing_stated': 'Fix status not stated'}
-        parts.append('<h3>Fixes described in the notices</h3>')
+        parts.append('<h3 class="rt-h3">Fixes described in the notices</h3>')
         parts.append(_table(('Best remedy described', 'Security notices'),
                             [(label, profile.remediation.get(key, 0)) for key, label in labels.items()],
                             'Each notice is counted under its best available remedy'))
