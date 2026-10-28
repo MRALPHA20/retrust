@@ -1,6 +1,6 @@
-Manufacturer,Model,Firmware Version,Part Number
-Siemens,SIMATIC IPC477E Pro,,
-Johnson Controls,iSTAR Ultra G2,,
-Schneider Electric,Modicon M340,,
-Rockwell Automation,ControlLogix,,
-Moxa,EDS-405A,,
+Manufacturer,Model,Firmware Version,Part Number,network_exposure,interface,prerequisites,consequence,remediation
+Siemens,SIMATIC IPC477E Pro,,,ot_only,blocked,satisfiable,control,affected
+Johnson Controls,iSTAR Ultra G2,,,ot_only,blocked,satisfiable,control,affected
+Schneider Electric,Modicon M340,,,ot_only,blocked,satisfiable,control,affected
+Rockwell Automation,ControlLogix,,,ot_only,blocked,satisfiable,control,affected
+Moxa,EDS-405A,,,ot_only,blocked,satisfiable,control,affected

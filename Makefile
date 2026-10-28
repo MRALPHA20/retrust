@@ -8,7 +8,7 @@ all: ingest refresh test
 data:
 	@mkdir -p $(DATA)
 	@test -d $(DATA)/CSAF || (echo "Fetching CISA OT advisories..." && \
-	  git clone --depth 1 --filter=blob:none --no-checkout -q \
+	  git clone -c core.autocrlf=false --depth 1 --filter=blob:none --no-checkout -q \
 	    https://github.com/cisagov/CSAF.git $(DATA)/CSAF && \
 	  cd $(DATA)/CSAF && git sparse-checkout set --cone csaf_files/OT && \
 	  git checkout -q)
@@ -66,6 +66,9 @@ batch:
 	  --json reports/batch.json --csv reports/batch.csv || true
 
 # Pipeline gate on a BOM that should pass: tests green and nothing disqualified.
+# The BOM carries a completed site review (OT-only network, reachability
+# verified blocked, process-control impact, firmware confirmed affected):
+# without those answers every row is VERIFY by design and the gate fails.
 ci: test
 	python3 -m retrust.cli batch examples/approved-bom.csv --fail-on unassessed
 

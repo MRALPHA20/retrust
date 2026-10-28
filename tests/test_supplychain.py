@@ -8,6 +8,7 @@ the false-positive cases below are the point of the file.
 import json
 
 import os
+import sqlite3
 import stat
 import pytest
 
@@ -399,11 +400,28 @@ def test_a_corrupt_cache_is_rebuilt_rather_than_trusted(tmp_path):
                               "Acme Precision Instruments Limited")[0]
 
 
-def test_an_unwritable_data_directory_still_screens_correctly(tmp_path):
+def test_an_unwritable_data_directory_still_screens_correctly(tmp_path, monkeypatch):
     """A read-only clone loses the cache, never the answer."""
     _listed(tmp_path, ["Acme Precision Instruments Limited"])
     tmp_path.chmod(stat.S_IRUSR | stat.S_IXUSR)
     try:
+        probe = tmp_path / "probe"
+        try:
+            probe.touch()
+            probe.unlink()
+        except OSError:
+            pass
+        else:
+            # Windows ignores a directory's mode bits and root bypasses them, so
+            # refuse the cache write the way SQLite does in a read-only directory.
+            # Reads arrive as file: URIs and still go through.
+            real = sqlite3.connect
+
+            def refuse(target, *args, **kwargs):
+                if not str(target).startswith("file:"):
+                    raise sqlite3.OperationalError("unable to open database file")
+                return real(target, *args, **kwargs)
+            monkeypatch.setattr(supplychain.sqlite3, "connect", refuse)
         assert supplychain.screen(supplychain.load(str(tmp_path)),
                                   "Acme Precision Instruments Limited")[0]
         assert not (tmp_path / supplychain.CACHE_NAME).exists()

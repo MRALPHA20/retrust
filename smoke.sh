@@ -2,15 +2,18 @@
 # Exercise every command against the real index and report what broke.
 #
 # The test suite runs against fixtures in a temporary directory. This runs the
-# shipped commands against the real 28,951-product corpus, which is where the
+# shipped commands against the real corpus (~29,000 product entries), where the
 # differences live: a query that is fine on three fixture rows and quadratic on
 # thirty thousand, an exit code that is right in-process and wrong through the
 # shell, output that only misaligns once a vendor name is long enough.
 #
 # Usage:  ./smoke.sh          expects an index at data/retrust.db
+#         PYTHON=python ./smoke.sh   where python3 is not the interpreter
+#                                    (Windows ships python3 as a Store stub)
 
 set -u
-RETRUST="python3 -m retrust.cli"
+PY="${PYTHON:-python3}"
+RETRUST="$PY -m retrust.cli"
 pass=0; fail=0; failed=()
 
 # check <expected-exit> <description> -- <command...>
@@ -47,7 +50,9 @@ contains() {
 echo "== the index =="
 check 0 "bare retrust greets"                     -- $RETRUST
 check 0 "stats"                                   -- $RETRUST stats
-contains "28,951" "stats counts the whole corpus" -- $RETRUST stats
+# Counted straight from the index, so a corpus refresh does not fail the check.
+entries=$($PY -c "import sqlite3; print(f'{sqlite3.connect(\"data/retrust.db\").execute(\"SELECT count(*) FROM product\").fetchone()[0]:,}')")
+contains "$entries" "stats counts the whole corpus" -- $RETRUST stats
 
 echo
 echo "== interactive shell =="
@@ -143,10 +148,12 @@ $RETRUST batch examples/candidates.csv --json /tmp/retrust-smoke-before.json \
   --no-sensitivity >/dev/null 2>&1
 check 0 "an unchanged index reports no change"     -- $RETRUST diff /tmp/retrust-smoke-before.json
 contains "unchanged" "it says how many held still" -- $RETRUST diff /tmp/retrust-smoke-before.json
-# Rewrite one verdict to stand for what January looked like, then diff.
-python3 - <<'EDIT'
-import json
-path = "/tmp/retrust-smoke-before.json"
+# Rewrite one verdict to stand for what January looked like, then diff. The
+# path goes in as an argument: Git Bash translates /tmp for a native Windows
+# Python only there, never inside the script text.
+$PY - /tmp/retrust-smoke-before.json <<'EDIT'
+import json, sys
+path = sys.argv[1]
 d = json.load(open(path))
 for r in d["results"]:
     if "Hikvision" in r["product"]:
@@ -160,11 +167,11 @@ check 1 "a result with no queries is refused"      -- $RETRUST diff examples/can
 echo
 echo "== machine-readable output =="
 $RETRUST score --vendor ABB --product "AC 800M" --json - --no-sensitivity 2>/dev/null \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['results'][0]['verdict']" \
+  | $PY -c "import json,sys; d=json.load(sys.stdin); assert d['results'][0]['verdict']" \
   && { echo "  ok    score --json parses"; pass=$((pass+1)); } \
   || { echo "  FAIL  score --json parses"; fail=$((fail+1)); failed+=("score --json"); }
 $RETRUST compare --candidate "ABB|AC 800M" --json - --no-sensitivity 2>/dev/null \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['candidates']==1" \
+  | $PY -c "import json,sys; d=json.load(sys.stdin); assert d['candidates']==1" \
   && { echo "  ok    compare --json parses"; pass=$((pass+1)); } \
   || { echo "  FAIL  compare --json parses"; fail=$((fail+1)); failed+=("compare --json"); }
 
@@ -232,7 +239,7 @@ contains "narrowed the scope" "the firmware delta is said out loud" \
 echo
 echo "== vex and profiles =="
 contains "RISK APPETITES" "the shipped risk appetites list" -- $RETRUST config --appetites
-$RETRUST vex --vendor Moxa --product EDS-405A --version 3.0 --out - 2>/dev/null | python3 -m json.tool >/dev/null \
+$RETRUST vex --vendor Moxa --product EDS-405A --version 3.0 --out - 2>/dev/null | $PY -m json.tool >/dev/null \
   && { echo "  ok    vex emits parseable CycloneDX"; pass=$((pass+1)); } \
   || { echo "  FAIL  vex emits parseable CycloneDX"; fail=$((fail+1)); failed+=("vex json"); }
 check 2 "vex refuses to assert about nothing"       -- $RETRUST vex --vendor Nobody --product Nothing --out -
@@ -245,8 +252,8 @@ echo "== doctor and the shipped benchmarks =="
 check 0 "doctor passes on this installation"       -- $RETRUST doctor
 contains "BUYER-QUERY SET" "eval runs the buyer-query set" -- $RETRUST eval --sample 5
 check 0 "a CycloneDX SBOM scores as a batch"       -- $RETRUST batch examples/system-bom.json --fail-on never
-$RETRUST alternatives --vendor Siemens --product "SIPROTEC 5 6MD86" --json - 2>/dev/null | python3 -m json.tool >/dev/null   && { echo "  ok    alternatives --json parses"; pass=$((pass+1)); }   || { echo "  FAIL  alternatives --json parses"; fail=$((fail+1)); failed+=("alternatives json"); }
-$RETRUST vendor Moxa --json - 2>/dev/null | python3 -m json.tool >/dev/null   && { echo "  ok    vendor --json parses"; pass=$((pass+1)); }   || { echo "  FAIL  vendor --json parses"; fail=$((fail+1)); failed+=("vendor json"); }
+$RETRUST alternatives --vendor Siemens --product "SIPROTEC 5 6MD86" --json - 2>/dev/null | $PY -m json.tool >/dev/null   && { echo "  ok    alternatives --json parses"; pass=$((pass+1)); }   || { echo "  FAIL  alternatives --json parses"; fail=$((fail+1)); failed+=("alternatives json"); }
+$RETRUST vendor Moxa --json - 2>/dev/null | $PY -m json.tool >/dev/null   && { echo "  ok    vendor --json parses"; pass=$((pass+1)); }   || { echo "  FAIL  vendor --json parses"; fail=$((fail+1)); failed+=("vendor json"); }
 
 echo
 echo "== misuse =="

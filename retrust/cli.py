@@ -2050,7 +2050,22 @@ def build_parser():
     return parser
 
 
+def _utf8_output():
+    """Write UTF-8 even where the platform would not.
+
+    Windows encodes redirected output in its ANSI code page, which has no box
+    rules or range dashes, so `retrust batch ... > out.txt` died with a
+    UnicodeEncodeError after doing all the work. A console, and every other
+    platform, already gets UTF-8.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+        if encoding != "utf8" and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
 def main(argv=None):
+    _utf8_output()
     args = build_parser().parse_args(argv)
     if args.no_color:
         console.disable()

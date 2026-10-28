@@ -111,7 +111,7 @@ def test_score_json_to_file(workspace, capsys):
     assert run(["score", "--vendor", "Testco", "--product", "TestPLC 9000",
                 "--json", "out.json", "--no-sensitivity"]) == 0
     assert "JSON written to" in capsys.readouterr().out
-    assert json.loads((workspace / "out.json").read_text())["results"]
+    assert json.loads((workspace / "out.json").read_text(encoding="utf-8"))["results"]
 
 
 @pytest.mark.parametrize("vendor,version,exit_code", [
@@ -123,7 +123,7 @@ def test_json_keeps_owner_choices_even_without_a_score(workspace, vendor, versio
                 "--network-exposure", "isolated", "--consequence", "minor",
                 "--interface", "blocked", "--remediation", "planned",
                 "--json", "context.json", "--no-sensitivity"]) == exit_code
-    result = json.loads((workspace / "context.json").read_text())["results"][0]
+    result = json.loads((workspace / "context.json").read_text(encoding="utf-8"))["results"][0]
     for key, value in dict(assessment_type="installed", network_exposure="isolated",
                            consequence="minor", interface="blocked", remediation="planned").items():
         assert result[key] == value
@@ -146,7 +146,7 @@ def test_diff_replays_the_saved_owner_choices(workspace):
                 "--assessment-type", "installed", "--remediation", "mitigated",
                 "--json", "before.json", "--no-sensitivity"]) == 0
     assert run(["diff", "before.json", "--json", "after.json"]) == 0
-    result = json.loads((workspace / "after.json").read_text())["results"][0]
+    result = json.loads((workspace / "after.json").read_text(encoding="utf-8"))["results"][0]
     assert result["change"] == "same"
     assert result["score_change"] == 0.0
 
@@ -197,7 +197,7 @@ def test_score_robustness_holds_owner_choices_fixed(workspace, monkeypatch):
 
 def test_score_html_output(workspace, capsys):
     assert run(['score', '--vendor', 'Testco', '--product', 'TestPLC 9000', '--html', 'report.html']) == 2
-    markup = (workspace / 'report.html').read_text()
+    markup = (workspace / 'report.html').read_text(encoding="utf-8")
     assert 'VERIFY' in markup and 'Provisional range' in markup
     assert 'What to check next' in markup
 
@@ -237,7 +237,7 @@ def test_config_shows_defaults(workspace, capsys):
 def test_config_init_then_read_back(workspace, capsys):
     assert run(["config", "--init", "--file", "c.json"]) == 0
     assert (workspace / "c.json").exists()
-    document = json.loads((workspace / "c.json").read_text())
+    document = json.loads((workspace / "c.json").read_text(encoding="utf-8"))
     assert "weights" in document and "bands" in document
 
 
@@ -247,8 +247,8 @@ def test_batch_from_csv_with_exit_code(workspace, capsys):
     code = run(["batch", "bom.csv", "--json", "b.json", "--csv", "b.csv",
                 "--no-sensitivity", "--fail-on", "unassessed"])
     assert code == 2                      # one candidate could not be assessed
-    assert json.loads((workspace / "b.json").read_text())["candidates"] == 2
-    assert "verdict" in (workspace / "b.csv").read_text().splitlines()[0]
+    assert json.loads((workspace / "b.json").read_text(encoding="utf-8"))["candidates"] == 2
+    assert "verdict" in (workspace / "b.csv").read_text(encoding="utf-8").splitlines()[0]
 
 
 def test_batch_clean_list_exits_zero(workspace):

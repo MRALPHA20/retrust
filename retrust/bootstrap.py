@@ -238,8 +238,10 @@ def fetch_corpus(data_dir="data", force=False):
     if target.exists():
         shutil.rmtree(target)
 
-    _git(["clone", "--depth", "1", "--filter=blob:none", "--no-checkout", "-q",
-          CORPUS_REPO, str(target)])
+    # Published bytes, not this machine's line endings: Git for Windows
+    # defaults to autocrlf, and a CRLF copy fails every .sha512 beside it.
+    _git(["clone", "-c", "core.autocrlf=false", "--depth", "1", "--filter=blob:none",
+          "--no-checkout", "-q", CORPUS_REPO, str(target)])
     _git(["sparse-checkout", "set", "--cone", CORPUS_PATH], cwd=target)
     _git(["checkout", "-q"], cwd=target)
     if not advisories.is_dir():

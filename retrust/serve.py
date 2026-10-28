@@ -22,7 +22,10 @@ import http.server
 import json
 from pathlib import Path
 import os
+import select
+import socket
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 from datetime import date
@@ -1287,6 +1290,31 @@ def build_concurrent_handler(database, assessor, context, dossier, stats, proven
     return handle
 
 
+LINGER_SECONDS = .1
+
+
+def _linger(request):
+    """Half-close and read what the client sent before the socket is closed.
+
+    Closing with unread request bytes makes TCP answer with a reset, and the
+    client then reports "connection aborted" instead of reading the 503 and
+    its Retry-After (Windows did so on most overloaded requests). This runs on
+    the accepting thread, so the wait is capped: a client that closes promptly
+    costs nothing, a silent one at most LINGER_SECONDS.
+    """
+    request.shutdown(socket.SHUT_WR)
+    deadline = time.monotonic() + LINGER_SECONDS
+    drained = 0
+    while drained < 65536:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not select.select([request], [], [], remaining)[0]:
+            return
+        chunk = request.recv(4096)
+        if not chunk:
+            return
+        drained += len(chunk)
+
+
 class ConcurrentHTTPServer(http.server.HTTPServer):
     """A fixed worker pool and a bounded queue, including stalled clients."""
     request_queue_size = 64
@@ -1317,6 +1345,7 @@ class ConcurrentHTTPServer(http.server.HTTPServer):
             try:
                 request.settimeout(1)
                 request.sendall(headers + body)
+                _linger(request)
             except OSError:
                 pass
             finally:

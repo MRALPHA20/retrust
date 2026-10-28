@@ -55,14 +55,19 @@ GLOBAL_FLAGS = ["-h", "--help", "--db", "--no-color"]
 
 
 @pytest.fixture
-def db_path(tmp_path):
-    """A real index with one advisory in it."""
+def db_path(tmp_path, monkeypatch):
+    """A real index with one advisory in it.
+
+    Named relative to the working directory: a Windows temp path is long enough
+    to wrap the overview's index row, which says nothing about the overview.
+    """
     directory = tmp_path / "csaf"
     directory.mkdir()
     (directory / "a.json").write_text(json.dumps(ADVISORY))
     path = tmp_path / "t.db"
     index.build(str(path), str(directory))
-    return str(path)
+    monkeypatch.chdir(tmp_path)
+    return "t.db"
 
 
 @pytest.fixture
@@ -328,7 +333,7 @@ def test_overview_stays_short_enough_to_read(tmp_path, db_path):
     directory.mkdir()
     empty = tmp_path / "empty2.db"
     index.connect(str(empty))
-    for target in (db_path, str(tmp_path / "gone.db"), str(empty), str(directory)):
+    for target in (db_path, "gone.db", "empty2.db", "adirectory"):
         assert len(console.overview(target).splitlines()) < 20, target
 
 
@@ -390,6 +395,15 @@ _retrust
 }
 
 
+def _shell(name):
+    """The executable shutil.which found, which is not always the one a bare name runs.
+
+    On Windows, CreateProcess searches System32 before PATH, so "bash" can start
+    WSL's launcher -- which cannot see C:/ paths -- after which() found Git Bash.
+    """
+    return shutil.which(name)
+
+
 def offered(tmp_path, shell, *words, commands=COMMANDS):
     """What the generated script really offers, as that shell itself runs it.
 
@@ -403,9 +417,9 @@ def offered(tmp_path, shell, *words, commands=COMMANDS):
     script.write_text(console.completion(shell, commands, GLOBAL_FLAGS))
     driver = tmp_path / f"driver.{shell}"
     driver.write_text(DRIVERS[shell] % {
-        "script": shlex.quote(str(script)), "last": len(words) - 1,
+        "script": shlex.quote(script.as_posix()), "last": len(words) - 1,
         "words": " ".join(shlex.quote(word) for word in words), "count": len(words)})
-    run = subprocess.run([shell, "-f", str(driver)], capture_output=True, text=True)
+    run = subprocess.run([_shell(shell), "-f", driver.as_posix()], capture_output=True, text=True)
     assert run.returncode == 0, run.stderr
     return run.stdout.split()
 
@@ -454,7 +468,7 @@ def test_sourcing_a_generated_script_succeeds(tmp_path, shell):
         pytest.skip(f"{shell} is not installed")
     script = tmp_path / f"completion.{shell}"
     script.write_text(console.completion(shell, COMMANDS, GLOBAL_FLAGS))
-    run = subprocess.run([shell, "-f", "-c", f"source {shlex.quote(str(script))}"],
+    run = subprocess.run([_shell(shell), "-f", "-c", f"source {shlex.quote(script.as_posix())}"],
                          capture_output=True, text=True)
     assert (run.returncode, run.stdout, run.stderr) == (0, "", "")
 
@@ -467,6 +481,6 @@ def test_generated_scripts_pass_their_shell_syntax_check(tmp_path, shell, comman
         pytest.skip(f"{shell} is not installed")
     script = tmp_path / f"completion.{shell}"
     script.write_text(console.completion(shell, commands, GLOBAL_FLAGS))
-    checked = subprocess.run([shell, "-n", str(script)],
+    checked = subprocess.run([_shell(shell), "-n", script.as_posix()],
                              capture_output=True, text=True)
     assert checked.returncode == 0, checked.stderr
