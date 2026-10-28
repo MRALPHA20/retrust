@@ -48,11 +48,13 @@ asserts `::details-content` printing on Chromium only (by design; other engines 
 - A tooltip inside a scrolling table card can be clipped by the card on a narrow screen. Anchoring it to the top layer was tried and dropped: it made the bubble intermittently stay hidden in Firefox. The legend under the table repeats every definition.
 - Firefox logs one CSP console line per page for its favicon request (no `img-src`); no page resource is affected.
 - In print emulation at a 375px viewport (not a real paper width) the tables still exceed the page by up to 170px; 640px and wider fit.
-- Result section navigation (OVERVIEW ... INPUTS) wraps to a second line at 375 instead of scrolling.
 - Inline text links and the 18px checkbox boxes are under 44px on touch (24px links, 44px label hit area for checkboxes); spec 4 requires 44px for primary controls only.
 - The clear-shortlist confirm popover is not anchored; it appears near the page top rather than under its button.
 
 ## Needs user decision
 
 - Add `img-src 'self'` plus a tiny `/favicon.ico` (or `data:` icon) to remove the Firefox favicon console line? It changes the CSP.
-- Make the section navigation a horizontally scrolling row below 640px (spec only requires it for the header navigation)?
+
+## Resolved after this report
+
+- The result section navigation (OVERVIEW ... INPUTS) is now a single horizontally scrolling row below 640px.
