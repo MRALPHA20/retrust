@@ -109,85 +109,84 @@ def _search_hits(connection, query):
     return list(unique.values())[:MAX_RESULTS]
 
 
+from . import components  # noqa: E402  (kept here so the import block stays untouched)
+
+
+SAMPLE_QUERIES = ('S7-1500', '6ES7518-4AX00-1AB0', 'Moxa EDS-405A')
+
+
+def _secondary_head(title, lead, route=None):
+    """h1, lead and (when a route is given) the links to the other lookups."""
+    return (f'<h1>{_esc(title)}</h1><p class="lead">{_esc(lead)}</p>'
+            + (webui.related_links(route) if route else ''))
+
+
 def _search_page(connection, stats, query):
     """A starting point for a buyer, backed by the actual local index."""
     form = (
-        '<form class="search-form" method="get" action="/">'
-        '<label for="q">Product, vendor or order number</label><div class="search-line">'
-        f'<input type="text" id="q" name="q" value="{_esc(query)}" '
-        'placeholder="Try SIMATIC S7-1500, Moxa or a manufacturer part number" '
-        f'maxlength="{MAX_QUERY}" required>'
-        '<button type="submit">Find a product <span aria-hidden="true">&nbsp; →</span></button></div>'
-        '<p class="helper">Use the name on your requisition. An order number gives the most precise match.</p></form>')
-    chips = ('<div class="chips"><span>Try a search</span>' + ''.join(
+        '<form class="search-form rt-searchbox" method="get" action="/"><div class="search-line">'
+        + components.text_field(
+            'q', 'Product, vendor or order number', query, input_id='q', mono=True,
+            help_text='Use the name on your requisition. An order number gives the most precise match.',
+            attrs={'maxlength': MAX_QUERY, 'required': True, 'autocomplete': 'off',
+                   'placeholder': 'e.g. 6ES7518-4AX00-1AB0'})
+        + components.button('Search', 'primary', type='submit')
+        + '</div></form>')
+    # Links, not fill-the-field buttons: without scripts a sample has to run the search.
+    chips = ('<div class="chips"><span>Try</span>' + ''.join(
         f'<a class="chip" href="/?q={urllib.parse.quote(q)}">{_esc(q)}</a>'
-        for q in ('S7-1500', 'Moxa EDS-405A', 'Modicon M340')) + '</div>')
+        for q in SAMPLE_QUERIES) + '</div>')
+    counts = (f'<p class="rt-counts">{stats["products"]:,} product entries · '
+              f'{stats["vendors"]:,} vendor spellings · {stats["advisories"]:,} advisories · '
+              f'{stats["cves"]:,} distinct vulnerabilities</p>')
+    heading = ('<h1>Search products</h1><p class="lead">Find a product by manufacturer order number, '
+               'product name or vendor, then open its assessment.</p>')
     if not query:
-        metrics = '<div class="metrics">' + ''.join(
-            f'<div class="metric" aria-label="{stats[key]:,} {label}"><strong>{stats[key]:,}</strong><span>{label}</span>'
-            f'<small>{detail}</small></div>' for key, label, detail in (
-                ('products', 'product entries', 'SEARCHABLE HARDWARE'),
-                ('advisories', 'security advisories', 'PUBLIC VENDOR EVIDENCE'),
-                ('cves', 'distinct vulnerabilities', 'TRACEABLE FINDINGS'))) + '</div>'
-        body = (
-            '<section class="hero"><div><p class="eyebrow">Know what you are buying</p>'
-            '<h1>Better hardware decisions.<br><em>Evidence first.</em></h1>'
-            '<p class="lead">Understand the cyber risk of industrial equipment before '
-            'it reaches your plant. Find a product, check the evidence, and compare your options.</p>'
-            '</div><div class="hero-mark" aria-hidden="true"><span>R↗</span></div></section>'
-            + metrics + '<section class="panel"><div class="panel-heading">'
-            '<h2>Start with a product</h2></div>' + form + chips + '</section>'
-            '<div class="split"><section class="panel"><div class="panel-heading">'
-            '<h2>From requisition to decision</h2><span>The workflow</span></div>'
-            '<ol class="steps"><li><span class="step-number">1</span><div><b>Identify the hardware</b>'
-            '<p>Match a product name or manufacturer order number.</p></div></li>'
-            '<li><span class="step-number">2</span><div><b>Understand the verdict</b>'
-            '<p>Review how exposed it is, what fixes exist, and how complete the evidence is.</p></div></li>'
-            '<li><span class="step-number">3</span><div><b>Bring evidence to the purchase order</b>'
-            '<p>Compare candidates and prepare questions for the supplier.</p></div></li></ol></section>'
-            '<section class="panel"><div class="panel-heading"><h2>Explore an example</h2>'
-            '<span>Live assessments</span></div>'
-            '<a class="example" href="/score?vendor=Siemens&amp;product=SIMATIC%20IPC477E%20Pro">'
-            '<span><strong>Siemens · SIMATIC IPC477E Pro</strong><small>Inspect the evidence and network exposure</small></span><span class="arrow">↗</span></a>'
-            '<a class="example" href="/score?vendor=Siemens&amp;product=SIMATIC%20S7-1500&amp;version=3.1.6">'
-            '<span><strong>Siemens · SIMATIC S7-1500</strong><small>See how firmware changes the assessment</small></span><span class="arrow">↗</span></a>'
-            '<a class="example" href="/demo"><span><strong>Take the guided demo</strong>'
-            '<small>Walk through a complete procurement decision</small></span><span class="arrow">↗</span></a>'
-            '</section></div>'
-            f'<p class="helper">Search covers {stats["vendors"]:,} vendor spellings. '
-            'Examples use this workspace’s public evidence; results can change with the data.</p>')
-        return _page("ReTrust", body)
+        examples = (
+            '<p class="helper">Examples: '
+            '<a href="/score?vendor=Siemens&amp;product=SIMATIC%20IPC477E%20Pro">Siemens SIMATIC IPC477E Pro</a> · '
+            '<a href="/score?vendor=Siemens&amp;product=SIMATIC%20S7-1500&amp;version=3.1.6">Siemens SIMATIC S7-1500, firmware 3.1.6</a> · '
+            '<a href="/demo">Guided demo</a>. Results depend on the loaded public evidence.</p>')
+        return _page("ReTrust", heading + form + chips + counts + examples)
 
     hits = _search_hits(connection, query)
+
     def assessment_link(hit):
         fields = dict(vendor=hit.vendor, product=hit.name)
         if any(index_module.normalize_order_number(number) == index_module.normalize_order_number(query)
                for number in hit.order_numbers):
             fields['order_number'] = query
-        return _esc('/score?' + urllib.parse.urlencode(fields))
+        return '/score?' + urllib.parse.urlencode(fields)
 
-    rows = "".join(
-        f'<a class="hit" href="{assessment_link(h)}"><strong>{_esc(h.vendor)}</strong> / '
-        f'{_esc(h.name)}<span class="w">{h.advisories:,} advisory record(s)'
-        + (f' · {_esc(h.order_numbers[0])}' if h.order_numbers else '')
-        + ' · Open assessment →</span></a>' for h in hits)
-    if not hits:
+    def order_shown(hit):
+        wanted = index_module.normalize_order_number(query)
+        for number in hit.order_numbers:
+            if index_module.normalize_order_number(number) == wanted:
+                return number
+        return hit.order_numbers[0] if hit.order_numbers else ''
+
+    meta = '{:,} advisory record(s) · Open assessment →'
+    if hits:
+        rows = "".join(
+            webviews.search_row(assessment_link(h), order_shown(h) or h.name,
+                                h.name if order_shown(h) else '', h.vendor,
+                                meta.format(h.advisories), query) for h in hits)
+        results = ('<div class="section-title"><h2>Results</h2>'
+                   f'<span>{len(hits)} product result(s)'
+                   + (' · first 25 shown' if len(hits) == MAX_RESULTS else '')
+                   + f'</span></div><div class="rows">{rows}</div>')
+    else:
         vendors = search.vendors(connection, query, limit=8)
         rows = "".join(
-            f'<a class="hit" href="/vendor?name={urllib.parse.quote(v.vendor)}">'
-            f'{_esc(v.vendor)}<span class="w">{v.products:,} product entries · View vendor profile →</span></a>'
+            webviews.search_row('/vendor?name=' + urllib.parse.quote(v.vendor), v.vendor, '', '',
+                                f'{v.products:,} product entries · View vendor profile →', query)
             for v in vendors)
-        rows = (rows and '<h2>Matching vendors</h2>' + rows) or (
-            '<div class="panel"><h2>No matching product yet</h2><p class="empty">'
-            'Try a shorter model name, the manufacturer, or the order number on the requisition. '
-            'Missing evidence does not mean the equipment is safe.</p>'
-            '<a href="/score">Enter product details manually →</a></div>')
-    heading = ('<h1>Find your hardware</h1><p class="lead">Select a result to inspect its risk '
-               'and add the firmware version you plan to buy.</p>')
-    return _page(f"Search: {query}", heading + '<section class="panel">' + form + chips + '</section>'
-                 f'<div class="section-title"><h2>Results for “{_esc(query)}”</h2>'
-                 f'<span>{len(hits)} product result(s)' + (' · first 25 shown' if len(hits) == MAX_RESULTS else '')
-                 + f'</span></div><div class="rows">{rows}</div>')
+        results = (f'<p class="empty">No product matches "{_esc(query)}". '
+                   'Try the manufacturer order number.</p>'
+                   + (f'<div class="section-title"><h2>Matching vendors</h2></div><div class="rows">{rows}</div>'
+                      if rows else '')
+                   + '<p class="helper"><a href="/score">Enter product details manually →</a></p>')
+    return _page(f"Search: {query}", heading + form + chips + counts + results)
 
 
 def _demo_page():
@@ -203,17 +202,18 @@ def _demo_page():
         ('Ask better supplier questions', 'Prepare security questions to copy into your quotation request. '
          'Ask the supplier for written answers and evidence.', '/annex?vendor=Moxa&product=EDS-405A', 'Prepare supplier questions'),
     )
+    # All four steps are equals, so none is primary: the demo has no single next action.
     cards = ''.join(
-        f'<section class="panel"><span class="step-number">{i}</span><h2>{title}</h2><p>{description}</p>'
-        f'<a class="button secondary" href="{_esc(url)}">{action} →</a></section>'
+        components.card(f'<h2>{_esc(title)}</h2><p>{_esc(description)}</p>'
+                        f'<div class="actions">{components.link_button(action, url, "secondary")}</div>',
+                        label=f'Step {i}')
         for i, (title, description, url, action) in enumerate(stages, 1))
-    return _page('Demo', '<p class="eyebrow">A four-step walkthrough</p>'
-                 '<h1>Show the decision.<br>Then show the evidence.</h1>'
-                 '<p class="lead">A guided tour for a first look or a live presentation. '
-                 'Every example uses this workspace’s public evidence. Start with the first step and return here for the next one.</p>'
-                 '<div class="demo-cards">' + cards + '</div>'
-                 '<p class="helper">A verdict is decision support. Product fit, plant context, '
-                 'and the supplier’s answer still belong in the purchasing decision.</p>', active='/demo')
+    return _page('Demo', _secondary_head(
+        'Guided demo', 'A four-step walkthrough of one purchase decision. Every example uses this '
+        'workspace’s public evidence, so results change with the data.', '/demo')
+        + '<div class="demo-cards">' + cards + '</div>'
+        '<p class="helper">A verdict is decision support. Product fit, plant context, '
+        'and the supplier’s answer still belong in the purchasing decision.</p>', active='/demo')
 
 
 # What each owner-supplied fact means when nobody answered it. Only answers
@@ -803,19 +803,25 @@ def _field(id_, name, label, value='', placeholder='', required=False):
 
 
 def _lookup_form(route, action, vendor, product, version=None, product_optional=False, extra=''):
-    """A consistent entry point for the evidence pages."""
-    fields = (_field('v', 'vendor', 'Manufacturer (vendor)', vendor, 'e.g. ABB', required=True)
-              + _field('p', 'product', 'Product / model' + (' (optional)' if product_optional else ''),
-                       product, 'e.g. SIMATIC IPC477E Pro', required=not product_optional))
+    """A consistent entry point for the evidence pages. Its submit is the page's one primary."""
+    def text(name, label, value, placeholder, input_id, required=False, mono=False):
+        attrs = {'maxlength': MAX_QUERY, 'placeholder': placeholder}
+        if required:
+            attrs['required'] = True
+        return components.text_field(name, label, value, input_id=input_id, mono=mono, attrs=attrs)
+
+    fields = (text('vendor', 'Manufacturer (vendor)', vendor, 'e.g. ABB', 'v', required=True)
+              + text('product', 'Product / model' + (' (optional)' if product_optional else ''),
+                     product, 'e.g. SIMATIC IPC477E Pro', 'p', required=not product_optional, mono=True))
     if version is not None:
-        fields += _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
+        fields += text('version', 'Firmware version (optional)', version, 'e.g. 3.1.6', 'f', mono=True)
     helper = ('Leave the product blank to see the manufacturer’s full history.' if product_optional else
               'Use the model on the quotation or equipment label. Firmware is the software running on the equipment; leave its version blank if unknown.'
               if version is not None else 'Use the model on the quotation or equipment label.')
-    return (f'<form class="lookup-form" method="get" action="{route}">'
+    return (f'<form class="lookup-form" method="get" action="{_esc(route)}">'
             f'<div class="lookup-grid">{fields}</div><p class="helper">{helper} '
-            '<a href="/">Find the exact product in Explore</a>.</p>' + extra
-            + f'<button type="submit">{action}</button></form>')
+            '<a href="/">Find the exact product with search</a>.</p>' + extra
+            + components.button(action, 'primary', type='submit') + '</form>')
 
 
 def _lookup_controls(form, populated, label='Change product'):
@@ -830,15 +836,18 @@ def _lookup_example(route, vendor='Siemens', product='SIMATIC IPC477E Pro'):
 
 
 def _lookup_error():
-    return ('<p class="notice" role="alert">Enter both the manufacturer and product/model. '
-            'If you are unsure, <a href="/">find the product in Explore</a> first.</p>')
+    return components.alert(
+        'error', 'Enter both the manufacturer and product/model',
+        body_html='<p class="rt-alert__text">If you are unsure, '
+                  '<a href="/">find the product in Explore</a> first.</p>')
 
 
 def _product_next_steps(vendor, product, version=''):
-    query = _esc(urllib.parse.urlencode(dict(vendor=vendor, product=product, version=version)))
+    query = urllib.parse.urlencode(dict(vendor=vendor, product=product, version=version))
     return ('<div class="actions">'
-            f'<a class="button secondary" href="/score?{query}">Assess this product</a>'
-            f'<a class="button secondary" href="/annex?{query}">Prepare supplier questions</a></div>')
+            + components.link_button('Assess this product', f'/score?{query}', 'secondary')
+            + components.link_button('Prepare supplier questions', f'/annex?{query}', 'secondary')
+            + '</div>')
 
 
 def _choice(name, label, table, chosen, blank=None, helper='', input_id=''):
@@ -1150,9 +1159,10 @@ def _compare_page(assess, context, candidates, submitted=False):
 def _alternatives_page(connection, assess, vendor, product, version, candidate_pages=None, data_dir="data"):
     """Same-family candidates, with the same caveat the terminal prints."""
     form = _lookup_form('/alternatives', 'Find alternatives', vendor, product, version)
-    heading = ('<h1>Find other products to review</h1><p class="lead">Explore related products '
-               'from the same manufacturer. Ask an engineer to confirm they can do the same job; '
-               'this is not a recommendation to substitute.</p>')
+    heading = _secondary_head(
+        'Find other products to review',
+        'Explore related products from the same manufacturer. Ask an engineer to confirm '
+        'they can do the same job; this is not a recommendation to substitute.', '/alternatives')
     if not (vendor and product):
         return _page('Alternatives', heading + (_lookup_error() if vendor or product else '')
                      + form + _lookup_example('/alternatives', 'Siemens', 'SIMATIC S7-1500'))
@@ -1162,13 +1172,14 @@ def _alternatives_page(connection, assess, vendor, product, version, candidate_p
     family_vendor = named.vendor if named else vendor
     family_name = named.name if named else product
     if not resolution.resolved:
-        return _page('Alternatives', heading + form
-                     + f'<p class="notice">{_esc(resolution.reason)}. '
-                     '<a href="/">Search for the exact model</a> and try again.</p>')
+        return _page('Alternatives', heading + form + components.alert(
+            'review', 'Product not identified', body_html=(
+                f'<p class="rt-alert__text">{_esc(resolution.reason)}. '
+                '<a href="/">Search for the exact model</a> and try again.</p>')))
     body = heading + _lookup_controls(form, True)
-    shown = "no score" if subject.score is None else f"{report.score_label(subject)}/100"
-    body += (f'<div class="tw"><p><b>{_esc(subject.product)}</b> &mdash; '
-             f'{_esc(subject.verdict)}, {shown}.</p></div>')
+    shown = "no score" if subject.score is None else report.score_label(subject, unit='/100')
+    body += (f'<div class="actions"><b>{_esc(subject.product)}</b> {components.verdict_badge(subject.verdict, "s")} '
+             f'<span class="rt-formula">{shown}</span></div>')
 
     excluded = {normalize_name(m.name) for m in resolution.matches}
     def candidate_list():
@@ -1194,20 +1205,23 @@ def _alternatives_page(connection, assess, vendor, product, version, candidate_p
         skipped = data['skipped']
     body += '<p>Open a product name to check its exact model and firmware with your engineer.</p>'
     if version:
-        body += (f'<p class="notice">Your original product uses firmware {_esc(version)}. '
-                 'Alternatives have no firmware specified. Check each version before comparing scores.</p>')
+        body += components.alert(
+            'review', 'Firmware is not carried over',
+            f'Your original product uses firmware {version}. '
+            'Alternatives have no firmware specified. Check each version before comparing scores.')
 
     if options:
         if any(o.provisional for o in options):
-            body += ('<p class="notice">VERIFY candidates need technical checks. Their score ranges are provisional; '
-                     'they are not recommendations or proof that they are safer.</p>')
+            body += components.alert(
+                'review', 'Provisional candidates',
+                'VERIFY candidates need technical checks. Their score ranges are provisional; '
+                'they are not recommendations or proof of a better outcome.')
         rows = "".join(
             f'<tr><td><a href="/score?vendor='
             f'{urllib.parse.quote(family_vendor)}&amp;product='
             f'{urllib.parse.quote(o.name)}">'
             f'{_esc(o.product)}</a></td>'
-            f'<td style="color:{report.VERDICT_COLOR.get(o.verdict, report.INERT)};'
-            f'font-weight:700">{_esc(o.verdict)}</td>'
+            f'<td>{components.verdict_badge(o.verdict, "s")}</td>'
             f'<td class="n">{report.score_label(o)}</td><td class="n">{o.cves}</td></tr>'
             for o in options)
         body += ('<div class="tw" tabindex="0" role="region" aria-label="Alternative products; scroll sideways for more columns">'
@@ -1237,19 +1251,22 @@ def _alternatives_page(connection, assess, vendor, product, version, candidate_p
 def _timeline_page(connection, vendor, product):
     """The advisory record drawn as a shape, exactly as the terminal draws it."""
     form = _lookup_form('/timeline', 'Show advisory history', vendor, product, product_optional=True)
-    heading = ('<h1>Advisory timeline</h1><p class="lead">See when security notices were published '
-               'and whether they offered a fix. More notices can reflect better reporting; '
-               'a quiet year does not prove that equipment is secure.</p>')
+    heading = _secondary_head(
+        'Advisory timeline',
+        'See when security notices were published and whether they offered a fix. '
+        'More notices can reflect better reporting; a quiet year says nothing '
+        'about whether the equipment is exposed.', '/timeline')
     if not vendor:
-        return _page('Timeline', heading + ('<p class="notice" role="alert">Enter the manufacturer to show its history.</p>' if product else '')
-                     + form + _lookup_example('/timeline'))
+        return _page('Timeline', heading + (components.alert(
+            'error', 'Enter the manufacturer to show its history') if product else '')
+            + form + _lookup_example('/timeline'))
 
     from . import match
     if product:
         resolution = match.resolve(connection, vendor=vendor, product=product)
         if not resolution.resolved:
             return _page('Timeline', heading + form +
-                         f'<p class="empty">{_esc(resolution.reason)}. <a href="/">Find the exact model in Explore</a>.</p>')
+                         f'<p class="empty">{_esc(resolution.reason)}. <a href="/">Find the exact model with search</a>.</p>')
         subject = f'{vendor} {product}'.strip()
         line = timeline.build(connection, [(m.advisory_id, m.product_id)
                                            for m in resolution.matches])
@@ -1258,7 +1275,7 @@ def _timeline_page(connection, vendor, product):
         if key is None:
             return _page("Timeline", heading + form +
                          f'<p class="empty">vendor {_esc(vendor)} does not '
-                         'appear in the available data. Check the spelling or search in Explore.</p>')
+                         'appear in the available data. Check the spelling or use search.</p>')
         subject, line = vendor, timeline.for_vendor(connection, key)
     body = heading + _lookup_controls(form, True, 'Change manufacturer or product')
     if product:
@@ -1279,78 +1296,86 @@ def _annex_data(connection, assess, dossier, context, vendor, product, version):
     return assessment, resolution, questions.build(assessment, findings, profile)
 
 
-def _annex_text(connection, assess, dossier, context, vendor, product, version):
+def _annex_text(connection, assess, dossier, context, vendor, product, version, download=False):
     """The annex as bare text: what actually gets pasted into an RFQ.
 
     Returned as text/plain so "select all, copy" needs no care about markup,
-    and a procurement template can curl it straight into a document.
+    and a procurement template can curl it straight into a document. With
+    download=True the same bytes come back as an attachment.
     """
     if not (vendor or product):
-        return "Give vendor and product: /annex.txt?vendor=...&product=..."
+        return PlainText("Give vendor and product: /annex.txt?vendor=...&product=...")
     assessment, _, items = _annex_data(connection, assess, dossier, context, vendor, product, version)
-    return questions.format_report(assessment.product, items)
+    text = questions.format_report(assessment.product, items)
+    if not download:
+        return PlainText(text)
+    # The filename reaches a response header, so it is rebuilt from ASCII
+    # letters and digits only: no quote, separator or control character survives.
+    slug = ''.join(c if c.isascii() and c.isalnum() else '-' for c in assessment.product)
+    slug = '-'.join(part for part in slug.split('-') if part)[:60].strip('-') or 'product'
+    return Download(text, f'retrust-rfq-annex-{slug}.txt', 'text/plain')
 
 
 def _annex_page(connection, assess, dossier, context, vendor, product, version):
     """The RFQ security annex, as text a buyer pastes into a request."""
     form = _lookup_form('/annex', 'Prepare supplier questions', vendor, product, version)
-    heading = ('<h1>Questions to send your supplier</h1><p class="lead">Prepare questions '
-               'for your email or quotation request. Ask for written answers and evidence, '
-               'then have your technical team review the replies.</p>')
+    heading = _secondary_head(
+        'Questions to send your supplier',
+        'Prepare questions for your email or quotation request. Ask for written answers '
+        'and evidence, then have your technical team review the replies.', '/annex')
     if not (vendor and product):
         return _page('RFQ annex', heading + (_lookup_error() if vendor or product else '')
                      + form + _lookup_example('/annex', 'Moxa', 'EDS-405A'))
 
     assessment, resolution, items = _annex_data(connection, assess, dossier, context, vendor, product, version)
     annex = questions.format_report(assessment.product, items)
-    text_query = (f"vendor={urllib.parse.quote(vendor)}"
-                  f"&amp;product={urllib.parse.quote(product)}"
-                  + (f"&amp;version={urllib.parse.quote(version)}" if version
-                     else ""))
+    text_query = urllib.parse.urlencode(
+        dict(vendor=vendor, product=product, **({'version': version} if version else {})))
     body = heading + _lookup_controls(form, True)
     if not resolution.resolved:
-        body += ('<p class="notice"><b>Product not matched.</b> These are starting questions '
-                 'to confirm its identity and security information. They are not findings about this product.</p>')
-    body += (f'<div class="actions"><a class="button" href="/annex.txt?{text_query}">Open text to copy</a></div>'
-             '<p class="helper">In the text version, select all and copy into your email or quotation request. '
-             'ReTrust does not send anything to the supplier.</p>'
-             + webviews.supplier_questions(assessment.product, items)
+        body += components.alert(
+            'review', 'Product not matched',
+            'These are starting questions to confirm its identity and security information. '
+            'They are not findings about this product.')
+    body += (webviews.supplier_questions(assessment.product, items,
+                                         export_href=f'/annex.txt?{text_query}&download=1',
+                                         text_href=f'/annex.txt?{text_query}')
+             + '<p class="helper">In the plain text version, select all and copy into your email '
+               'or quotation request. ReTrust does not send anything to the supplier.</p>'
              + '<details><summary>Complete text and technical reasons</summary>'
              f'<pre class="tw" style="white-space:pre-wrap">{_esc(annex)}</pre></details>')
     return _page(f'Annex: {assessment.product}', body)
 
 
 def _select(name, label, options, chosen):
-    """One labelled dropdown, in the same legend style as the text inputs."""
-    rendered = "".join(
-        f'<option value="{_esc(option)}"'
-        + (" selected" if option == chosen else "")
-        + f">{_esc(options[option] if isinstance(options, dict) else option)}</option>"
-        for option in options)
-    return (f'<label for="{name}" style="margin-top:.8rem">{_esc(label)}</label>'
-            f'<select id="{name}" name="{name}">{rendered}</select>')
+    """One labelled dropdown, in the shared select style."""
+    pairs = list(options.items()) if isinstance(options, dict) else [(o, o) for o in options]
+    return components.select_field(name, label, pairs, chosen, input_id=name)
 
 
 def _ssvc_page(connection, assess, vendor, product, version,
                exposure, automatable, impact):
     """CERT/CC's deployer tree, with the three plant facts asked out loud."""
     settings = ('<details class="form-options"><summary>Review the technical team’s settings</summary>'
+        '<div class="candidate-grid">'
         + _select("exposure", "How accessible is the system? (describes your plant)",
                   webviews.ACCESS_LABELS, exposure)
         + _select("automatable", "Could an attacker carry out the attack automatically?",
                   {"yes": "Yes", "no": "No"}, automatable)
         + _select("impact", "Potential effect on people and operations", webviews.IMPACT_LABELS, impact)
-        + '<p class="helper">Ask your technical and operations teams to confirm these settings. '
+        + '</div><p class="helper">Ask your technical and operations teams to confirm these settings. '
           'The choices apply to every vulnerability in this assessment.</p>'
         + '</details><p class="helper">The selected access, automation and impact settings are assumptions. '
           'Review them with your technical team before using the suggested timing.</p>')
     form = _lookup_form('/ssvc', 'Show response priorities', vendor, product, version, extra=settings)
-    heading = ('<h1>What should be fixed first?</h1><p class="lead">Get suggested timing '
-               'for reviewing and fixing known security weaknesses. Your technical and operations '
-               'teams should confirm the settings and agree on safe maintenance steps.</p>')
+    heading = _secondary_head(
+        'What should be fixed first?',
+        'Get suggested timing for reviewing and fixing known security weaknesses. Your technical '
+        'and operations teams should confirm the settings and agree on maintenance steps.', '/ssvc')
     if exposure not in ssvc.EXPOSURE or automatable not in ssvc.AUTOMATABLE or impact not in ssvc.HUMAN_IMPACT:
-        return _page("SSVC", heading + '<p class="notice" role="alert">Choose one of the listed '
-                     'access, automation and impact options, then try again.</p>' + form)
+        return _page("SSVC", heading + components.alert(
+            'error', 'Choose one of the listed options',
+            'Pick an access, automation and impact option from the lists, then try again.') + form)
     if not (vendor and product):
         return _page('SSVC', heading + (_lookup_error() if vendor or product else '')
                      + form + _lookup_example('/ssvc'))
@@ -1370,21 +1395,22 @@ def _ssvc_page(connection, assess, vendor, product, version,
 def _lev_page(connection, assess, vendor, product):
     """NIST CSWP 41 estimates, or the honest abstention when history is absent."""
     form = _lookup_form('/lev', 'Check exploitation history', vendor, product)
-    heading = ('<h1>Past exploitation estimate</h1><p class="lead">Could these known security '
-               'weaknesses have been used in attacks already? Compare a historical model estimate '
-               'with confirmed public records.</p>')
+    heading = _secondary_head(
+        'Past exploitation estimate',
+        'Could these known security weaknesses have been used in attacks already? Compare a '
+        'historical model estimate with confirmed public records.', '/lev')
     if not (vendor and product):
         return _page('LEV', heading + (_lookup_error() if vendor or product else '')
                      + form + _lookup_example('/lev', 'Schneider Electric', 'Modicon M340 PLC modules'))
     if not index_module.has_epss_history(connection):
         return _page("LEV", heading + form +
                      '<p class="empty">Historical attack estimates are not available in this workspace. '
-                     'Ask the workspace owner to refresh the historical data. This is missing data, not a zero risk result.</p>')
+                     'Ask the workspace owner to refresh the historical data. This is missing data, not a zero estimate.</p>')
     assessment, resolution, findings = assess(vendor, product)
     if not resolution.resolved:
         return _page("LEV", heading + form +
                      f'<p class="empty">{_esc(resolution.reason)}. Check the name or '
-                     '<a href="/">find the product in Explore</a>.</p>')
+                     '<a href="/">find the product with search</a>.</p>')
     cves = sorted({f.cve for f in findings})
     history = index_module.epss_history(connection, cves)
     signals = {f.cve: f for f in findings}
@@ -1401,11 +1427,14 @@ def _lev_page(connection, assess, vendor, product):
 
 def _vendor_page(connection, dossier, context, name):
     form = ('<form class="lookup-form" method="get" action="/vendor">'
-            + _field('n', 'name', 'Manufacturer', name, 'e.g. ABB, Siemens or Moxa', required=True)
-            + '<button type="submit">View manufacturer profile</button></form>')
-    heading = ('<h1>Vendor profile</h1><p class="lead">Check a manufacturer’s published '
-               'security notices, supplier restrictions and certification records. '
-               'Use this to prepare questions; the notice count is not a safety ranking.</p>')
+            + components.text_field('name', 'Manufacturer', name, input_id='n', attrs={
+                'maxlength': MAX_QUERY, 'required': True, 'placeholder': 'e.g. ABB, Siemens or Moxa'})
+            + components.button('View manufacturer profile', 'primary', type='submit') + '</form>')
+    heading = _secondary_head(
+        'Vendor profile',
+        'Check a manufacturer’s published security notices, supplier restrictions and '
+        'certification records. Use this to prepare questions; the notice count is not a ranking.',
+        '/vendor')
     if not name:
         return _page('Vendor', heading + form
                      + '<p class="helper">Try an example: <a href="/vendor?name=ABB">ABB</a>, '
@@ -1414,13 +1443,28 @@ def _vendor_page(connection, dossier, context, name):
                             certificates=context["certificates"])
     body = heading + _lookup_controls(form, True, 'Change manufacturer') + webviews.vendor_profile(profile)
     if not profile.known:
-        body += '<p><a href="/">Check the manufacturer spelling in Explore</a>, or ask the supplier for its published security notices.</p>'
+        body += '<p><a href="/">Check the manufacturer spelling with search</a>, or ask the supplier for its published security notices.</p>'
     if profile.known:
-        body += (f'<p class="empty"><a href="/?q={urllib.parse.quote(name)}">'
-                 "Search this vendor's products</a> &middot; "
-                 f'<a href="/timeline?vendor={urllib.parse.quote(name)}">'
-                 "Advisory timeline</a></p>")
+        body += ('<div class="actions">'
+                 + components.link_button("Search this vendor's products",
+                                          f'/?q={urllib.parse.quote(name)}', 'secondary')
+                 + components.link_button('Advisory timeline',
+                                          f'/timeline?vendor={urllib.parse.quote(name)}', 'secondary')
+                 + '</div>')
     return _page(f"Vendor: {name}", body)
+
+
+PILLAR_LABELS = {'exposure': 'exposure safety', 'patchability': 'available fixes',
+                 'vendor_practice': 'vendor security practices',
+                 'certification': 'certification evidence'}
+
+
+def _pillar_weights():
+    """(letter, label, share) per scored pillar, from the weights score.py applies."""
+    total = sum(spec.weight for spec in score.PILLARS) or 1.0
+    return [(report.PILLAR_LETTERS.get(spec.key, spec.key[:1].upper()),
+             PILLAR_LABELS.get(spec.key, spec.name.lower()), spec.weight / total)
+            for spec in score.PILLARS]
 
 
 def _about_page(stats, provenance, host, port):
@@ -1433,18 +1477,49 @@ def _about_page(stats, provenance, host, port):
                   'vendors': 'Manufacturers', 'cves': 'Distinct vulnerability IDs',
                   'order_numbers': 'Manufacturer part numbers', 'cves_in_kev': 'Vulnerabilities here with confirmed CISA exploitation records',
                   'kev_catalogue': 'Entries in the full CISA exploitation catalogue', 'epss_scores': '30-day attack estimates available'}
-    rows = "".join(f"<tr><td>{_esc(stat_names.get(k, k.replace('_', ' ')))}</td>"
-                   f"<td class=\"n\">{v:,}</td></tr>"
-                   for k, v in stats.items())
-    sources = "".join(
-        f"<tr><td>{_esc(p['source'])}</td><td>{_esc(p['detail'])}</td>"
-        f"<td class=\"n\">{_esc(p['captured'])}</td></tr>" for p in provenance)
-    return _page("About", f"""<h1>Data &amp; methodology</h1>
-<p class="lead">Understand the recommendation, check the evidence, and see
-which information is still missing.</p>
+    weights = _pillar_weights()
+    weight_sentence = ', '.join(f'{label} ({share:.0%})' for _, label, share in weights[:-1])
+    weight_sentence += f' and {weights[-1][1]} ({weights[-1][2]:.0%})'
+    pillar_table = webviews.table(
+        ('Pillar', 'Symbol', 'Default weight'),
+        [(label.capitalize(), letter, components.fmt_weight(share)) for letter, label, share in weights],
+        'Default pillar weights', numeric=(2,))
+    verdicts = webviews.table(
+        ('Verdict', 'Meaning'),
+        [(verdict, meaning) for verdict, meaning in (
+            ('PREFER', 'Consider for your shortlist. Complete the supplier checks and confirm that the product is suitable before approving a purchase.'),
+            ('CONDITIONAL', 'Review before deciding. Ask your technical team to review the risks and missing information.'),
+            ('AVOID', 'Advised against purchase. A purchase blocker or a low score makes this an unfavourable assessment. Read the stated reasons.'),
+            ('VERIFY', 'Technical checks needed. Resolve missing network, consequence or firmware evidence before choosing. A provisional range shows what remains uncertain; a product with no evidence at all gets the full range, with its low end as the headline.'))],
+        'What each verdict asks of you', badges=(0,))
+    facts = webviews.table(
+        ('Holds', 'Count'), [(stat_names.get(k, k.replace('_', ' ')), f'{v:,}') for k, v in stats.items()],
+        'Data available in this workspace', numeric=(1,))
+    origins = webviews.table(
+        ('Source', 'What was loaded', 'Recorded on'),
+        [(p['source'], p['detail'], p['captured']) for p in provenance],
+        'Where the loaded data came from', numeric=(2,))
+    steps = ('<ol class="steps">'
+             '<li><span class="step-number">1</span><div><b>Identify the exact product</b>'
+             '<p>Use the order number from the supplier’s quotation and add the firmware version. '
+             'If ReTrust cannot match the product, it reports VERIFY across the full range. Unconfirmed firmware '
+             'ranges remain visible for review.</p></div></li>'
+             '<li><span class="step-number">2</span><div><b>Check for purchase blockers</b>'
+             '<p>Confirmed exploitation affecting the device firmware and supplier restrictions can '
+             'trigger AVOID. A blocker overrides the numerical score. Issues reported only in '
+             'bundled software are flagged separately for technical review.</p></div></li>'
+             '<li><span class="step-number">3</span><div><b>Combine four kinds of evidence</b>'
+             f'<p>The default score weighs {weight_sentence}. Where the equipment sits on '
+             'the network is recorded as context and never moves the score: a network zone does not '
+             'establish that an attacker can reach a particular weakness. Reachability is read from '
+             'each weakness&rsquo;s own CVSS attack vector and the conditions it demands, narrowed only by '
+             'what you have verified. Missing evidence and operator assumptions are shown with the '
+             'result.</p></div></li></ol>')
+    return _page("About", f"""<h1>Methodology</h1>
+<p class="lead">How a verdict is reached, which data it rests on, and what ReTrust does not do.</p>
 <details><summary>Which page should I use?</summary>
 <dl class="term-list">
-<dt><a href="/">Explore</a></dt><dd>Find the exact manufacturer and model from an order number or product name.</dd>
+<dt><a href="/">Search</a></dt><dd>Find the exact manufacturer and model from an order number or product name.</dd>
 <dt><a href="/score">Assess a product</a></dt><dd>Get a procurement recommendation and see the evidence and supplier checks behind it.</dd>
 <dt><a href="/compare">Compare candidates</a></dt><dd>Review a shortlist side by side using the firmware and site details for each product.</dd>
 <dt><a href="/vendor">Vendor profile</a></dt><dd>Review a manufacturer’s published security notices, restrictions and certificates.</dd>
@@ -1455,33 +1530,11 @@ which information is still missing.</p>
 <dt><a href="/lev">Exploitation estimate</a></dt><dd>Compare estimated past attacks on known weaknesses with confirmed public records.</dd>
 <dt><a href="/demo">Guided demo</a></dt><dd>Walk through an example purchase decision.</dd>
 </dl></details>
-<h2>What the recommendation means</h2>
-<dl class="term-list">
-<dt>PREFER — consider for your shortlist</dt><dd>Complete the supplier checks and confirm that the product is suitable before approving a purchase.</dd>
-<dt>CONDITIONAL — review before deciding</dt><dd>Ask your technical team to review the risks and missing information.</dd>
-<dt>AVOID — advised against purchase</dt><dd>A purchase blocker or a low score makes this an unfavourable assessment. Read the stated reasons.</dd>
-<dt>VERIFY — technical checks needed</dt><dd>Resolve missing network, consequence or firmware evidence before choosing. A provisional range shows what remains uncertain; a product with no evidence at all gets the full range, with its low end as the headline.</dd>
-</dl>
-<section class="panel"><h2>How a verdict is reached</h2>
-<ol class="steps">
-<li><span class="step-number">1</span><div><b>Identify the exact product</b>
-<p>Use the order number from the supplier’s quotation and add the firmware version.
-If ReTrust cannot match the product, it reports VERIFY across the full range. Unconfirmed firmware
-ranges remain visible for review.</p></div></li>
-<li><span class="step-number">2</span><div><b>Check for purchase blockers</b>
-<p>Confirmed exploitation affecting the device firmware and supplier restrictions can
-trigger AVOID. A blocker overrides the numerical score. Issues reported only in
-bundled software are flagged separately for technical review.</p></div></li>
-<li><span class="step-number">3</span><div><b>Combine four kinds of evidence</b>
-<p>The default score weighs exposure safety (60%), available fixes (20%), vendor
-security practices (15%) and certification evidence (5%). Where the equipment sits on
-the network is recorded as context and never moves the score: a network zone does not
-establish that an attacker can reach a particular weakness. Reachability is read from
-each weakness&rsquo;s own CVSS attack vector and the conditions it demands, narrowed only by
-what you have verified. Missing evidence and operator assumptions are shown with the
-result.</p></div></li>
-</ol></section>
-<details class="vector"><summary>Scoring formula and its limits</summary>
+<section class="rt-section"><h2>What the recommendation means</h2>{verdicts}</section>
+<section class="rt-section"><h2>How a verdict is reached</h2>{components.card(steps)}</section>
+<section class="rt-section"><h2>Scoring formula and its limits</h2>
+{pillar_table}
+<details class="vector"><summary>Formula and inputs</summary>
 <p><code>S = E^0.60 × P^0.20 × V^0.15 × C^0.05</code>, using scores from 1 to 100.
 E is exposure safety, P is available fixes, V is vendor practices, and C is certification evidence.
 These are the default weights; individual reports show the weights actually used.</p>
@@ -1493,36 +1546,33 @@ A is 1 for a feasible attack path, 0 for a verified block, or an unresolved rang
 H is the credible operational consequence; U records whether the selected firmware remains affected.
 Network topology is context, not a fractional discount. Missing inputs produce VERIFY and a provisional range.
 Repeated advisories for a CVE count once; distinct CVEs are not proof of independent paths.</p>
-<p>A part with no measurable evidence is excluded and the remaining weights are adjusted.
-Each measured pillar participates in the weighted product. Purchase blockers still override the score.
-An 80/100 score does not mean the product is 80% secure or predict the chance of a compromise.</p></details>
+<p>A pillar with no measurable evidence is not dropped. It enters the weighted product at a neutral 50
+with its full weight, and the report lists it as a gap. Each measured pillar enters at its measured value.
+Purchase blockers still override the score. A score is not a probability: 80/100 does not predict the chance of a compromise.</p></details>
 <p><a href="/formula-check.json">Download the all-product deployment formula check</a>.
 It records the checked product count, input scenarios, code build and data fingerprint.
-A failed check blocks deployment; missing or outdated checks are identified in the download.</p>
-<h2>Common terms in plain language</h2>
+A failed check blocks deployment; missing or outdated checks are identified in the download.</p></section>
+<section class="rt-section"><h2>Common terms in plain language</h2>
 <dl class="term-list"><dt>Vulnerability / CVE</dt><dd>A known security weakness. A CVE number is its reference ID.</dd>
 <dt>Severity / CVSS</dt><dd>How serious the weakness could be, rated out of 10. It does not say how likely an attack is.</dd>
 <dt>EPSS</dt><dd>A model estimate of exploitation in the next 30 days, shown as a percentage.</dd>
 <dt>CISA KEV</dt><dd>A public list of vulnerabilities confirmed to have been exploited. A missing entry does not prove no attack happened.</dd>
 <dt>LEV</dt><dd>A model estimate of earlier exploitation, built from historical EPSS scores. It does not show whether your own equipment was attacked.</dd>
-<dt>Firmware</dt><dd>The software running inside the equipment. Its version helps determine which vulnerabilities apply.</dd></dl>
-<h2>Data available in this workspace</h2>
-<div class="tw"><table><thead><tr><th>Holds</th><th class="n">Count</th></tr></thead>
-<tbody>{rows}</tbody></table></div>
-<h2>Where the data came from</h2>
-<div class="tw"><table><thead><tr><th>Source</th><th>What was loaded</th><th class="n">Recorded on</th>
-</tr></thead><tbody>{sources}</tbody></table></div>
+<dt>Firmware</dt><dd>The software running inside the equipment. Its version helps determine which vulnerabilities apply.</dd></dl></section>
+<section class="rt-section" id="sources"><h2>Data sources</h2>
+<h3 class="rt-h3">Data available in this workspace</h3>{facts}
+<h3 class="rt-h3">Where the data came from</h3>{origins}
 <p class="empty">Certification evidence comes from the ISASecure certified-component,
 -process and -system directories, the Common Criteria certified-products list, and a
 small curated layer for IEC 62443 certificates issued outside those directories
 (each curated entry names its source and says to verify with the certifying body).
 Supplier screening uses the trade.gov Consolidated Screening List and the FCC
-Covered List. {webui.source_note()}.</p>
-<h2>What this server does and does not do</h2>
+Covered List. {webui.source_note()}.</p></section>
+<section class="rt-section"><h2>What this server does and does not do</h2>
 <p>The website displays assessments and downloads. It does not scan devices,
 apply patches or change equipment.</p>
-<details><summary>Technical server safety details</summary><pre style="white-space:pre-wrap">{_esc(SAFETY)}</pre></details>
-<p class="empty">{deployment}</p>""")
+<details><summary>Technical server details</summary><pre style="white-space:pre-wrap">{_esc(SAFETY)}</pre></details>
+<p class="empty">{deployment}</p></section>""")
 
 
 class PlainText(str):
@@ -1915,9 +1965,10 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             "/annex": lambda: _annex_page(
                 connection, assess, dossier, context,
                 first("vendor"), first("product"), first("version")),
-            "/annex.txt": lambda: PlainText(_annex_text(
+            "/annex.txt": lambda: _annex_text(
                 connection, assess, dossier, context,
-                first("vendor"), first("product"), first("version"))),
+                first("vendor"), first("product"), first("version"),
+                download=first("download") == "1"),
             "/ssvc": lambda: _ssvc_page(
                 connection, assess, first("vendor"), first("product"), first("version"),
                 first("exposure") or "controlled", first("automatable") or "yes",
