@@ -222,3 +222,16 @@ def test_model_revision_is_reported_before_score_changes():
     assert 'RT3 -> RT4' in text
     assert text.index('SCORING MODEL CHANGED') < text.index('VERIFY ')
     assert 'query stopped resolving' not in text
+
+
+def test_an_rt7_unidentified_product_is_still_lost_not_a_new_check():
+    """RT7 reports an unidentified product as a full-range VERIFY with a reason."""
+    unidentified = dict(_record("A PLC", "VERIFY", 4.8), reason="no product matched")
+    change = diff.compare([_record("A PLC", "PREFER", 85.0)], [unidentified])[0]
+    assert change.kind == "lost"
+    change = diff.compare([unidentified], [_record("A PLC", "PREFER", 85.0)])[0]
+    assert change.kind == "gained"
+    # An identified VERIFY carries no reason and is still a technical check.
+    change = diff.compare([_record("A PLC", "PREFER", 85.0)],
+                          [dict(_record("A PLC", "VERIFY", 40.0), reason="")])[0]
+    assert change.kind == "verify"

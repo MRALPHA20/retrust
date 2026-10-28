@@ -175,7 +175,7 @@ def test_complete_input_can_receive_a_numeric_verdict():
     assert not result.provisional
     assert result.score_min == result.score_max
     assert result.verdict in {'PREFER','CONDITIONAL','AVOID'}
-    assert result.vector.startswith('RT7/')
+    assert result.vector.startswith('RT8/')
 
 
 def test_uncertainty_cannot_look_like_stable_approval():

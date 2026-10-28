@@ -129,10 +129,15 @@ def test_json_keeps_owner_choices_even_without_a_score(workspace, vendor, versio
         assert result[key] == value
     assert f"FW:{version}" in result["vector"]
     assert "DS:unset" not in result["vector"]
-    if vendor == "Nobody" or version == "2.5":
+    if vendor == "Nobody":
         # No evidence: VERIFY across the full range, headlined by its low end.
         assert result["verdict"] == "VERIFY" and result["provisional"]
         assert result["score"] == result["score_min"] < 10
+    if version == "2.5" and vendor == "Testco":
+        # Outside the published <2.0 range: the advisory says it is not
+        # affected, so exposure is 100 and the result is scored, not floored.
+        assert result["exposure_min"] == result["exposure_max"] == 100
+        assert not result["provisional"] and result["score"] > 50
 
 
 def test_diff_replays_the_saved_owner_choices(workspace):

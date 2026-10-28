@@ -1017,7 +1017,8 @@ evidence cannot raise a score above what weak evidence would give; unknown
 exposure remains in the range rather than disappearing. A measured
 certification participates directly.
 Existing hard gates and the cap below PREFER for unfixable hardcoded credentials
-still apply. Bands are PREFER ≥80, CONDITIONAL 60–79.9, AVOID <60 (scoring version RT7).
+still apply. Bands are PREFER ≥80, CONDITIONAL 60–79.9, AVOID <60, read from the score as displayed
+to one decimal (scoring version RT8).
 These proposal-specific weights and consequence values require validation;
 they are not a NIST standard or a measured procurement accuracy guarantee.
 
@@ -1079,8 +1080,14 @@ JSON schema 3 includes `score_min`, `score_max`, `exposure_min`, `exposure_max`,
 `provisional`, `verification`, and full per-unit factors under `paths` in detail
 exports. CSV retains the ranges and verification actions. `--fail-on unassessed`
 returns exit 2 for VERIFY, so a pipeline can reject incomplete assessments.
-Scoring vectors begin `RT7`. Results from earlier versions must be reassessed:
-RT7 adds the severity factor I and the service-life threat floor, so exposure
+Scoring vectors begin `RT8`. Results from earlier versions must be reassessed.
+RT8 scores a named firmware that lies outside every published affected range at
+exposure 100, with the patch and vendor pillars measured on the product's
+advisory record, where RT7 gave it the evidence-free full range and headlined
+its floor -- below the vulnerable release it replaces. RT8 also bands the score
+as displayed, so 59.96 shows as 60.0 CONDITIONAL rather than 60.0 AVOID, and the
+hardcoded-credential cap holds at 79.9 even when the raw score is 79.95-79.99.
+RT7 added the severity factor I and the service-life threat floor, so exposure
 moves for almost every product. Weights and bands are unchanged, and the gate
 follows assessed firmware applicability rather than vendor patch availability.
 Conflicting reviewed path IDs for one CVE are rejected before scoring.
@@ -1310,7 +1317,7 @@ retrust/
 
 ## Reproducibility
 
-Current CLI and web results record the RT7 model and a source-code fingerprint.
+Current CLI and web results record the RT8 model and a source-code fingerprint.
 Their data token hashes the complete database plus the certification and screening
 lists; it is distinct from the older count/date provenance token. JSON and CSV
 retain these identifiers, and comparisons warn when the model or tool build differs.

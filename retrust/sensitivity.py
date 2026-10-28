@@ -162,7 +162,8 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
     for _ in range(samples):
         weights = _random_weights(rng)
         composite = score_module._composite(usable, weights)
-        if capped and composite >= prefer:
+        # Unconditionally, as the scorer does: 79.95-79.99 rounds to 80.0.
+        if capped:
             composite = min(composite, prefer - .1)
         sampled_score = round(composite, 1)
         scores.append(sampled_score)

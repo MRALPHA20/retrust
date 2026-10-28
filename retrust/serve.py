@@ -340,6 +340,12 @@ def _why_unmoved(field, value, state, result):
     if field == 'remediation' and value in ('mitigated', 'planned', 'unknown'):
         return ('Treated as Unknown: an unverified mitigation or a planned fix does not'
                 ' settle whether the firmware is affected.')
+    # Ahead of the per-answer reasons: with exposure already at 100 there is no
+    # range left to narrow, so "the high end comes down later" would be false.
+    if result.exposure_min is not None and result.exposure_min >= 100 - 1e-9:
+        return ('Exposure is already at its best (100/100): another answer, such as'
+                ' verified-blocked reachability, already rules these flaws out, so this'
+                ' one has nothing left to change.')
     if value in CONSERVATIVE.get(field, ()):
         return ('Confirms the worst case for this factor, which the low end already'
                 ' assumed, so it cannot go lower. The high end comes down once the other'
@@ -415,18 +421,30 @@ def _edit_effects(assess, previous, state, current):
         items += (f'<li><b>{FIELD_LABELS[field]}</b>: {_esc(_answer_text(field, old))}'
                   f' &rarr; {_esc(_answer_text(field, new))}. {effect}</li>')
     tail = ''
+    if current.gates and not frozen:
+        # A high number beside AVOID reads as a contradiction unless the page
+        # says, where the edit is reported, that the verdict is not the score's.
+        # A scored blocker is always a firmware one (screening blockers are
+        # never scored), and check_gates honours the firmware answers -- so
+        # those two answers can lift it, and saying "no answer can" was false.
+        tail += ('<p class="notice">AVOID here comes from a purchase blocker, not from'
+                 ' the score: ' + _esc('; '.join(g['detail'] for g in current.gates))
+                 + '. Reachability and impact answers move the number but not the'
+                 ' blocker. Only a firmware answer can lift it: a firmware version'
+                 ' outside the published affected range, or a fix verified installed on'
+                 ' a named firmware.</p>')
     if frozen:
         tail = f'<p class="helper">{frozen}</p>'
     elif current.provisional:
         fields, gaps = _still_open(current)
         if fields:
-            tail = ('<p class="helper">The range stays open until these are answered: '
-                    + ', '.join(FIELD_LABELS[f] for f in fields) + '.'
-                    + (' Some checks are data gaps that no answer can close; see what'
-                       ' to check next.' if gaps else '') + '</p>')
+            tail += ('<p class="helper">The range stays open until these are answered: '
+                     + ', '.join(FIELD_LABELS[f] for f in fields) + '.'
+                     + (' Some checks are data gaps that no answer can close; see what'
+                        ' to check next.' if gaps else '') + '</p>')
         elif gaps:
-            tail = ('<p class="helper">Only data gaps hold the range open, and no answer'
-                    ' can close them; see what to check next.</p>')
+            tail += ('<p class="helper">Only data gaps hold the range open, and no answer'
+                     ' can close them; see what to check next.</p>')
     return ('<section class="panel edit-effects" aria-live="polite">'
             '<h2>Since your last update</h2>'
             f'<p>{lead}</p><ul>{items}</ul>{tail}</section>')

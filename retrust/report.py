@@ -397,6 +397,9 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         if getattr(assessment, "evidence_free", False):
             detail = ("product not identified" if not assessment.resolved
                       else "no applicable vulnerability recorded")
+        elif getattr(assessment, "cleared_count", 0):
+            detail = (f'firmware outside the affected range of all'
+                      f' {assessment.cleared_count} recorded CVE(s)')
         if assessment.provisional:
             detail = "Provisional range · " + detail
         summary = (f'<span class="s">{shown_score}/100</span>'

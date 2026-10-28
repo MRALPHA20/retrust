@@ -320,6 +320,11 @@ class Finding:
     path_id: str | None = None
     review: dict = field(default_factory=dict)
     source_dates: dict = field(default_factory=dict)
+    # Set by the caller on every finding when the supplied firmware lies
+    # outside all of a product's published affected ranges: the advisories
+    # themselves say none of these CVEs applies to it. Kept, not dropped, so
+    # the product's patch and vendor record can still be measured.
+    outside_range: bool = False
 
     @property
     def fixed(self):

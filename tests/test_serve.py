@@ -881,8 +881,10 @@ def test_known_product_without_applicable_findings_explains_the_difference(db, t
     _, _, output = _get(handler, '/score?vendor=Testco&product=TestPLC+9000&version=9.0'
                         '&network_exposure=it_ot&interface=exposed&consequence=safety'
                         '&prerequisites=satisfiable&remediation=not_affected')
-    assert 'VERIFY' in output and 'no applicable vulnerability recorded' in output
-    assert 'The product was identified' in output and 'Your answers are recorded' in output
+    # 9.0 is outside the published <2.0 range: scored with exposure 100, and
+    # the header says why no vulnerability is counted.
+    assert 'firmware outside the affected range of all 1 recorded CVE(s)' in output
+    assert 'none of them applies and exposure is 100' in output
     assert 'not enough data to assess' not in output
 
 
@@ -959,3 +961,82 @@ def test_carried_answers_are_validated_and_escaped(scoring_handler):
     hostile = dict(START, interface='<script>', version='"><img src=x>')
     page = _update(scoring_handler, hostile, dict(START, version='"><img src=x>'))
     assert '<img src=x>' not in page and '<script>' not in page
+
+
+def _kev_handler(db, tmp_path):
+    """The real scorer over the fixture index, with its one CVE listed in KEV."""
+    from retrust import cli, dossier
+    db.execute("INSERT INTO exploitation (cve, in_kev) VALUES ('CVE-2026-0001', 1)"
+               " ON CONFLICT(cve) DO UPDATE SET in_kev = 1")
+    context = cli._context(data_dir=str(tmp_path))
+
+    def assess(vendor, product, version=None, order_number=None, **owner):
+        return cli._assess(db, vendor, product, version, order_number, context=context, **owner)
+    return serve.build_handler(db, assess, context, dossier, index.stats(db),
+                               index.provenance(db), '127.0.0.1', 0)
+
+
+def test_a_blocker_is_named_where_the_edit_is_reported(db, tmp_path):
+    """AVOID beside a high number reads as a contradiction unless the gate is named."""
+    was = dict(START, network_exposure='ot_only', interface='blocked',
+               prerequisites='unsatisfiable', remediation='affected')
+    page = _update(_kev_handler(db, tmp_path), was, dict(was, consequence='negligible'))
+    assert 'AVOID here comes from a purchase blocker, not from the score' in page
+    assert 'CVE-2026-0001' in page
+    # check_gates honours the firmware answers, so "no answer can" would be false.
+    assert 'Only a firmware answer can lift it' in page
+    assert 'no answer lifts a blocker' not in page
+
+
+def test_a_firmware_outside_the_range_is_reported_as_lifting_the_blocker(db, tmp_path):
+    """The notice says a firmware answer lifts a blocker; that answer must show as moving it."""
+    was = dict(START, network_exposure='ot_only', interface='blocked',
+               prerequisites='unsatisfiable', remediation='affected', version='1.0')
+    page = _update(_kev_handler(db, tmp_path), was, dict(was, version='3.0'))
+    assert 'Result: AVOID' in page and '&rarr; <b>AVOID' not in page
+    assert 'Firmware version</b>: 1.0 &rarr; 3.0. Moved the result.' in page
+
+
+def test_an_answer_after_a_verified_block_says_exposure_is_already_best(scoring_handler):
+    """With A = 0 there is no range left, so no answer may promise one narrows later."""
+    was = dict(START, network_exposure='ot_only', interface='blocked', remediation='affected')
+    page = _update(scoring_handler, was, dict(was, consequence='safety'))
+    assert 'Exposure is already at its best' in page
+    assert 'The high end comes down' not in page
+    page = _update(scoring_handler, dict(was, consequence='control'),
+                   dict(was, consequence='control', prerequisites='unsatisfiable'))
+    assert 'Exposure is already at its best' in page
+    assert 'need no extra conditions' not in page
+
+
+def test_a_fixed_firmware_never_scores_below_the_affected_one(db, tmp_path):
+    """Outside every published range is evidence: never the floor (RT7 headlined it 4.8)."""
+    from retrust import cli
+    context = cli._context(data_dir=str(tmp_path))
+    answers = dict(network_exposure='it_ot', interface='exposed', consequence='control',
+                   prerequisites='satisfiable')
+
+    def headline(version):
+        return cli._assess(db, 'Testco', 'TestPLC 9000', version, None,
+                           context=context, **answers)[0]
+    fixed, affected, unknown = headline('3.0'), headline('1.0'), headline(None)
+    assert fixed.cleared_count == 1 and not fixed.evidence_free
+    assert fixed.exposure_min == fixed.exposure_max == 100 and not fixed.gates
+    assert fixed.score >= unknown.score_max >= affected.score
+    # Unanswered network exposure still holds the verdict at VERIFY.
+    open_network = cli._assess(db, 'Testco', 'TestPLC 9000', '3.0', None, context=context)[0]
+    assert open_network.verdict == 'VERIFY' and open_network.score == fixed.score
+
+
+def test_the_verdict_follows_the_score_as_displayed(monkeypatch):
+    """59.95-59.99 printed as 60.0 beside AVOID; the band now reads the shown number."""
+    from retrust import score
+    from retrust.match import Finding
+    finding = Finding(cve='CVE-1', advisory_id='A', cvss=None, cwe=None, epss=None,
+                      in_kev=False, ransomware=False, version_range='', decided=True,
+                      remediation='vendor_fix')
+    for raw, verdict in ((59.97, 'CONDITIONAL'), (79.97, 'PREFER')):
+        monkeypatch.setattr(score, '_composite', lambda usable, weights, raw=raw: raw)
+        result = score.assess('P', [finding], network_exposure='it_ot', interface='blocked',
+                              consequence='control', remediation='affected')
+        assert (result.score, result.verdict) == (round(raw, 1), verdict)

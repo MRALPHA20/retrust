@@ -61,7 +61,7 @@ installation of the shorter `retrust` command.
 3. Calculate exposure and combine it with patch, vendor and certification
    evidence. Show the inputs, gaps and reasons behind the recommendation.
 
-The current **RT7** model uses:
+The current **RT8** model uses:
 
 ```text
 Z = T × I × A × H × U
@@ -84,7 +84,10 @@ Default bands are **PREFER ≥80**, **CONDITIONAL 60–<80** and **AVOID <60**.
 Mandatory blockers override the numeric band. Unresolved material evidence
 produces **VERIFY**. A product with no usable evidence -- unidentified, or
 named in advisories with no affected CVE -- is VERIFY across the full range,
-with its conservative low end as the headline.
+with its conservative low end as the headline. A named firmware outside every
+published affected range is different: the advisories say none of their CVEs
+applies, so exposure is 100 and the patch and vendor record are still scored.
+The verdict band reads the score as displayed, to one decimal.
 Read the [full scoring explanation](docs/explainers/scoring.html) for unknown
 inputs, grouping, floors, missing pillars and policy caps.
 

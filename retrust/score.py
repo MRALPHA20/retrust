@@ -48,7 +48,7 @@ VERDICT_RANK = {"PREFER": 0, "CONDITIONAL": 1, "VERIFY": 2,
 
 # Bumped when a change to the maths would move a score, so an old vector is
 # never silently re-read under new rules.
-SCORING_VERSION = "RT7"
+SCORING_VERSION = "RT8"
 
 
 def vector(assessment_type="purchase", version=None, network_exposure=None,
@@ -146,6 +146,9 @@ class Assessment:
     # True when no risk evidence was weighed, so the range is everything the
     # missing evidence allows (what earlier versions called NOT ASSESSED).
     evidence_free: bool = False
+    # CVEs the selected firmware is outside every published affected range of,
+    # when that is all of them: scored as exposure 100, never as evidence-free.
+    cleared_count: int = 0
 
 
 def _exploitation(findings):
@@ -778,20 +781,45 @@ def assess(product_label, findings, advisories=(), weights=None,
     # and the bundle set is reported and cautioned rather than allowed to
     # swamp the score. A vendor that honestly discloses its Linux side must
     # not score worse than one that stays quiet about having one.
+    #
+    # A named firmware outside every published affected range is the
+    # advisories' own statement that none of their CVEs applies -- evidence,
+    # not its absence. Scored as evidence-free, a fixed release headlined at
+    # the floor, below the vulnerable release it replaces (ABB Control Builder
+    # M: 93.1 with firmware unknown, 4.9 on 6.2 and later). Exposure is 100,
+    # since no recorded flaw applies, and the patch and vendor pillars still
+    # measure the product's own advisory record.
+    cleared = [f for f in findings if getattr(f, "outside_range", False)]
+    findings = [f for f in findings if not getattr(f, "outside_range", False)]
+    if findings:
+        cleared = []
     first = [f for f in findings if not f.third_party]
     third = [f for f in findings if f.third_party]
     base = first if first else findings
     undecided = [f for f in base if not f.decided]
 
-    exposure = exposure_model.analyse(base, consequence, interface, assessment_type,
-                                     remediation, network_exposure, prerequisites)
+    if cleared:
+        exposure = exposure_model.Exposure(
+            100.0, 100.0, 1.0,
+            missing=[] if network_exposure else [exposure_model.NETWORK_QUESTION],
+            evidence=[f"The selected firmware is outside the published affected range"
+                      f" of all {len({f.cve for f in cleared})} CVE(s) recorded for this"
+                      " product, so none applies and exposure is 100",
+                      "A flaw no advisory records is not ruled out; this is the best"
+                      " the published evidence can say",
+                      f"Network context: {network_exposure or 'Unknown'}; topology alone"
+                      " does not prove reachability"])
+    else:
+        exposure = exposure_model.analyse(base, consequence, interface, assessment_type,
+                                         remediation, network_exposure, prerequisites)
+    record = base or [f for f in cleared if not f.third_party] or cleared
     measured = []
     all_pillars = []
     for spec in PILLARS:
         if spec.key == "exposure":
             pillar = Pillar("Exposure", exposure.safety_min, exposure.coverage, exposure.evidence)
         else:
-            pillar = spec.measure(base, advisories, certificates, vendor_key)
+            pillar = spec.measure(record, advisories, certificates, vendor_key)
         measured.append((spec, pillar))
         all_pillars.append(pillar)
 
@@ -874,11 +902,10 @@ def assess(product_label, findings, advisories=(), weights=None,
     prefer_threshold = (bands or BANDS)[0][0]
     cap_note = None
     unmitigable = _unmitigable_cves(base)
-    if unmitigable and upper >= prefer_threshold:
+    if unmitigable and round(upper, 1) >= prefer_threshold:
         # A credential baked into firmware with no fix shipped is not a
         # weighting question: whatever the other pillars say, this product
         # cannot be preferred while that stands.
-        composite = min(composite, prefer_threshold - 0.1)
         cap_note = (
             "Capped below PREFER: " + ", ".join(unmitigable[:4])
             + (" and more" if len(unmitigable) > 4 else "")
@@ -890,9 +917,14 @@ def assess(product_label, findings, advisories=(), weights=None,
             " product preferred.")
 
     if unmitigable:
+        # Both ends, always: capping only when the raw upper end reached
+        # PREFER let 79.95-79.99 through, which displays as 80.0.
+        composite = min(composite, prefer_threshold - 0.1)
         upper = min(upper, prefer_threshold - 0.1)
+    # Banded on the score as displayed. Banding the unrounded value showed
+    # "AVOID 60.0" for 59.95-59.99, a verdict the printed number contradicts.
     verdict = ("AVOID" if gates else "VERIFY" if exposure.provisional else
-               next(b for t, b in (bands or BANDS) if composite >= t))
+               next(b for t, b in (bands or BANDS) if round(composite, 1) >= t))
 
     # When declared answers carried a verdict out of VERIFY, say which answers
     # it rests on and what the evidence said alone. The answers are assertions
@@ -914,7 +946,9 @@ def assess(product_label, findings, advisories=(), weights=None,
     if remediation != "unknown":
         assertions.append(f"firmware remediation: {REMEDIATIONS[remediation][0]}")
     assertion_note = None
-    if assertions and verdict not in ("VERIFY", "NOT ASSESSED") and not gates:
+    # A cleared firmware's verdict rests on the published ranges, not on any
+    # answer: none of them can move an exposure no recorded flaw reaches.
+    if assertions and base and verdict not in ("VERIFY", "NOT ASSESSED") and not gates:
         alone = exposure_model.analyse(base)
         eo_low = _composite([(spec, Pillar(pl.name, alone.safety_min, pl.coverage,
                                            pl.evidence) if spec.key == "exposure"
@@ -929,6 +963,13 @@ def assess(product_label, findings, advisories=(), weights=None,
             " Retain supporting evidence for each answer before procurement.")
 
     notes = []
+    if cleared:
+        notes.append(
+            f"The selected firmware is outside the published affected range of all"
+            f" {len({f.cve for f in cleared})} CVE(s) recorded for this product, so"
+            " none of them applies and exposure is 100. The patch and vendor scores"
+            " still describe the product's advisory record. Confirm the delivered"
+            " unit actually runs this firmware.")
     if cap_note:
         notes.append(cap_note)
     # Say it where the buyer reads the verdict, not only in the evidence panel:
@@ -985,7 +1026,7 @@ def assess(product_label, findings, advisories=(), weights=None,
             + ("Each is" if len(dropped) > 1 else "It is")
             + f" scored {MISSING_PILLAR:.0f} and keeps its full weight, so"
             " missing evidence never lifts the score.")
-    if consequence is None:
+    if consequence is None and base:
         notes.append(
             "No process consequence was established, so exposure includes"
             " a range from no material effect to full impact. Ask an engineer"
@@ -1012,6 +1053,7 @@ def assess(product_label, findings, advisories=(), weights=None,
         first_party_count=len({f.cve for f in first}),
         third_party_count=len({f.cve for f in third} - {f.cve for f in first}),
         undecided_count=len({f.cve for f in undecided}),
+        cleared_count=len({f.cve for f in cleared}),
         confidence=round(confidence.coverage, 2),
         assertions=assertions if assertion_note else [],
         worst_risk=max((p["z_max"] for p in exposure.paths), default=None),

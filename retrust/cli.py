@@ -29,6 +29,7 @@ reproducible and a demo never depends on the network.
 """
 
 import argparse
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -124,7 +125,15 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                                          **declared)
         return assessment, resolution, findings
 
-    assessment = score.assess(label, findings, advisories,
+    broad = match.findings(connection, resolution) if version else findings
+    # Every published range excludes this firmware. The scorer keeps these,
+    # marked, so the product's record is still measured; the shown findings
+    # stay empty because none of them applies.
+    scored = findings or [dataclasses.replace(f, outside_range=True, version_supplied=True)
+                          for f in broad]
+    if not findings and scored:
+        advisories = {f.advisory_id for f in scored}
+    assessment = score.assess(label, scored, advisories,
                               weights=context.get("weights"),
                               bands=context.get("bands"),
                               certificates=certificates, screening_gates=screening_gates,
@@ -137,7 +146,6 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
     # read cold that looks like "more information made it worse". Show the
     # delta and the reason instead of leaving the reader to reconstruct it.
     if version and resolution.resolved:
-        broad = match.findings(connection, resolution)
         if len({f.cve for f in broad}) != assessment.findings_count:
             baseline = score.assess(
                 label, broad, {f.advisory_id for f in broad},
@@ -171,7 +179,7 @@ def _assess(connection, vendor, product, version, order_number, label=None, cont
                 " its manufacturer order number narrows this to exactly that"
                 " device.")
 
-    assessment.inputs = (findings, advisories, certificates, screening_gates,
+    assessment.inputs = (scored, advisories, certificates, screening_gates,
                          normalize_vendor(effective_vendor or ''))
     return assessment, resolution, findings
 

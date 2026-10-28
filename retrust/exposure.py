@@ -43,6 +43,8 @@ REMEDIATIONS = {
 }
 ASSESSMENT_TYPES = {'purchase': 'Procurement assessment', 'installed': 'Installed asset'}
 CONCENTRATION = (1.0, .20, .10)
+NETWORK_QUESTION = ('Answer "Network exposure" -- recorded as context, and'
+                    ' needed before a verdict is given')
 
 # A flaw nobody is exploiting this month is not a flaw nobody will exploit over
 # a controller's service life. EPSS forecasts the next thirty days and sits near
@@ -391,8 +393,7 @@ def analyse(findings, consequence=None, interface='unknown', assessment_type='pu
             more = f' and {len(affected)-3} more' if len(affected) > 3 else ''
             missing.add(f'{message} ({sample}{more})')
     if network is None:
-        missing.add('Answer "Network exposure" -- recorded as context, and'
-                    ' needed before a verdict is given')
+        missing.add(NETWORK_QUESTION)
     paths = []
     for group in groups.values():
         group['cves'] = sorted(group['cves'])

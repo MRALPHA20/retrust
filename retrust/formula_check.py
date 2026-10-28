@@ -65,12 +65,29 @@ def validate_evidence_free(assessment, weights):
     assert assessment.score == assessment.score_min
 
 
+def validate_cleared(assessment, options, weights, bands):
+    """Firmware outside every published range: exposure 100, scored, never floored."""
+    assert assessment.exposure_min == assessment.exposure_max == 100, ('exposure', assessment.exposure_min)
+    assert not assessment.evidence_free and assessment.cleared_count, 'cleared firmware not flagged'
+    assert not assessment.gates, ('gated', assessment.gates)
+    want = round(composite(assessment, weights, (100.0,))[0], 1)
+    assert assessment.score == assessment.score_min == assessment.score_max == want, ('score', assessment.score, want)
+    assert assessment.provisional == (options.get('network_exposure') is None), 'provisional'
+    expected = 'VERIFY' if assessment.provisional else next(label for threshold, label in bands if want >= threshold)
+    assert assessment.verdict == expected, ('verdict', assessment.verdict, expected)
+
+
 def validate(assessment, findings, options, weights, bands):
     """Calculate expected factors, exposure, geometric score and verdict independently."""
     if assessment.score is None:
         assert assessment.verdict == 'AVOID' and assessment.gates, ('unscored', assessment.verdict)
         return
+    cleared = [f for f in findings if getattr(f, 'outside_range', False)]
+    findings = [f for f in findings if not getattr(f, 'outside_range', False)]
     base = [f for f in findings if not f.third_party] or findings
+    if not base and cleared:
+        validate_cleared(assessment, options, weights, bands)
+        return
     if not base:
         validate_evidence_free(assessment, weights)
         return
@@ -112,7 +129,7 @@ def validate(assessment, findings, options, weights, bands):
     for got, want in zip((assessment.score_min, assessment.score_max), raw):
         assert math.isclose(got, round(want, 1), abs_tol=1e-8), ('score', got, want)
     assert assessment.score == assessment.score_min
-    expected = 'AVOID' if assessment.gates else 'VERIFY' if assessment.provisional else next(label for threshold, label in bands if raw[0] >= threshold)
+    expected = 'AVOID' if assessment.gates else 'VERIFY' if assessment.provisional else next(label for threshold, label in bands if round(raw[0], 1) >= threshold)
     assert assessment.verdict == expected, ('verdict', assessment.verdict, expected)
 
 

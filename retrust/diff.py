@@ -53,11 +53,11 @@ class Change:
 
     @property
     def was(self):
-        return self.before.get("verdict", "NOT ASSESSED")
+        return _verdict(self.before)
 
     @property
     def now(self):
-        return self.after.get("verdict", "NOT ASSESSED")
+        return _verdict(self.after)
 
     @property
     def drift(self):
@@ -125,6 +125,20 @@ def compare(previous, current):
              "verify": 2, "moved": 5, "same": 6}
     changes.sort(key=lambda c: (order.get(c.kind, 9), -abs(c.drift or 0)))
     return changes
+
+
+def _verdict(record):
+    """The verdict a record compares on.
+
+    RT7 reports a product it could not identify as a full-range VERIFY, where
+    earlier runs said NOT ASSESSED. Between two runs that is still the query
+    no longer resolving, not a new technical check, so it compares as one.
+    An unresolved record is the one carrying a reason; a gated one stays AVOID.
+    """
+    verdict = record.get("verdict", "NOT ASSESSED")
+    if verdict == "VERIFY" and record.get("reason"):
+        return "NOT ASSESSED"
+    return verdict
 
 
 def gate_name(gate):
