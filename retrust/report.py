@@ -48,7 +48,7 @@ h1{font-size:1.75rem;font-weight:700;letter-spacing:-.015em;
 h2{font-size:1.2rem;font-weight:700;letter-spacing:-.01em;
  margin:0 0 .8rem;padding-bottom:.4rem;border-bottom:1px solid var(--rule)}
 /* Engraved legends, as on the front of control gear. */
-.meta,th,td.na,.sources h2{font-family:var(--mono);font-size:.78rem;font-weight:600;
+.meta,th,td.na,.sources h2{font-family:var(--mono);font-size:.8125rem;font-weight:600;
  letter-spacing:.08em;text-transform:uppercase}
 .meta{color:var(--faint)}
 /* Identifiers: CVE and advisory ids, order numbers, version ranges. They do
@@ -57,7 +57,7 @@ code,.id{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nu
 code{white-space:nowrap}
 .vector code{white-space:normal;overflow-wrap:anywhere}
 .evidence-details{border:0;padding:0;margin:0;background:transparent}
-.evidence-details summary{font-size:.86rem;color:var(--soft);cursor:pointer}
+.evidence-details summary{font-size:.875rem;color:var(--soft);cursor:pointer}
 summary{min-height:44px;padding:10px 0;line-height:1.6}
 summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .evidence-details[open]>summary{margin-bottom:.5rem}
@@ -69,7 +69,7 @@ summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
  border:1px solid var(--rule);background:var(--panel);padding:1rem 1.2rem;margin:0 0 1rem}
 .verdict .v{font:700 1.55rem/1 var(--sans);color:var(--vc)}
 .verdict .s{font:600 1.2rem/1 var(--mono);font-variant-numeric:tabular-nums}
-.verdict .n{color:var(--soft);font-size:.95rem}
+.verdict .n{color:var(--soft);font-size:.9375rem}
 .verdict .review-required{flex-basis:100%;font:600 .95rem/1.5 var(--sans);color:var(--cond)}
 .score-scope{max-width:75ch;margin:.8rem 0 1.2rem}
 .assessment-more-info{margin:1rem 0}
@@ -79,16 +79,16 @@ summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .gate{border:1px solid var(--rule);border-left:3px solid var(--avoid);
  background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
 .gate b{color:var(--avoid)}
-.gate .src{display:block;margin-top:.3rem;font-size:.82rem;color:var(--faint)}
+.gate .src{display:block;margin-top:.3rem;font-size:.875rem;color:var(--faint)}
 .caution{border:1px solid var(--rule);border-left:3px solid var(--cond);
  background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
 .caution b{color:var(--cond)}
-.caution .src{display:block;margin-top:.3rem;font-size:.82rem;color:var(--faint)}
+.caution .src{display:block;margin-top:.3rem;font-size:.875rem;color:var(--faint)}
 .tw{overflow-x:auto;margin:1rem 0}
 .tw:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .table-scroll-hint{display:none}
-@media(max-width:700px){.tw table{min-width:760px}.table-scroll-hint{display:block;font-size:12px;color:var(--faint);padding:8px 12px;margin:0}}
-table{border-collapse:collapse;width:100%;font-size:.93rem;background:var(--panel);
+@media(max-width:700px){.tw table{min-width:760px}.table-scroll-hint{display:block;font-size:.875rem;color:var(--faint);padding:8px 12px;margin:0}}
+table{border-collapse:collapse;width:100%;font-size:.9375rem;background:var(--panel);
  border:1px solid var(--rule);font-variant-numeric:tabular-nums}
 th,td{text-align:left;padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top}
 th{line-height:1.4;white-space:nowrap;color:var(--soft);background:var(--sunk)}
@@ -106,27 +106,27 @@ td.v{color:var(--vc);font-weight:700}
 tr.unscored{background:var(--sunk)}
 tr.unscored .bar{background:var(--panel)}
 tr.unscored .bar i{background:var(--faint)}
-.ev{margin:.2rem 0 0;padding-left:1.1rem;color:var(--soft);font-size:.9rem}
+.ev{margin:.2rem 0 0;padding-left:1.1rem;color:var(--soft);font-size:.9375rem}
 /* Secondary panels separate on a hairline and a recessed ground, the way a
    mimic diagram does. It also survives the thing that happens to this file:
    printed in grey scale and stapled to a purchase order. */
 .note{border:1px solid var(--rule);border-left:3px solid var(--cond);background:var(--panel);
- padding:.75rem 1rem;margin:.6rem 0;font-size:.95rem;color:var(--soft)}
+ padding:.75rem 1rem;margin:.6rem 0;font-size:.9375rem;color:var(--soft)}
 .stability{border:1px solid var(--rule);border-left:3px solid var(--rule);background:var(--panel);
- padding:.7rem 1rem;margin:0 0 1rem;font-size:.92rem;color:var(--soft)}
+ padding:.7rem 1rem;margin:0 0 1rem;font-size:.9375rem;color:var(--soft)}
 /* Only the fragile case is coloured. A robust result is the normal condition,
    and a green stripe on an AVOID block would read as a second, contradicting
    verdict rather than as the weight note it is. */
 .stability.fragile{border-left-color:var(--cond)}
-.tnote{font-size:.86rem;color:var(--faint);margin:0 0 1rem}
-.sources{margin-top:3rem;font-size:.9rem;color:var(--soft)}
-.sources h2{font-size:.82rem;color:var(--faint)}
+.tnote{font-size:.875rem;color:var(--faint);margin:0 0 1rem}
+.sources{margin-top:3rem;font-size:.9375rem;color:var(--soft)}
+.sources h2{font-size:.875rem;color:var(--faint)}
 .sources dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem 1.2rem;margin:.8rem 0}
-.sources dt{font-family:var(--mono);font-size:.82rem;color:var(--faint);
+.sources dt{font-family:var(--mono);font-size:.875rem;color:var(--faint);
  font-variant-numeric:tabular-nums}
 .sources dd{margin:0}
 footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--rule);
- font-size:.84rem;color:var(--faint)}
+ font-size:.875rem;color:var(--faint)}
 """
 
 # Identifiers turn up in prose too -- a KEV gate names the CVEs it fired on --
