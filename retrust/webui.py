@@ -1,10 +1,11 @@
 """Shared presentation for the local browser. No scripts or remote assets."""
 
+import contextvars
 import html
 import os
 from datetime import date
 
-from . import report
+from . import assets, components, design, doctor, evidenceview, report, score
 
 
 def esc(value):
@@ -27,17 +28,91 @@ def source_note(hosted=None):
 
 
 
-NAVIGATION = (
-    ("Workspace", (("/", "Explore", "01"), ("/score", "Assess a product", "02"),
-                   ("/compare", "Compare candidates", "03"))),
-    ("Evidence", (("/vendor", "Vendor profile", "VP"),
-                  ("/timeline", "Advisory timeline", "AT"),
-                  ("/alternatives", "Find alternatives", "FA"),
-                  ("/annex", "Supplier questions", "PQ"))),
-    ("Analysis", (("/ssvc", "Response priority", "SS"),
-                  ("/lev", "Exploitation estimate", "LE"),
-                  ("/about", "Data & methodology", "DM"))),
-)
+# Request-scoped: the handler sets the index provenance before dispatch and
+# resets it afterwards, so page() (called from ~15 sites that know nothing
+# about provenance) can still show the snapshot status. A ContextVar rather
+# than a global because the concurrent server renders on worker threads.
+CURRENT_SNAPSHOT = contextvars.ContextVar("retrust_snapshot", default=None)
+
+# Exactly four primary destinations (D5). Every other page is reached through
+# related_links() and the footer.
+PRIMARY_NAV = (("/score", "Assess"), ("/compare", "Compare"),
+               ("/", "Search"), ("/about", "Methodology"))
+
+CONTEXTUAL_PAGES = (("/vendor", "Vendor profile"), ("/timeline", "Advisory timeline"),
+                    ("/alternatives", "Find alternatives"), ("/annex", "Supplier questions"),
+                    ("/ssvc", "Response priority"), ("/lev", "Exploitation estimate"),
+                    ("/demo", "Guided demo"))
+
+# Which primary item a route lights up.
+NAV_FOR_ROUTE = {"/": "/", "/score": "/score", "/annex": "/score",
+                 "/alternatives": "/score", "/ssvc": "/score", "/lev": "/score",
+                 "/vendor": "/", "/timeline": "/", "/demo": "/",
+                 "/compare": "/compare", "/about": "/about"}
+
+_TITLE_ROUTES = (("Score", "/score"), ("Procurement comparison", "/compare"),
+                 ("Alternatives", "/alternatives"), ("Timeline", "/timeline"),
+                 ("Annex", "/annex"), ("RFQ", "/annex"), ("SSVC", "/ssvc"),
+                 ("LEV", "/lev"), ("Vendor", "/vendor"), ("About", "/about"),
+                 ("Demo", "/demo"), ("Search", "/"))
+
+
+def _active_route(title, active):
+    if active is None:
+        if title == "ReTrust":
+            return "/"
+        active = next((route for prefix, route in _TITLE_ROUTES
+                       if title.startswith(prefix)), None)
+    return NAV_FOR_ROUTE.get(active)
+
+
+def related_links(active=None):
+    """Links to the contextual pages, minus `active` (a route such as "/ssvc").
+
+    Rendered under page titles by the page functions and repeated in the
+    footer. A plain list, not a <nav>: the primary navigation is the only
+    navigation landmark with page-level destinations.
+    """
+    items = "".join(f'<li><a href="{route}">{label}</a></li>'
+                    for route, label in CONTEXTUAL_PAGES if route != active)
+    return f'<ul class="rt-related" aria-label="Related pages">{items}</ul>'
+
+
+def _captured(provenance, source):
+    for row in provenance:
+        if row.get("source") == source:
+            try:
+                return date.fromisoformat(str(row.get("captured") or "")[:10])
+            except ValueError:
+                return None
+    return None
+
+
+def snapshot_status(provenance, today, hosted):
+    """Header chip: glyph + word, never colour alone, never role=alert.
+
+    The date shown is the oldest of the KEV and EPSS captures, because the
+    snapshot is only as fresh as its stalest exploitation signal. A missing
+    feed means the KEV gate cannot fire, which is worse than a stale one.
+    """
+    mode = "hosted" if hosted else "offline"
+    if provenance is None:
+        return ('<span class="rt-snap rt-snap--unknown"><span aria-hidden="true">●</span> '
+                'Snapshot · unknown</span>')
+    feeds = (("KEV", _captured(provenance, "CISA KEV"), doctor.AGE_LIMITS["kev"]),
+             ("EPSS", _captured(provenance, "FIRST EPSS"), doctor.AGE_LIMITS["epss"]))
+    missing = [name for name, captured, _ in feeds if captured is None]
+    known = [captured for _, captured, _ in feeds if captured is not None]
+    oldest = f" · {min(known).isoformat()}" if known else ""
+    if missing:
+        state, word = "missing", " · " + " and ".join(missing) + " missing"
+    elif any((today - captured).days > limit for _, captured, limit in feeds):
+        state, word = "stale", " · stale"
+    else:
+        state, word = "current", ""
+    sr = '<span class="rt-sr"> (current)</span>' if state == "current" else ""
+    return (f'<span class="rt-snap rt-snap--{state}"><span aria-hidden="true">●</span> '
+            f'Snapshot · {mode}{oldest}{word}{sr}</span>')
 
 
 def page(title, body, subtitle="", active=None):
@@ -45,144 +120,251 @@ def page(title, body, subtitle="", active=None):
     workspace_label = 'Hosted workspace' if hosted else 'Local workspace'
     workspace_detail = 'Queries are processed on this server.' if hosted else 'Public evidence. Private decisions.'
     assessment_label = 'Hosted assessment' if hosted else 'Offline assessment'
-    if active is None:
-        active = next((route for prefix, route in (
-            ("Score", "/score"), ("Procurement comparison", "/compare"),
-            ("Alternatives", "/alternatives"), ("Timeline", "/timeline"),
-            ("Annex", "/annex"), ("RFQ", "/annex"), ("SSVC", "/ssvc"),
-            ("LEV", "/lev"), ("Vendor", "/vendor"), ("About", "/about"),
-            ("Demo", "/demo")) if title.startswith(prefix)), "/")
-    navigation = "".join(
-        f'<div class="nav-group"><p class="nav-label">{label}</p>' + "".join(
-            f'<a href="{route}"' + (' aria-current="page"' if route == active else '')
-            + f'>{name}</a>'
-            for route, name, icon in items) + '</div>' for label, items in NAVIGATION)
-    current = next((name for _, items in NAVIGATION for route, name, _ in items
-                    if route == active), "Guided demo")
+    current = _active_route(title, active)
+    links = "".join(
+        f'<li><a href="{route}"' + (' aria-current="page"' if route == current else '')
+        + f'>{label}</a></li>' for route, label in PRIMARY_NAV)
+    status = snapshot_status(CURRENT_SNAPSHOT.get(), date.today(), hosted)
+    footer_links = "".join(
+        f'<li><a href="{route}">{label}</a></li>' for route, label in (
+            ("/about", "Methodology"), ("/about#sources", "Source coverage")))
     return (
         '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f'<title>{esc(title if title == "ReTrust" else title + " · ReTrust")}</title><style>{report.CSS}{CSS}</style></head>'
-        '<body class="app"><a class="skip" href="#main">Skip to content</a>'
-        '<aside class="sidebar"><a class="brand" href="/" aria-label="ReTrust home">'
-        '<span class="brand-symbol" aria-hidden="true">R<span>↗</span></span>'
-        '<span>ReTrust<small>OPEN-SOURCE OT RISK TOOLING</small></span></a>'
-        f'<nav class="desktop-nav" aria-label="Main navigation">{navigation}</nav>'
-        f'<details class="mobile-menu"><summary>Menu · {esc(current)}</summary>'
-        f'<nav aria-label="Mobile navigation">{navigation}</nav>'
-        '<a href="/demo">Take the guided demo →</a></details>'
-        '<a class="demo-link" href="/demo"><span>Meet ReTrust</span>'
-        '<strong>Take the guided demo <span aria-hidden="true">↗</span></strong></a>'
-        f'<div class="local-status"><span class="dot"></span> {workspace_label}'
-        f'<small>{workspace_detail}</small></div></aside>'
-        '<div class="workspace"><header class="topbar"><span>Workspace '
-        f'<span class="crumb">/</span> <b>{esc(current)}</b></span>'
-        f'<span class="offline"><span class="dot"></span> {assessment_label}</span></header>'
-        f'<main id="main" class="wrap"><div class="page-meta"><span>RETRUST / {esc(current).upper()}</span>'
-        f'<span>{esc(subtitle) + " · " if subtitle else ""}{date.today().isoformat()}</span></div>'
-        + body + '<footer><span>ReTrust <span class="muted">/</span> Evidence before commitment.</span>'
-        f'<span>{source_note()} <span class="muted">&middot;</span>'
-        ' Decision support, not a certification.</span></footer></main></div></body></html>')
+        f'<title>{esc(title if title == "ReTrust" else title + " · ReTrust")}</title>'
+        f'<style>{STYLESHEET}</style></head>'
+        '<body class="app"><a class="skip-link" href="#main">Skip to content</a>'
+        '<header class="rt-header">'
+        '<a class="rt-brand" href="/" aria-label="ReTrust home">'
+        f'{components.icon("shield-check", 22)}<span class="rt-wordmark">ReTrust</span>'
+        f'<span class="rt-model">{esc(score.SCORING_VERSION)}</span></a>'
+        f'<nav class="rt-nav" aria-label="Primary"><ul>{links}</ul></nav>'
+        '<form class="rt-search" role="search" action="/" method="get">'
+        '<label class="rt-sr" for="rt-global-q">Search by order number, vendor or model</label>'
+        '<input id="rt-global-q" type="search" name="q" maxlength="200" autocomplete="off" '
+        'placeholder="Order no. or vendor / model"></form>'
+        f'{status}</header>'
+        '<main id="main" class="wrap">'
+        + (f'<p class="rt-page-sub">{esc(subtitle)}</p>' if subtitle else '')
+        + body + '</main>'
+        '<footer class="rt-footer"><div class="rt-footer__in">'
+        '<p class="rt-footer__claim">ReTrust supports procurement review. It is not a '
+        'probability of compromise or a certification.</p>'
+        f'<ul class="rt-footer__links">{footer_links}<li>{source_note()}</li></ul>'
+        f'{related_links(None)}'
+        f'<p class="rt-footer__mode">{assessment_label} · {workspace_label} · {workspace_detail}</p>'
+        '</div></footer></body></html>')
 
 
-CSS = """
-:root{--t-xs:13px;--t-sm:14px;--t-md:15px;--t-base:16px;--t-lg:18px}
-/* One type scale for the whole app. Nothing below 13px: the old 7-12px
-   labels, badges, table heads and footers were unreadable at arm's length. */
-:root[data-theme=dark]{font-size:var(--t-base);color-scheme:dark;--field:#0c1118;--panel:#131c27;--sunk:#0f1721;
- --rule:#293646;--ink:#edf2f8;--soft:#adbacb;--faint:#94a6bb;
- --prefer:#73e0b7;--cond:#f0bc63;--avoid:#ff8b91;--accent:#73e0b7}
-body.app{line-height:1.55;background:var(--field)}
-a{color:var(--ink);text-underline-offset:4px}a:hover{color:var(--accent)}
-a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
-.skip{position:fixed;left:1rem;top:-6rem;z-index:10;background:var(--panel);padding:1rem}.skip:focus{top:1rem}
-.sidebar{width:238px;position:fixed;inset:0 auto 0 0;background:#101822;border-right:1px solid var(--rule);scrollbar-width:thin;scrollbar-color:#304354 #101822;
- padding:30px 20px;display:flex;flex-direction:column;overflow-y:auto;z-index:2}
-.brand{display:flex;gap:11px;align-items:center;text-decoration:none;font-size:24px;font-weight:700;letter-spacing:-1px;margin-bottom:36px}
-.brand small{display:block;font:var(--t-xs)/1.35 var(--mono);letter-spacing:.4px;color:var(--faint);margin-top:3px}
-.mobile-menu{display:none}
-.brand-symbol{display:flex;position:relative;width:39px;height:43px;align-items:center;justify-content:center;
- border:1px solid var(--accent);border-radius:10px 3px 10px 3px;color:var(--accent);font:700 27px var(--mono)}
-.brand-symbol span{font-size:15px;position:absolute;right:-5px;top:-7px;background:#101822;padding:0 1px}
-.nav-group{margin-bottom:20px}.nav-label{font:var(--t-xs) var(--mono);letter-spacing:1.4px;text-transform:uppercase;color:var(--faint);margin:0 12px 9px}
-.nav-group a{display:flex;align-items:center;gap:11px;padding:8px 11px;margin:3px 0;text-decoration:none;color:var(--soft);font-size:var(--t-md);border:1px solid transparent;border-radius:6px}
-.nav-group a:hover{background:#1b2836;color:var(--ink)}
-.nav-group a[aria-current=page]{background:#18312f;color:var(--accent);border-color:#294b44}
-.nav-icon{font:var(--t-xs) var(--mono);color:var(--faint);border:1px solid var(--rule);border-radius:4px;width:23px;height:23px;display:grid;place-items:center}
-[aria-current=page] .nav-icon{color:var(--accent);border-color:#3b655a}
-.demo-link{margin-top:auto;border:1px solid var(--rule);border-radius:8px;padding:13px;text-decoration:none;background:var(--panel)}
-.demo-link>span{display:block;font:var(--t-xs) var(--mono);text-transform:uppercase;color:var(--faint);letter-spacing:1px;margin-bottom:5px}
-.demo-link strong{font-size:var(--t-sm);font-weight:500}.demo-link strong span{color:var(--accent)}
-.local-status{font-size:var(--t-sm);padding:20px 5px 0;color:var(--soft)}.local-status small{display:block;font-size:var(--t-xs);margin:5px 0 0 14px;color:var(--faint)}
-.dot{display:inline-block;width:6px;height:6px;background:var(--accent);border-radius:50%;margin-right:7px;vertical-align:middle}
-.workspace{margin-left:238px;min-width:0}.topbar{height:66px;border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between;padding:0 38px;color:var(--faint);font-size:var(--t-sm)}
-.topbar b{color:var(--ink);font-weight:500}.crumb{margin:0 14px;color:#526277}.offline{border:1px solid var(--rule);border-radius:20px;padding:5px 10px;font-size:var(--t-xs);color:var(--soft)}
-.app .wrap{max-width:1240px;padding:28px 38px 22px;margin:auto}.page-meta{display:flex;justify-content:space-between;gap:1rem;font:var(--t-xs) var(--mono);letter-spacing:1px;color:var(--faint);margin:0 0 27px}
-h1{font-size:32px;line-height:1.18;letter-spacing:-1.1px;border:0;padding:0;margin:0 0 12px;max-width:850px}
-h2{font-size:var(--t-lg);border:0;padding:0;margin:0 0 10px}.lead{color:var(--soft);max-width:660px;font-size:var(--t-base);margin:0 0 25px;line-height:1.75}
-.eyebrow{color:var(--accent);font:var(--t-xs) var(--mono);letter-spacing:1.6px;text-transform:uppercase;margin:0 0 14px}
-.hero{display:grid;grid-template-columns:1fr auto;align-items:center;gap:30px;margin:0 0 25px}.hero h1{font-size:42px;max-width:580px}.hero h1 em{font-style:normal;color:var(--accent)}
-.hero .lead{margin-bottom:0}.hero-mark{width:126px;height:126px;border:1px solid #355044;border-radius:50%;position:relative;display:grid;place-items:center;background:#12241f}
-.hero-mark:before{content:"";position:absolute;inset:12px;border:1px dashed #3a6354;border-radius:50%}.hero-mark span{color:var(--accent);font:500 38px var(--mono)}
-.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:25px 0}
-.metric{padding:18px 20px;background:var(--panel);border:1px solid var(--rule);border-radius:8px}.metric strong{display:block;font:500 28px/1.2 var(--mono);letter-spacing:-1px;margin-bottom:7px}.metric span{color:var(--soft);font-size:var(--t-sm)}.metric small{display:block;color:var(--faint);font:var(--t-xs) var(--mono);margin-top:8px}
-.panel{border:1px solid var(--rule);border-radius:9px;background:var(--panel);padding:24px;margin:0 0 20px}.panel-heading{display:flex;justify-content:space-between;gap:15px;align-items:baseline;margin-bottom:12px}.panel-heading span{font:var(--t-xs) var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:1px}
-form{margin:20px 0 26px}label{display:block;color:var(--soft);font-size:var(--t-sm);font-weight:500;margin:0 0 7px}
-input[type=text],select{width:100%;max-width:42rem;min-height:44px;padding:11px 13px;font:var(--t-base) var(--sans);color:var(--ink);background:#0c141e;border:1px solid #3b4b5e;border-radius:6px}
-input::placeholder{color:#8192a7}input[type=text]:focus,select:focus{outline:2px solid var(--accent);outline-offset:2px}
-button,.button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 19px;background:var(--accent);color:#10251e;border:1px solid var(--accent);border-radius:6px;font:600 var(--t-md) var(--sans);cursor:pointer;text-decoration:none;white-space:nowrap;margin-top:12px}
-button:hover,.button:hover{background:#a0efd1;color:#10251e;border-color:#a0efd1}.button.secondary{background:transparent;border-color:var(--rule);color:var(--soft)}.button.secondary:hover{background:#1e2d3e;color:var(--ink)}
-.search-form{margin:0}.search-line{display:flex;gap:10px}.search-line input{max-width:none}.search-line button{margin:0;min-width:138px}.helper{font-size:var(--t-sm);color:var(--faint);margin:10px 0 0}
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}.chips>span{color:var(--faint);font-size:var(--t-sm);margin-right:3px}.chip{border:1px solid var(--rule);background:#172331;border-radius:5px;padding:5px 10px;font:var(--t-sm) var(--mono);color:var(--soft);text-decoration:none}.chip:hover{border-color:var(--accent)}
-.split{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px}.split .panel{margin:0}.steps{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:20px}.steps li{display:flex;gap:13px}.step-number{font:var(--t-sm) var(--mono);color:var(--accent);border:1px solid #355349;background:#142923;border-radius:50%;min-width:27px;height:27px;display:grid;place-items:center}.steps b{font-size:var(--t-md);font-weight:500}.steps p{font-size:var(--t-sm);color:var(--faint);margin:3px 0 0}
-.example{display:flex;align-items:center;justify-content:space-between;padding:15px 0;text-decoration:none;border-bottom:1px solid var(--rule)}.example:last-child{border:0;padding-bottom:0}.example strong{font-size:var(--t-md);font-weight:500}.example small{display:block;color:var(--faint);font-size:var(--t-sm);margin-top:4px}.example .arrow{color:var(--accent);margin-left:10px}
-.section-title{display:flex;align-items:baseline;justify-content:space-between;margin:26px 0 14px}.section-title span{font:var(--t-sm) var(--mono);color:var(--faint)}
-.rows{display:grid;gap:10px}.hit{display:block;border:1px solid var(--rule);border-radius:7px;background:var(--panel);padding:17px 19px;text-decoration:none;color:var(--ink)}.hit:hover{border-color:var(--accent);background:#172534}.hit .w{display:block;font:var(--t-sm)/1.7 var(--mono);color:var(--faint);margin-top:7px}.empty{color:var(--soft);font-size:var(--t-base)}
-.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.form-grid input{max-width:none}.form-grid>div:last-child{grid-column:1/-1}.candidate-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.candidate-grid input{max-width:none}.order-field{margin-bottom:18px;max-width:100%}.order-field input{max-width:none}.form-panel{background:var(--panel);border:1px solid var(--rule);padding:22px;border-radius:9px}.form-panel>p:first-child{margin-top:0}.form-divider{font-size:var(--t-sm);color:var(--faint);margin:17px 0}.form-panel .helper{max-width:none}
-.site-context{margin-top:24px}.site-context h3{margin-bottom:12px}
-.site-context .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
-.site-context .form-grid>div:last-child{grid-column:auto}
-.site-context label{display:block;min-height:2.8em}
-@media(max-width:640px){.site-context .form-grid{grid-template-columns:1fr}.site-context label{min-height:0}}
+def error_page(title, heading, message, actions_html=""):
+    """An error inside the shell: ERROR alert (role=alert) plus a way onward."""
+    return page(title, f'<h1>{esc(heading)}</h1>'
+                + components.alert("error", heading, message, body_html=actions_html))
 
-.form-options{padding:14px 0;border-width:1px 0 0;border-radius:0;background:transparent;margin:18px 0}
-.form-options .helper{margin-bottom:16px}.form-options .candidate-grid{margin-top:16px}
-.form-options summary{font-weight:600}.form-options .form-grid{margin-top:18px}
-.lookup-form{max-width:58rem}.lookup-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
-.lookup-grid input{max-width:none}.lookup-edit{margin:18px 0}.lookup-edit form{margin-bottom:0}
-.supplier-questions{max-width:75ch;padding-left:24px}.supplier-questions>li{padding:16px 0;border-bottom:1px solid var(--rule)}
-.supplier-questions>li>p{margin:0 0 12px;line-height:1.75}.supplier-questions details{background:transparent;border:0;padding:0;margin:10px 0}
-.supplier-questions details p,.supplier-questions details li{font-size:var(--t-md);color:var(--soft)}
-.assumption-summary{max-width:75ch;font-size:var(--t-md);line-height:1.75;margin:18px 0;color:var(--soft)}
-.assumption-summary b{color:var(--ink);font-weight:600}
-@media(max-width:700px){.lookup-grid{grid-template-columns:1fr}.lookup-form button{width:100%}}
-.assessment-edit,.assessment-downloads{margin:12px 0}.assessment-edit .form-panel{border:0;padding:0}
-.block .verdict .review-required{font-size:var(--t-base)}.score-scope{font-size:var(--t-base);line-height:1.7}
-.score-scope b{font-weight:600}.block .coverage{border:0;border-block:1px solid var(--rule);border-radius:0;background:transparent}
-fieldset{border:1px solid var(--rule);border-radius:7px;padding:16px;margin:0 0 15px;min-width:0}legend{font:var(--t-sm) var(--mono);color:var(--accent);padding:0 8px}.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0}.actions .button{margin:0}
-details{border:1px solid var(--rule);border-radius:7px;padding:16px 20px;background:var(--panel);margin:20px 0}summary{cursor:pointer;font-size:var(--t-base);color:var(--soft);min-height:44px;padding:10px 0;line-height:1.6}details[open]>summary{margin-bottom:20px}
-.block{border-left:3px solid var(--vc);padding:0 0 0 20px;margin-top:28px}.block h2{font-size:23px;overflow-wrap:anywhere}.verdict{border-radius:7px;padding:20px}.verdict .v{font-size:22px}.verdict .s{font-size:28px}.verdict .n{font-size:var(--t-sm)}.gate,.note,.stability{border-radius:5px;font-size:var(--t-md)}.gate .src{color:var(--soft)}
-th,td{padding:12px;font-size:var(--t-sm)}th{font-size:var(--t-xs);letter-spacing:.5px}table{border-radius:7px}.tw{border-radius:7px}.ev{font-size:var(--t-sm)}.meta{font-size:var(--t-xs);letter-spacing:.5px}.bar{border:0;height:6px;border-radius:10px}.bar i{border-radius:10px}.note{line-height:1.7}.tnote{font-size:var(--t-sm)}.src,.sources{overflow-wrap:anywhere}
-pre{font-size:var(--t-sm);line-height:1.8;overflow-wrap:anywhere;padding:20px;background:var(--panel);border:1px solid var(--rule);border-radius:8px}.notice{padding:14px 18px;border:1px solid #4e4531;border-radius:7px;background:#252219;color:#e1c68e;font-size:var(--t-sm);margin:15px 0}
-.reading-summary{max-width:75ch;margin:26px 0}.reading-summary p{font-size:var(--t-base);line-height:1.75}.subject{overflow-wrap:anywhere;margin-top:28px}
-.reading-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 30px;margin:24px 0;padding:20px 0;border-block:1px solid var(--rule)}
-.reading-facts dt{font-size:var(--t-sm);color:var(--soft)}.reading-facts dd{margin:4px 0 0;font-size:var(--t-lg);font-weight:600;overflow-wrap:anywhere}
-.priority-list dt,.term-list dt{font-weight:600;margin-top:18px}.priority-list dd,.term-list dd{margin:5px 0 16px;max-width:75ch;color:var(--soft);line-height:1.75}
-caption{text-align:left;padding:12px;color:var(--soft);font-size:var(--t-sm)}.result-help{max-width:75ch;line-height:1.75}
-@media(max-width:700px){.reading-facts{grid-template-columns:1fr}.reading-summary p{font-size:var(--t-base)}.reading-facts dd{font-size:var(--t-lg)}}
-/* Inline prose and footer links sit in small type, which on a touch screen
-   leaves a 12-15px tap target -- under the 24px WCAG 2.5.8 floor, and fiddly
-   for anyone holding a tablet in a plant. Give them a real height on small
-   screens without disturbing the desktop line height. Buttons and form
-   controls already carry 44px of their own. */
-@media(max-width:700px){
- .helper a,footer a,.empty a,.tnote a{display:inline-block;min-height:24px;line-height:24px}
+
+SHELL_CSS = """
+:root{--ink:var(--text);--soft:var(--text-2);--faint:var(--muted);--panel:var(--surface);--field:var(--ground);--sunk:var(--bar);--cond:var(--conditional);--sans:var(--font-sans);--mono:var(--font-mono)}
+body.app{background:var(--ground);color:var(--text);font-size:.875rem;line-height:1.5}
+.rt-header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s8) var(--s24);padding:var(--s12) var(--s24);background:var(--bar);border-bottom:1px solid var(--rule)}
+.rt-brand{display:inline-flex;align-items:center;gap:var(--s8);color:var(--text);text-decoration:none}
+.rt-brand:hover{color:var(--text)}
+.rt-brand .rt-icon{color:var(--action)}
+.rt-wordmark{font-family:var(--font-sans);font-weight:700;font-size:1rem;letter-spacing:.02em}
+.rt-model{font-family:var(--font-mono);font-size:.75rem;line-height:1;color:var(--muted);border:1px solid var(--rule);border-radius:3px;padding:var(--s2) var(--s6)}
+.rt-nav ul{display:flex;gap:var(--s4)}
+.rt-nav a{display:inline-flex;align-items:center;min-height:36px;padding:0 var(--s12);color:var(--text-2);text-decoration:none;font-weight:500;border-bottom:2px solid transparent}
+.rt-nav a:hover{color:var(--text)}
+.rt-nav a[aria-current=page]{color:var(--text);border-bottom-color:var(--action)}
+.rt-search{flex:1 1 260px;max-width:520px;margin:0}
+.rt-search input{display:block;width:100%;height:36px;padding:0 var(--s12);background:var(--ground);color:var(--text);border:1px solid var(--control-border);border-radius:3px;font-family:var(--font-mono);font-size:.8125rem}
+.rt-search input::placeholder{color:var(--muted);opacity:1}
+.rt-snap{margin-left:auto;display:inline-flex;align-items:center;gap:var(--s6);font-family:var(--font-mono);font-size:.75rem;color:var(--muted);white-space:nowrap}
+.rt-snap--current [aria-hidden]{color:var(--prefer)}
+.rt-snap--stale{color:var(--text-2)}
+.rt-snap--stale [aria-hidden]{color:var(--conditional)}
+.rt-snap--missing{color:var(--text-2)}
+.rt-snap--missing [aria-hidden]{color:var(--avoid)}
+main.wrap{max-width:1360px;margin:0 auto;padding:var(--s24) var(--s24) var(--s48)}
+.rt-page-sub{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);margin:0 0 var(--s12)}
+.rt-related{display:flex;flex-wrap:wrap;gap:var(--s4) var(--s16)}
+.rt-footer{border-top:1px solid var(--rule);background:var(--bar);color:var(--muted);font-size:.8125rem}
+.rt-footer__in{max-width:1360px;margin:0 auto;padding:var(--s20) var(--s24);display:grid;gap:var(--s8)}
+.rt-footer p{margin:0}
+.rt-footer__claim{color:var(--text-2)}
+.rt-footer__links{display:flex;flex-wrap:wrap;gap:var(--s4) var(--s16)}
+.rt-footer__mode{font-family:var(--font-mono);font-size:.75rem}
+@media(max-width:1099px){
+.rt-header{gap:var(--s8) var(--s16)}
+.rt-brand{order:1}
+.rt-snap{order:2}
+.rt-nav{order:3}
+.rt-search{order:4;flex:1 1 100%;max-width:none}
 }
-.demo-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.demo-cards .panel{margin:0}.demo-cards .step-number{margin-bottom:18px;width:30px}.demo-cards p{font-size:var(--t-md);color:var(--soft)}
-footer{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap;border-top:1px solid var(--rule);margin-top:30px;padding-top:20px;font-size:var(--t-xs);color:var(--faint)}.muted{color:var(--faint)}
-@media(min-width:1500px){.hero h1{font-size:48px}.app .wrap{padding-top:36px}}
-@media(max-width:1100px){.sidebar{width:205px;padding:24px 13px}.workspace{margin-left:205px}.app .wrap{padding:24px}.topbar{padding:0 24px}.hero h1{font-size:36px}.hero-mark{width:90px;height:90px}.brand{font-size:22px}.brand small{font-size:var(--t-xs)}.split{grid-template-columns:1fr}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid>div:last-child{grid-column:1/-1}}
-@media(max-width:700px){.sidebar{position:static;width:auto;padding:18px;display:block}.brand{margin:0 0 16px}.sidebar nav{display:flex;overflow-x:auto;gap:16px}.nav-group{display:flex;gap:4px;margin:0;flex-shrink:0}.nav-label,.nav-icon,.demo-link,.local-status{display:none}.nav-group a{font-size:var(--t-sm);padding:9px;white-space:nowrap}.workspace{margin:0}.topbar{height:50px;padding:0 18px}.app .wrap{padding:22px 18px}.page-meta{font-size:var(--t-xs);letter-spacing:.4px}.hero h1{font-size:33px}.hero-mark{display:none}.hero{display:block}.metrics{gap:8px}.metric{padding:13px 10px}.metric strong{font-size:22px}.metric span{font-size:var(--t-xs)}.metric small{display:none}.panel{padding:18px}.search-line{flex-direction:column}.search-line button{width:100%}.form-grid,.candidate-grid{grid-template-columns:1fr}.form-panel{padding:16px}.demo-cards{grid-template-columns:1fr}.block{padding-left:10px}.verdict{padding:15px;gap:12px}.offline{font-size:var(--t-xs)}.lead{font-size:var(--t-md)}h1{font-size:29px}.panel-heading{flex-wrap:wrap;gap:3px}.topbar .crumb{margin:0 7px}}
-@media print{.sidebar,.topbar,.page-meta,.actions,form,details:has(form),.skip{display:none!important}.workspace{margin:0}.app .wrap{max-width:none;padding:0}.app{--field:#fff;--panel:#fff;--sunk:#eee;--rule:#aaa;--ink:#111;--soft:#444;--faint:#555;--prefer:#176145;--cond:#805600;--avoid:#9a2424;background:#fff;color:#111}h1{font-size:25px}footer{color:#444}.block{break-inside:auto}.hero-mark{display:none}}
-@media(max-width:700px){.sidebar .desktop-nav{display:none}.mobile-menu{display:block;margin:0;padding:10px 13px}.mobile-menu summary{font-size:var(--t-sm);min-height:44px;display:flex;align-items:center;cursor:pointer}.mobile-menu nav{display:block;overflow:visible}.mobile-menu .nav-group{display:block;margin:15px 0}.mobile-menu .nav-label{display:block;margin-left:9px}.mobile-menu .nav-group a{white-space:normal}.mobile-menu>a{display:block;font-size:var(--t-sm);padding:10px}.sidebar{border-bottom:1px solid var(--rule)}}
+@media(max-width:639px){
+.rt-header{padding:var(--s12) var(--s16)}
+.rt-snap{margin-left:0;white-space:normal}
+.rt-nav{flex:1 1 100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.rt-nav ul{width:max-content}
+.rt-nav a{white-space:nowrap}
+main.wrap{padding:var(--s16) var(--s16) var(--s32)}
+.rt-footer__in{padding:var(--s16)}
+.actions .button,.actions button:not(.rt-btn),.actions .rt-btn{flex:1 1 100%;width:100%}
+}
+@media(pointer:coarse){.rt-search input{font-size:1rem;height:44px}.rt-nav a{min-height:44px}}
 """
+
+PAGE_CSS = """
+main h1{font-family:var(--font-sans);font-weight:600;font-size:1.625rem;line-height:1.25;border:0;padding:0;margin:0 0 var(--s12);max-width:60rem}
+main h2{font-size:1.125rem;font-weight:600;line-height:1.3;border:0;padding:0;margin:0 0 var(--s8)}
+main h3{font-size:1rem;font-weight:600;margin:0 0 var(--s8)}
+.lead{color:var(--text-2);max-width:42rem;font-size:1rem;line-height:1.6;margin:0 0 var(--s20)}
+.eyebrow{font-family:var(--font-mono);font-weight:500;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 var(--s8)}
+.helper{font-size:.8125rem;color:var(--muted);margin:var(--s8) 0 0}
+.muted{color:var(--muted)}
+.empty{color:var(--text-2);font-size:.875rem}
+.panel{border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);padding:var(--s20);margin:0 0 var(--s16)}
+.panel-heading{display:flex;justify-content:space-between;gap:var(--s12);align-items:baseline;margin-bottom:var(--s12)}
+.panel-heading span{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.notice{padding:var(--s12) var(--s16);border:1px solid var(--rule);border-left:3px solid var(--control-border);border-radius:var(--r-lg);background:var(--surface);color:var(--text-2);font-size:.875rem;margin:var(--s12) 0}
+.section-title{display:flex;align-items:baseline;justify-content:space-between;margin:var(--s24) 0 var(--s12)}
+.section-title span{font-family:var(--font-mono);font-size:.8125rem;color:var(--muted)}
+.hero{margin:0 0 var(--s20)}
+.hero h1{font-size:2rem}
+.hero-mark{display:none}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s12);margin:var(--s20) 0}
+.metric{padding:var(--s16);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-card)}
+.metric strong{display:block;font-family:var(--font-mono);font-weight:500;font-size:1.5rem;line-height:1.2;margin-bottom:var(--s4);font-variant-numeric:tabular-nums}
+.metric span{color:var(--text-2);font-size:.8125rem}
+.metric small{display:block;color:var(--muted);font-family:var(--font-mono);font-size:.75rem;margin-top:var(--s6)}
+main form{margin:var(--s16) 0 var(--s20)}
+main label{display:block;color:var(--text-2);font-size:.8125rem;font-weight:500;margin:0 0 var(--s4)}
+main input[type=text],main select{width:100%;max-width:42rem;min-height:40px;padding:var(--s8) var(--s12);font-family:var(--font-sans);font-size:.875rem;color:var(--text);background:var(--ground);border:1px solid var(--control-border);border-radius:var(--r-lg)}
+main input::placeholder{color:var(--muted);opacity:1}
+main input:focus,main select:focus{outline:2px solid var(--action);outline-offset:2px}
+main button:not(.rt-btn),main .button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 var(--s16);background:var(--action);color:var(--on-action);border:1px solid var(--action);border-radius:var(--r-lg);font-family:var(--font-sans);font-weight:600;font-size:.875rem;cursor:pointer;text-decoration:none;white-space:nowrap;margin-top:var(--s12)}
+main button:not(.rt-btn):hover,main .button:hover{background:var(--action-hover);border-color:var(--action-hover);color:var(--on-action)}
+main .button.secondary{background:transparent;border-color:var(--control-border);color:var(--text)}
+main .button.secondary:hover{background:var(--raised);color:var(--text);border-color:var(--text)}
+.search-form{margin:0}
+.search-line{display:flex;gap:var(--s8)}
+.search-line input{max-width:none}
+.search-line button{margin:0;min-width:128px}
+.chips{display:flex;gap:var(--s8);flex-wrap:wrap;margin-top:var(--s12);align-items:center}
+.chips>span{color:var(--muted);font-size:.8125rem}
+.chip{border:1px solid var(--rule);background:var(--raised);border-radius:var(--r-md);padding:var(--s2) var(--s8);font-family:var(--font-mono);font-size:.8125rem;color:var(--text-2);text-decoration:none}
+.chip:hover{border-color:var(--action);color:var(--text)}
+.split{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--s16)}
+.split .panel{margin:0}
+.steps{list-style:none;padding:0;margin:var(--s16) 0 0;display:grid;gap:var(--s16)}
+.steps li{display:flex;gap:var(--s12)}
+.step-number{font-family:var(--font-mono);font-size:.8125rem;color:var(--action);border:1px solid var(--rule);background:var(--raised);border-radius:var(--r-md);min-width:28px;height:28px;display:grid;place-items:center}
+.steps b{font-weight:600}
+.steps p{font-size:.8125rem;color:var(--muted);margin:var(--s2) 0 0}
+.example{display:flex;align-items:center;justify-content:space-between;padding:var(--s12) 0;text-decoration:none;border-bottom:1px solid var(--rule-row);color:var(--text)}
+.example:last-child{border:0;padding-bottom:0}
+.example small{display:block;color:var(--muted);font-size:.8125rem;margin-top:var(--s2)}
+.example .arrow{color:var(--action);margin-left:var(--s8)}
+.rows{display:grid;gap:var(--s8)}
+.hit{display:block;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);padding:var(--s12) var(--s16);text-decoration:none;color:var(--text)}
+.hit:hover{border-color:var(--action);background:var(--raised);color:var(--text)}
+.hit .w{display:block;font-family:var(--font-mono);font-size:.8125rem;line-height:1.6;color:var(--muted);margin-top:var(--s4)}
+.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s12)}
+.form-grid input,.candidate-grid input,.lookup-grid input,.order-field input{max-width:none}
+.form-grid>div:last-child{grid-column:1/-1}
+.candidate-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s12)}
+.order-field{margin-bottom:var(--s16);max-width:100%}
+.form-panel{background:var(--surface);border:1px solid var(--rule);padding:var(--s20);border-radius:var(--r-card)}
+.form-panel>p:first-child{margin-top:0}
+.form-panel .helper{max-width:none}
+.form-divider{font-size:.8125rem;color:var(--muted);margin:var(--s16) 0}
+.site-context{margin-top:var(--s20)}
+.site-context h3{margin-bottom:var(--s12)}
+.site-context .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16)}
+.site-context .form-grid>div:last-child{grid-column:auto}
+.site-context label{min-height:2.8em}
+.form-options{padding:var(--s12) 0;border-width:1px 0 0;border-radius:0;background:transparent;margin:var(--s16) 0}
+.form-options .helper{margin-bottom:var(--s12)}
+.form-options .candidate-grid,.form-options .form-grid{margin-top:var(--s12)}
+.form-options summary{font-weight:600}
+.lookup-form{max-width:58rem}
+.lookup-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16)}
+.lookup-edit{margin:var(--s16) 0}
+.lookup-edit form{margin-bottom:0}
+.supplier-questions{max-width:75ch;padding-left:var(--s24);list-style:decimal}
+.supplier-questions>li{padding:var(--s12) 0;border-bottom:1px solid var(--rule-row)}
+.supplier-questions>li>p{margin:0 0 var(--s8);line-height:1.6}
+.supplier-questions details{background:transparent;border:0;padding:0;margin:var(--s8) 0}
+.supplier-questions details p,.supplier-questions details li{color:var(--text-2)}
+.assumption-summary{max-width:75ch;line-height:1.6;margin:var(--s16) 0;color:var(--text-2)}
+.assumption-summary b{color:var(--text)}
+.assessment-edit,.assessment-downloads{margin:var(--s12) 0}
+.assessment-edit .form-panel{border:0;padding:0}
+.edit-effects{color:var(--text-2)}
+.block .coverage{border:0;border-block:1px solid var(--rule);border-radius:0;background:transparent}
+fieldset{border:1px solid var(--rule);border-radius:var(--r-card);padding:var(--s16);margin:0 0 var(--s12);min-width:0}
+legend{font-family:var(--font-mono);font-size:.8125rem;color:var(--text-2);padding:0 var(--s8)}
+.actions{display:flex;gap:var(--s8);flex-wrap:wrap;align-items:center;margin:var(--s16) 0}
+.actions .button{margin:0}
+details{border:1px solid var(--rule);border-radius:var(--r-card);padding:var(--s12) var(--s16);background:var(--surface);margin:var(--s16) 0}
+summary{cursor:pointer;color:var(--text-2);min-height:36px;padding:var(--s8) 0;line-height:1.5}
+summary:hover{color:var(--text)}
+details[open]>summary{margin-bottom:var(--s12)}
+.evidence-details,.assessment-more-info{background:transparent}
+.block{padding-left:var(--s16)}
+.block h2{font-size:1.25rem;overflow-wrap:anywhere}
+.verdict{border-radius:var(--r-card);background:var(--surface)}
+.gate,.caution,.note,.stability{border-radius:var(--r-lg)}
+.bar{border:0;border-radius:var(--r-md)}
+.bar i{border-radius:var(--r-md)}
+table{border-radius:var(--r-card);background:var(--surface)}
+.tw{border-radius:var(--r-card)}
+th,td{padding:var(--s8) var(--s12);font-size:.8125rem;border-color:var(--rule-row)}
+th{font-family:var(--font-mono);font-size:.75rem;font-weight:500;letter-spacing:.06em;color:var(--muted);background:var(--bar)}
+caption{text-align:left;padding:var(--s8) var(--s12);color:var(--text-2);font-size:.8125rem}
+th.n,td.n{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tnote{font-size:.8125rem;color:var(--muted)}
+.meta{font-size:.75rem}
+.src,.sources{overflow-wrap:anywhere}
+pre{font-size:.8125rem;line-height:1.5;overflow-wrap:anywhere;padding:var(--s16);background:var(--bar);border:1px solid var(--rule);border-radius:var(--r-lg)}
+.reading-summary{max-width:75ch;margin:var(--s20) 0}
+.reading-summary p{line-height:1.6}
+.subject{overflow-wrap:anywhere;margin-top:var(--s24)}
+.reading-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16) var(--s24);margin:var(--s20) 0;padding:var(--s16) 0;border-block:1px solid var(--rule)}
+.reading-facts dt{font-size:.8125rem;color:var(--muted)}
+.reading-facts dd{margin:var(--s4) 0 0;font-size:1.125rem;font-weight:600;overflow-wrap:anywhere}
+.priority-list dt,.term-list dt{font-weight:600;margin-top:var(--s16)}
+.priority-list dd,.term-list dd{margin:var(--s4) 0 var(--s12);max-width:75ch;color:var(--text-2);line-height:1.6}
+.score-scope{line-height:1.6}
+.result-help{max-width:75ch;line-height:1.6}
+.demo-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16)}
+.demo-cards .panel{margin:0}
+.demo-cards .step-number{margin-bottom:var(--s12);width:32px}
+.demo-cards p{color:var(--text-2)}
+@media(max-width:1099px){.split{grid-template-columns:1fr}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid>div:last-child{grid-column:1/-1}}
+@media(max-width:639px){
+.helper a,footer a,.empty a,.tnote a{display:inline-block;min-height:24px;line-height:24px}
+.metrics{gap:var(--s8)}
+.metric{padding:var(--s12) var(--s8)}
+.metric strong{font-size:1.25rem}
+.metric small{display:none}
+.panel{padding:var(--s16)}
+.search-line{flex-direction:column}
+.search-line button{width:100%}
+.form-grid,.candidate-grid,.lookup-grid,.site-context .form-grid,.reading-facts,.demo-cards{grid-template-columns:1fr}
+.site-context label{min-height:0}
+.form-panel{padding:var(--s12)}
+.lookup-form button{width:100%}
+.block{padding-left:var(--s8)}
+.panel-heading{flex-wrap:wrap;gap:var(--s2)}
+main h1{font-size:1.375rem}
+}
+"""
+
+# One stylesheet, one order (Redesign-plan A2): later layers win ties, and
+# report.RESULT_CSS's legacy rules must come before the shell that overrides them.
+STYLESHEET = (design.theme_css(design.DARK, ":root") + assets.font_face_css(served=True)
+              + design.BASE_CSS + components.CSS + evidenceview.CSS + report.RESULT_CSS
+              + SHELL_CSS + PAGE_CSS + design.PRINT_CSS)
+
+# Kept so callers that took the old name still get the page-level rules.
+CSS = SHELL_CSS + PAGE_CSS

@@ -1531,11 +1531,11 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
 
         def do_GET(self):
             if not host_allowed(self.headers.get("Host")):
-                self._send(403, _page(
-                    "Refused", "<h1>Wrong name for this server</h1>"
-                    "<p>The request addressed this server by a name that is "
+                self._send(403, webui.error_page(
+                    "Refused", "Wrong name for this server",
+                    "The request addressed this server by a name that is "
                     "not local. That is what a DNS-rebinding page looks like, "
-                    "so it was refused.</p>"))
+                    "so it was refused.", '<p><a href="/">Open the home page</a></p>'))
                 return
             parsed = urllib.parse.urlparse(self.path)
             capacity = getattr(self.server, '_calculations', None)
@@ -1552,23 +1552,36 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                 capacity.release()
 
         def _dispatch_get(self, parsed):
+            # The snapshot status in the page header reads the index provenance
+            # through a ContextVar, so the ~15 page functions need not carry it.
+            # Reset in finally: a worker thread is reused for the next request.
+            token = webui.CURRENT_SNAPSHOT.set(provenance)
+            try:
+                self._dispatch_get_scoped(parsed)
+            finally:
+                webui.CURRENT_SNAPSHOT.reset(token)
+
+        def _dispatch_get_scoped(self, parsed):
             params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             try:
                 page = page_for(parsed.path, params)
             except InvalidComparison as error:
-                self._send(400, _page("Procurement comparison", '<h1>Complete the shortlist</h1>'
-                                      f'<p role="alert">{_esc(error)}</p>'
-                                      '<a href="/compare">Edit candidates →</a>'))
+                self._send(400, webui.error_page(
+                    "Procurement comparison", "Complete the shortlist", str(error),
+                    '<p><a href="/compare">Edit candidates →</a></p>'))
                 return
             except Exception as error:
                 # A malformed query is the user's typo, not a crash. The message
                 # is escaped like everything else and the server stays up.
-                self._send(500, _page("Error", "<h1>That did not work</h1>"
-                                      f"<p>{_esc(error)}</p>"))
+                self._send(500, webui.error_page(
+                    "Error", "That did not work", str(error),
+                    '<p><a href="">Try again</a> or <a href="/">return to search</a>.</p>'))
                 return
             if page is None:
-                self._send(404, _page("Not found", "<h1>No such page</h1>"
-                                      '<p><a href="/">Start again</a>.</p>'))
+                self._send(404, webui.error_page(
+                    "Not found", "No such page",
+                    "Nothing in this workspace answers that address.",
+                    '<p><a href="/">Start again</a></p>'))
                 return
             self._send(200, page)
 
