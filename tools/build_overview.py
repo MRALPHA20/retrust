@@ -48,7 +48,7 @@ def footer(c,doc):
     w,h=doc.pagesize
     c.setStrokeColor(LINE);c.line(48,45,w-48,45)
     c.setFont('Helvetica',8);c.setFillColor(SOFT)
-    c.drawString(48,30,'RETRUST / Technical overview / RT4 / 20 October 2026')
+    c.drawString(48,30,'RETRUST / Technical overview / RT8 / 28 October 2026')
     c.drawRightString(w-48,30,f'{doc.page}')
     c.setFillColor(TEAL);c.rect(0,h-7,w,7,fill=1,stroke=0)
     c.restoreState()
@@ -59,15 +59,22 @@ def build():
     bt=json.loads((DATA/'backtest.json').read_text())['backtest']
     latency=json.loads((DATA/'latency.json').read_text())
     matched=bt['matched_cohort']
+    corpus=dict(advisories=3989,products=29370,cves=12532)
+    db=ROOT/'data/retrust.db'
+    if db.exists():
+        import sqlite3,sys
+        sys.path.insert(0,str(ROOT))
+        from retrust import index
+        corpus=index.stats(sqlite3.connect(f'{db.resolve().as_uri()}?mode=ro',uri=True))
     story=[]
     story += page('ReTrust','OT procurement intelligence / 0.1.0')
     story += [p('Cyber-risk evidence before the purchase order','H1'),Spacer(1,13),
         p('What the tool does, how it works, measured benchmarks, and where it fits alongside other security tools.'),
-        Spacer(1,13),note('The decision it supports','A procurement team has a shortlist of industrial controllers, switches or other OT products. ReTrust collects the public security evidence for each named candidate and turns it into a traceable review: PREFER, CONDITIONAL, VERIFY, AVOID or NOT ASSESSED. VERIFY means material site or firmware evidence remains unresolved.'),Spacer(1,18),
+        Spacer(1,13),note('The decision it supports','A procurement team has a shortlist of industrial controllers, switches or other OT products. ReTrust collects the public security evidence for each named candidate and turns it into a traceable review: PREFER, CONDITIONAL, VERIFY or AVOID. VERIFY means material site or firmware evidence remains unresolved; a product with no usable evidence is VERIFY across its full range.'),Spacer(1,18),
         p('Why it is useful','H2'),
         p('A requisition often arrives with a manufacturer, model, order number and proposed firmware, before there is a device to inspect. Reviewing advisories, exploitation signals, fixes and supplier restrictions separately makes it hard to compare candidates consistently.'),
         p('ReTrust brings that work into one local workflow. It helps buyers find disqualifying evidence early, ask the supplier specific questions, and preserve the rationale with the procurement record.'),
-        table(['PUBLIC EVIDENCE','MEASURED CORPUS','LOCAL WORKFLOW'],[['3,937 CSAF advisories','28,951 product entries<br/>12,061 distinct CVEs','CLI, interactive menu<br/>and browser workspace']],[166,167,166]),Spacer(1,14),
+        table(['PUBLIC EVIDENCE','MEASURED CORPUS','LOCAL WORKFLOW'],[[f"{corpus['advisories']:,} CSAF advisories",f"{corpus['products']:,} product entries<br/>{corpus['cves']:,} distinct CVEs",'CLI, interactive menu<br/>and browser workspace']],[166,167,166]),Spacer(1,14),
         p('Audience: OT security engineers, procurement teams, integrators and security reviewers. OT means operational technology, including equipment used to control or monitor physical processes.','Small'),
         p('Scope: public-evidence decision support. Scores are not probabilities of compromise, a certification, or a replacement for engineering acceptance tests.','Small'),PageBreak()]
 
@@ -80,19 +87,19 @@ def build():
         ['5. Assess','Apply hard gates and calculate weighted evidence pillars. Show missing evidence separately from a good score.'],
         ['6. Review and export','Compare candidates, inspect evidence, prepare supplier questions, and retain HTML, JSON, CSV or VEX output as appropriate.']],[100,399]),Spacer(1,17),
         p('Why manufacturer order numbers matter','H2'),
-        p('In this local CISA OT corpus, only 60 of 28,951 product entries carry a CPE identifier (0.21%). Declared order numbers appear on 8,211 entries (28.36%); including recovered numbers raises coverage to 9,575 entries (33.07%).'),
+        p('Measured on 28 September 2026 across the local CISA OT corpus, only 60 of 28,951 product entries carried a CPE identifier (0.21%). Declared order numbers appear on 8,211 entries (28.36%); including recovered numbers raises coverage to 9,575 entries (33.07%).'),
         p('That is about 137 times as many entries with declared order numbers as with CPE. It supports ReTrust\'s choice of input identifier for this dataset. It does not measure a scanner\'s total identifier coverage or its performance on industrial networks.'),
         note('An advisory product entry is not a unique device','The same product can appear in multiple advisories. Corpus totals describe records, not installed assets or unique hardware models.'),PageBreak()]
 
     story += page('How to read a verdict','02 / Scoring and safeguards')
     story += [p('Higher scores indicate more favorable evidence under the configured weights. The default composite is a weighted product of four pillars (exposure, patch availability, vendor practice, certification); evidence quality is reported separately and never scored.'),
         table(['PILLAR','WEIGHT','EVIDENCE USED'],[
-        ['Exposure safety','60%','T x A x H x U, concentrated on the three largest review units'],['Patch availability','20%','Vendor fix, mitigation/workaround, unavailable or unknown remedy'],['Vendor practice','15%','Advisory completeness and published security-advisory practice'],['Certification','5%','Available certification evidence and product scope']],[112,57,330]),Spacer(1,13),
+        ['Exposure safety','60%','T x I x A x H x U, concentrated on the three largest review units'],['Patch availability','20%','Vendor fix, mitigation/workaround, unavailable or unknown remedy'],['Vendor practice','15%','Advisory completeness and published security-advisory practice'],['Certification','5%','Available certification evidence and product scope']],[112,57,330]),Spacer(1,8),
         p('S = E^0.60 x P^0.20 x V^0.15 x C^0.05','Code'),
-        table(['DEFAULT BAND','READING'],[['PREFER: 80-100','More favorable evidence; still review scope and suitability.'],['CONDITIONAL: 60-&lt;80','Review mitigations, supplier commitments and evidence gaps.'],['VERIFY','Confirm material reachability, consequence, threat or firmware evidence; a provisional range is shown.'],['AVOID: &lt;40, or a gate','A numeric band or a disqualifying gate triggers this result.'],['NOT ASSESSED','Insufficient product evidence; no numeric score is given.']],[157,342]),Spacer(1,13),
+        table(['DEFAULT BAND','READING'],[['PREFER: 80-100','More favorable evidence; still review scope and suitability.'],['CONDITIONAL: 60-&lt;80','Review mitigations, supplier commitments and evidence gaps.'],['VERIFY','Confirm material reachability, consequence, threat or firmware evidence; a provisional range is shown.'],['AVOID: &lt;60, or a gate','A numeric band or a disqualifying gate triggers this result.']],[157,342]),Spacer(1,8),
         p('Reachability is read per weakness','H2'),
-        p('A reaches 1 only where the flaw\'s own CVSS attack vector fits the answer: a reachable service settles a network or adjacent flaw; a local or physical one also needs execution or contact, so it stays a range. A verified block is 0. Network context is recorded, never scored. H uses credible OT consequences, not CVSS/10; controls change A rather than patching U.'),
-        p('R = min(1, Z1 + .20 Z2 + .10 Z3); E = 100(1-R). Duplicate advisories for one CVE count once. Default CVE groups do not establish independent paths. Missing threat sources and unresolved A, H or U remain explicit. Pillars enter the product with a floor of 1; missing non-exposure pillars are excluded and weights are adjusted.','Small'),
+        p('T is the strongest of KEV, LEV and EPSS, floored for the equipment\'s service life by how the flaw is reached (wormable .50, other network .30, local .15, physical .05); I is the CVSS base score / 10. A reaches 1 only where the flaw\'s own CVSS attack vector fits the answer: a reachable service settles a network or adjacent flaw; a local or physical one also needs execution or contact, so it stays a range. A verified block is 0. Network context is recorded, never scored. H uses credible OT consequences, not CVSS/10; controls change A rather than patching U.'),
+        p('R = min(1, Z1 + .20 Z2 + .10 Z3); E = 100(1-R). Duplicate advisories for one CVE count once. Default CVE groups do not establish independent paths. Pillars enter the product with a floor of 1; a missing non-exposure pillar keeps its weight and enters at a neutral 50. Bands read the score as displayed, to one decimal.','Small'),
         p('Gates override a score','H2'),
         p('Known exploitation, ransomware linkage, a critical likely-exploited flaw without a remedy, or configured supplier-screening evidence can force AVOID. Screening can block an unresolved product when vendor evidence is sufficient. [1]'),
         PageBreak()]
@@ -112,10 +119,10 @@ def build():
     story += page('Speed and predictive limits','04 / Runtime and historical diagnostics')
     latency_rows=[[r['case'],f"{r['median_ms']:.1f} ms",f"{r['p95_ms']:.1f} ms"] for r in latency['results']]
     story += [p('Local command latency','H2'),table(['CASE','MEDIAN','P95'],latency_rows,[313,93,93]),Spacer(1,9),
-        p('20 serial fresh CLI processes per case after one warm-up; warm OS cache; stdout discarded. Wall-clock time includes Python startup. P95 uses the nearest-rank method. These are retained pre-RT4 measurements on a shared development machine, not current RT4 latency, a load test or a cross-tool benchmark.','Small'),
+        p('20 serial fresh CLI processes per case after one warm-up; warm OS cache; stdout discarded. Wall-clock time includes Python startup. P95 uses the nearest-rank method. These are retained pre-RT4 measurements on a shared development machine, not current RT8 latency, a load test or a cross-tool benchmark.','Small'),
         p(f"Environment: Python {escape(latency['python'])}; {escape(latency['cpu'])}; {latency['logical_cpus']} logical CPUs reported. Database: {latency['database_bytes']/1024/1024:.1f} MiB. Full environment details and raw summaries are in docs/benchmarks/latency.json.",'Small'),Spacer(1,10),
         p('Does a higher score predict fewer later vulnerabilities?','H2'),
-        p('The retained pre-RT4 backtest does not establish that and does not validate RT4. At a 2022-01-01 cutoff, 5,848 products are scored on pre-cutoff advisories and compared with later CVE disclosure. The diagnostic uses 1,000 seeded permutations.'),
+        p('The retained pre-RT4 backtest does not establish that and does not validate RT8. At a 2022-01-01 cutoff, 5,848 products are scored on pre-cutoff advisories and compared with later CVE disclosure. The diagnostic uses 1,000 seeded permutations.'),
         table(['COMPARISON','SPEARMAN RHO'],[['Score vs later CVE count, pooled',f"{bt['rho_score_vs_future_cves']:+.3f}"],[f"Within vendor, {matched['products']:,} products",f"{matched['rho_within_vendor']:+.3f}"],['Within vendor, excluding Siemens',f"{matched['rho_excluding_largest_vendor']:+.3f}"]],[362,137]),Spacer(1,12),
         p('The positive association weakens when vendor effects are controlled. This is consistent with disclosure and research-exposure effects; it does not prove a causal explanation. Only two products across two vendors qualify for the later-KEV outcome, too few for an exploitation-rate claim.'),
         note('A defensible boundary','Use the score to organize current evidence and questions. This backtest does not validate the score as a predictor of real-world compromise.'),PageBreak()]
@@ -136,7 +143,7 @@ def build():
     shot=ROOT/'docs/assets/workspace-comparison.png'
     if shot.exists():
         im=Image(str(shot)); im.drawHeight=im.imageHeight*499/im.imageWidth; im.drawWidth=499
-        story += [im,Spacer(1,9),p('Actual local RT4 browser capture. Without the site and firmware evidence, ungated candidates require verification rather than receiving a completed recommendation.','Small')]
+        story += [im,Spacer(1,9),p('Actual local RT8 browser capture. Without the site and firmware evidence, ungated candidates require verification rather than receiving a completed recommendation.','Small')]
     story += [p('1. Start with the requisition. Enter an order number or vendor/model and, where known, firmware. Verify that the resolved product is the intended variant.'),
         p('2. Read the deciding evidence. Purchase blockers force AVOID. Otherwise missing attack access, credible OT consequence or firmware applicability produces VERIFY, a provisional range and specific checks.'),
         p('3. Resolve the checks with a network owner, operations engineer and supplier. Weight sensitivity is deferred while material evidence is missing. When inputs are resolved, it tests how much the result depends on weights.'),
@@ -148,13 +155,13 @@ def build():
         p('Setup needs network access to obtain sources. Once populated, assessments run locally. The browser workspace defaults to 127.0.0.1:8765. The core package requires Python 3.10+ and no third-party Python runtime packages; some setup, signature and screenshot commands use external tools.'),
         p('Reproduce the measurements','H2'),
         p('python3 -m retrust.cli eval --sample 4000 --json eval.json<br/>python3 -m retrust.cli backtest --permutations 1000<br/>python3 -m pytest -q<br/>bash smoke.sh','Code'),
-        p('Local verification: 947 automated tests passed; 94 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases, including guards against injection, SSRF and decompression-bomb inputs. They do not constitute an independent security audit.'),
+        p('Local verification on 28 October 2026: 1,091 automated tests passed on Windows and 1,086 on Linux; 94 of 94 real-data smoke checks passed. These cover command workflows, HTTP routes, parsing, output and regression cases, including guards against injection, SSRF and decompression-bomb inputs. They do not constitute an independent security audit.'),
         p('Know the remaining gaps','H2'),
         p('<b>Evidence coverage:</b> absent advisories, missing certification or uncertain ranges are not proof of safety. Family-level queries can collect several variants; prefer precise identifiers.'),
         p('<b>Scoring:</b> weights and gates encode a review policy. Certification may be vendor-level, screening requires scope confirmation, and raw disclosure volume is not a risk ground truth.'),
         p('<b>Operations:</b> the local web UI has no multi-user authentication or enterprise case-management workflow, but it is read-only and answers GET requests only, exposing none of the commands that fetch data or change the index. Preserve provenance and snapshots, confirm advisory origin with verify (--strict in a pipeline), review source freshness with doctor, and recheck supplier evidence before a decision.'),
         p('<b>Next validation:</b> build an independently labeled product/version set, measure extra matches and abstention quality, record buyer usability results, and evaluate outcomes across vendors and time.'),
-        note('Reproducibility record',f"Data captured locally on 28 September 2026. SQLite SHA-256:<br/><font face='Courier' size='7.7'>{latency['database_sha256']}</font><br/>Benchmark JSON/text and this PDF builder are retained in the repository."),PageBreak()]
+        note('Reproducibility record',f"Benchmark data captured locally on 28 September 2026. SQLite SHA-256:<br/><font face='Courier' size='7.7'>{latency['database_sha256']}</font><br/>Benchmark JSON/text and this PDF builder are retained in the repository."),PageBreak()]
 
     story += page('Sources and evidence record','08 / References')
     sources=[
@@ -172,7 +179,7 @@ def build():
     story += [Spacer(1,13),p('Evidence retained with the project','H2'),
         p('docs/benchmarks/evaluation.json and evaluation.txt<br/>docs/benchmarks/backtest.json and backtest.txt<br/>docs/benchmarks/latency.json<br/>docs/benchmark-report.md<br/>docs/tool-comparison.md<br/>tools/build_overview.py','Code'),
         p('Comparison sources [3-9] were read on 28 September 2026. CISA data claims come from the locally indexed corpus and provenance; the public KEV page was not retrievable during report preparation. Product descriptions are summaries, not endorsements or exhaustive feature inventories.','Small'),
-        p('The benchmark cohort is derived from this tool\'s indexed public corpus. Source publication dates and local capture dates differ. The historical feasibility plan is kept as an explicitly labeled archive.','Small')]
+        p('The benchmark cohort is derived from this tool\'s indexed public corpus. Source publication dates and local capture dates differ.','Small')]
     OUT.parent.mkdir(parents=True,exist_ok=True)
     doc=SimpleDocTemplate(str(OUT),pagesize=(595.28,841.89),leftMargin=48,rightMargin=48,topMargin=39,bottomMargin=61,title='ReTrust - Overview, Benchmarks and Tool Comparison',author='ReTrust project',subject='OT procurement evidence and reproducible evaluation')
     doc.build(story,onFirstPage=footer,onLaterPages=footer)
