@@ -46,7 +46,7 @@ DEFAULT_PORT = 8765
 # The editable-inputs panel is named in prose as well as on the control, and a
 # notice that quotes a label the page does not carry sends the reader looking
 # for something that is not there. One constant, so they cannot drift.
-EDIT_PANEL = "Edit product, firmware, or network exposure"
+EDIT_PANEL = "Inputs: product, firmware and network exposure"
 
 
 from .identity import build_fingerprint
@@ -277,19 +277,15 @@ CONSERVATIVE = {'consequence': ('safety',), 'interface': ('exposed',),
                 'remediation': ('affected', 'available')}
 
 # Phrases in an assessment's verification list, and the form field that
-# closes each. The checklist words some questions differently from the form.
-OPEN_QUESTIONS = (
-    ('"Network exposure"', 'network_exposure'),
-    ('"Attack reachability (A)"', 'interface'),
-    ('"Exploitation prerequisites"', 'prerequisites'),
-    ('"Credible operational impact (H)"', 'consequence'),
-    ('"Is the firmware you are getting already fixed?"', 'remediation'),
-    ('exact firmware version', 'version'),
-    ('Re-check the version', 'version'),
-    ('Resolve the conflict', 'version'),
-)
-DATA_GAPS = ('Exploitation data is missing', 'CVSS base score is missing',
-             'Review the attack requirements')
+# closes each. One table, owned by report.py, because the gap cards on the page
+# and the "still open" sentence here must name the same fields; this name stays
+# as an alias for callers that already import it.
+OPEN_QUESTIONS = report.GAP_RULES
+DATA_GAPS = tuple(phrase for phrase, _, _ in report.DATA_GAP_RULES)
+
+# Component helpers, reached through report so this module needs no new import
+# line (several pages are edited in parallel and import lines conflict).
+components = report.components
 
 
 def _previous_from(params_first):
@@ -454,13 +450,161 @@ def _edit_effects(assess, previous, state, current):
         elif gaps:
             tail += ('<p class="helper">Only data gaps hold the range open, and no answer'
                      ' can close them; see what to check next.</p>')
-    return ('<section class="panel edit-effects" aria-live="polite">'
-            '<h2>Since your last update</h2>'
-            f'<p>{lead}</p><ul>{items}</ul>{tail}</section>')
+    card = components.context_card('Since your last update',
+                                   f'<p>{lead}</p><ul>{items}</ul>{tail}')
+    # context_card has one fixed tag; this one reports an update, not context.
+    card = card.replace('>CONTEXT</p>', '>UPDATE</p>', 1)
+    return f'<div class="edit-effects" aria-live="polite">{card}</div>'
+
+
+# Styles the assess page needs beyond the shared sheets. Token variables only,
+# so a theme change reaches it. Emitted once, with the page body, because the
+# stylesheets that would normally carry it belong to other modules.
+ASSESS_CSS = """
+.rt-assess-actions{display:flex;flex-wrap:wrap;gap:var(--s8);justify-content:flex-end;align-items:center;margin:var(--s12) 0}
+.rt-assess-section{margin-top:var(--s24)}
+.rt-assess-section>h2{margin:0 0 var(--s12);font-size:1.125rem;font-weight:600;line-height:1.3}
+.rt-assess-section .form-panel{border:0;padding:0;background:transparent}
+.rt-assess-lead{margin:var(--s4) 0 var(--s16);color:var(--text-2);max-width:75ch}
+.rt-assess-empty{max-width:720px;margin:var(--s24) auto 0}
+.rt-assess-empty .rt-empty{padding-bottom:var(--s16)}
+.rt-assess-empty .form-panel{width:100%;text-align:left;box-sizing:border-box}
+.order-field .rt-input{height:52px;font-size:1.125rem}
+.rt-sample{display:flex;flex-wrap:wrap;gap:var(--s8);align-items:center;justify-content:center;margin:var(--s12) 0 0}
+.rt-sample span{color:var(--muted);font-size:.8125rem}
+.rt-conditions-card{margin:var(--s20) 0 0;padding:var(--s16);border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);min-width:0}
+.rt-conditions-card>legend{padding:0 var(--s8);font-family:var(--font-mono);font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.rt-conditions-card .rt-conditions{margin-bottom:var(--s12)}
+.rt-conditions-card .helper{margin:0 0 var(--s12)}
+.rt-conditions-card .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16)}
+.rt-conditions-card .form-grid>div:last-child{grid-column:auto}
+.form-panel>.rt-btn{margin-top:var(--s16)}
+.rt-questions{list-style:none;margin:var(--s12) 0 0;padding:0;display:flex;flex-direction:column}
+.rt-q{display:grid;grid-template-columns:2.5rem minmax(0,1fr) auto;gap:var(--s12);padding:var(--s12) 0;border-top:1px solid var(--rule);align-items:start}
+.rt-q:first-child{border-top:0}
+.rt-q__n{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);padding-top:var(--s4)}
+.rt-q__text{margin:0;font-size:.875rem;line-height:1.45;color:var(--text);overflow-wrap:anywhere}
+.rt-q__why{margin-top:var(--s4)}
+.rt-q__why summary{font-size:.8125rem;color:var(--text-2)}
+.rt-q__why p,.rt-q__why li{font-size:.8125rem;color:var(--text-2);overflow-wrap:anywhere}
+.rt-q__gap{font-family:var(--font-mono);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--verify);border:1px dashed var(--verify);border-radius:var(--r-md);padding:var(--s2) var(--s8);text-decoration:none;white-space:nowrap}
+a.rt-q__gap:hover{color:var(--action-hover)}
+.rt-q__foot{margin:var(--s12) 0 0;display:flex;flex-wrap:wrap;gap:var(--s8)}
+.rt-assess-next .rt-related{margin:0;padding:0;list-style:none}
+@media(max-width:639px){.rt-conditions-card .form-grid{grid-template-columns:1fr}.rt-assess-actions{justify-content:stretch}.rt-assess-actions>*,.rt-assess-actions .rt-menu,.rt-assess-actions .rt-menu>.rt-btn{width:100%;box-sizing:border-box}.rt-q{grid-template-columns:2rem minmax(0,1fr)}.rt-q__gap{grid-column:2}}
+"""
+
+# What the evidence table may be asked for in a URL. Anything else is dropped
+# silently: the values are presentation only, so a hand-edited one has nothing
+# to protest about and nothing of it is ever echoed back.
+def _evidence_state(view, base_params):
+    from .evidenceview import DIRS, FILTERS, SORTS, EvidenceView
+    view = view or {}
+    ev = view.get("ev") if view.get("ev") in FILTERS else "all"
+    sort = view.get("sort") if view.get("sort") in SORTS else ""
+    direction = view.get("dir") if view.get("dir") in DIRS else ""
+    return EvidenceView(ev=ev, sort=sort, dir=direction,
+                        show_all=view.get("show") == "all",
+                        base_params=base_params, anchor="evidence")
+
+
+def _advisory_titles(connection, assessment, findings, evidence):
+    """{advisory id: (title, released)} for the CVEs the table actually shows.
+
+    One parameterised query for the shown rows only, so a product with
+    thousands of findings does not pay for titles nobody opens.
+    """
+    import sqlite3
+    from . import evidenceview
+    shown = evidenceview.shown(findings, assessment, evidence)
+    ids = sorted({f.advisory_id for f in shown if f.advisory_id})
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    try:
+        rows = connection.execute(
+            "SELECT id,title,released FROM advisory WHERE id IN (" + marks + ")",
+            ids).fetchall()
+    except sqlite3.Error:
+        return {}
+    return {row[0]: (row[1] or "", row[2] or "") for row in rows}
+
+
+FIELD_IDS = {
+    'order_number': 'field-order-number', 'vendor': 'field-vendor',
+    'product': 'field-product', 'version': 'field-version',
+    'network_exposure': 'field-network-exposure', 'interface': 'field-interface',
+    'prerequisites': 'field-prerequisites', 'consequence': 'field-consequence',
+    'remediation': 'field-remediation', 'assessment_type': 'field-assessment-type',
+}
+
+
+def _gap_target(gap, vendor):
+    """Where a supplier question's GAP tag leads, or "" when nowhere honest.
+
+    Only fragments that exist on this page, or the vendor page for the two
+    pillars (V, C) that have no input here.
+    """
+    if gap == 'ID':
+        return '#' + FIELD_IDS['order_number']
+    if gap == 'E':
+        return '#exposure'
+    if gap == 'P':
+        return '#evidence'
+    if gap in ('V', 'C') and vendor:
+        return '/vendor?name=' + urllib.parse.quote(vendor)
+    return ''
+
+
+def _questions_section(items, vendor, text_query):
+    label = components.panel_label(f'QUESTIONS · {len(items)} FOR THE SUPPLIER')
+    if not items:
+        body = ('<p class="helper">No open questions. Every material input is '
+                'verified.</p>')
+    else:
+        rows = []
+        for number, question in enumerate(items, 1):
+            evidence = ''.join(f'<li>{_esc(item)}</li>' for item in question.evidence)
+            why = (f'<details class="rt-q__why"><summary>Why ask this</summary>'
+                   f'<p>{_esc(question.why)}</p>'
+                   + (f'<ul>{evidence}</ul>' if evidence else '') + '</details>')
+            tag = ''
+            if question.gap:
+                text = f'GAP · {_esc(question.gap)}'
+                target = _gap_target(question.gap, vendor)
+                tag = (f'<a class="rt-q__gap" href="{_esc(target)}">{text}</a>' if target
+                       else f'<span class="rt-q__gap">{text}</span>')
+            rows.append(f'<li class="rt-q"><span class="rt-q__n">{number:02d}</span>'
+                        f'<div><p class="rt-q__text">{_esc(question.text)}</p>{why}</div>'
+                        f'{tag}</li>')
+        body = '<ol class="rt-questions">' + ''.join(rows) + '</ol>'
+    foot = ''
+    if text_query:
+        foot = ('<p class="rt-q__foot">'
+                + components.link_button('Export as .txt', '/annex.txt?' + text_query)
+                + '</p>')
+    return components.card(label + body + foot, id='questions')
+
+
+def _inputs_section(form):
+    return ('<section class="rt-card rt-assess-section" id="inputs" '
+            'aria-labelledby="inputs-title">'
+            f'<h2 id="inputs-title">{_esc(EDIT_PANEL)}</h2>' + form + '</section>')
+
+
+def _export_menu(parameters, resolved):
+    return components.menu('Export evidence', (
+        ('HTML report', f'/export.html?{parameters}', '.html', ''),
+        ('JSON', f'/export.json?{parameters}', '.json', ''),
+        ('CSV', f'/export.csv?{parameters}', '.csv', ''),
+        ('VEX', f'/export.vex.json?{parameters}', 'CycloneDX',
+         '' if resolved else 'Needs an identified product.'),
+    ), 'export-menu', kind='primary')
 
 
 def _score_page(connection, assess, context, vendor, product, version, order_number="",
-                submitted=False, network_exposure=None, owner=None, previous=None):
+                submitted=False, network_exposure=None, owner=None, previous=None,
+                view=None, dossier=None):
     """A verdict first, with editable inputs and the evidence below it."""
     if network_exposure not in score.NETWORK_EXPOSURES:
         network_exposure = None
@@ -478,46 +622,40 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     state = dict(vendor=vendor, product=product, order_number=order_number,
                  version=version, network_exposure=network_exposure,
                  **{key: owner.get(key, default) for key, default in UNDECLARED.items()})
-    form = _score_form(vendor, product, version, order_number, network_exposure,
-                       owner.get("consequence"), owner.get("interface", "unknown"),
-                       owner.get("assessment_type", "purchase"),
-                       owner.get("remediation", "unknown"),
-                       prerequisites=owner.get("prerequisites", "unknown"),
-                       update=bool(vendor or product or order_number),
-                       carried=state if (vendor or product or order_number) else None)
-    if not (vendor or product or order_number):
-        notice = ('<p class="notice" role="alert">Enter a manufacturer order number, '
-                  'or a vendor and product, before assessing.</p>' if submitted else '')
-        return _page('Score', '<h1>Assess a product</h1><p class="lead">'
-                     'Check the equipment before you buy it. Start with its order number '
-                     'or model; leave technical details unknown if you are unsure.</p>'
-                     + notice + form)
+    answers = (network_exposure, owner.get("consequence"), owner.get("interface", "unknown"),
+               owner.get("assessment_type", "purchase"), owner.get("remediation", "unknown"))
+    asked = bool(vendor or product or order_number)
+    if not asked:
+        form = _score_form(vendor, product, version, order_number, *answers,
+                           prerequisites=owner.get("prerequisites", "unknown"))
+        notice = components.alert(
+            'error', 'Nothing to assess yet',
+            'Enter a manufacturer order number, or a vendor and product, '
+            'before assessing.') if submitted else ''
+        return _page('Score', _empty_assess(form, notice))
     assessment, resolution, findings = _run_assessment(
         assess, vendor, product, version, order_number, network_exposure, owner)
     parameters = urllib.parse.urlencode(dict(
         vendor=vendor, product=product, version=version,
         order_number=order_number, network_exposure=network_exposure or "",
         **{key: value or "" for key, value in owner.items()}))
-    body = '<h1>Product assessment</h1>'
-    if recognised:
-        body += ('<p class="notice">Product name recognised. Assessing '
-                 + _esc(recognised.vendor) + ' / ' + _esc(recognised.name) + '.</p>')
-    body += _edit_effects(assess, previous, state, assessment)
-    tools = (f'<details class="assessment-edit"><summary>{EDIT_PANEL}</summary>' + form + '</details>'
-             '<details class="assessment-downloads"><summary>Save or share this assessment</summary>'
-             '<p class="helper">Download a report to discuss with your supplier or purchasing team.</p>'
-             '<div class="actions">'
-             f'<a class="button secondary" href="/export.html?{_esc(parameters)}">Download report ↓</a>'
-             f'<a class="button secondary" href="/export.json?{_esc(parameters)}">Technical data (JSON) ↓</a>'
-             '<a class="button secondary" href="/">Find another product</a></div></details>')
-    if not version and resolution.resolved:
-        tools = ('<p class="notice"><b>Firmware not specified.</b> All known affected versions '
-                 'are in scope. Add the firmware you plan to buy using '
-                 f'\u201c{EDIT_PANEL}\u201d below.</p>') + tools
-    body += report.body([(assessment, resolution, findings)], weights=context['weights'], tools=tools)
-    if resolution.resolved:
-        named = resolution.matches[0]
+    # The answers, minus anything empty, are what every generated link carries
+    # forward. was_* never belongs here: it would re-submit the previous page.
+    base = {key: value for key, value in urllib.parse.parse_qsl(parameters) if value}
+    evidence = _evidence_state(view, base)
+    # A version that was submitted counts as confirmed unless its ranges could
+    # not be decided (Redesign-plan.md item 24).
+    undecided = any(not f.decided for f in findings)
+    firmware_state = 'unverified' if (not version or undecided) else 'verified'
+    form = _score_form(vendor, product, version, order_number, *answers,
+                       prerequisites=owner.get("prerequisites", "unknown"),
+                       update=True, carried=state, firmware_state=firmware_state)
+
+    named = resolution.matches[0] if resolution.resolved else None
+    query = candidate_query = text_query = ''
+    if named:
         query = urllib.parse.urlencode(dict(vendor=named.vendor, product=named.name, version=version))
+        text_query = query
         candidate_fields = dict(
             vendor_0=vendor or ('' if order_number else named.vendor),
             product_0=product or ('' if order_number else named.name),
@@ -526,59 +664,136 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         candidate_fields.update({f'{key}_0': owner.get(key) or default or ''
                                  for key, default in UNDECLARED.items()})
         candidate_query = urllib.parse.urlencode(candidate_fields)
-        body += ('<section class="panel" style="margin-top:24px"><h2>Take the next step</h2><div class="actions">'
-                 f'<a class="button secondary" href="/compare?{_esc(candidate_query)}">Compare this product →</a>'
-                 f'<a class="button secondary" href="/annex?{_esc(query)}">Prepare supplier questions →</a>'
-                 f'<a class="button secondary" href="/alternatives?{_esc(query)}">Find alternatives →</a></div>'
-                 f'<p class="helper"><a href="/vendor?name={urllib.parse.quote(named.vendor)}">Vendor profile</a>'
-                 f' · <a href="/timeline?{_esc(query)}">Advisory timeline</a>'
-                 f' · <a href="/lev?{_esc(query)}">Check past exploitation estimates</a>'
-                 f' · <a href="/ssvc?{_esc(query)}">Plan response priorities</a></p></section>')
-    else:
-        # Recovery for every way a lookup can fail, not just a bad model name.
-        # An order number is matched exactly, so one that found nothing used to
-        # end here with no suggestions at all -- and a product name pasted into
-        # that box is the commonest way to get here.
-        suggestions = search.suggest(connection, vendor=vendor, product=product,
-                                     order_number=order_number)
-        if suggestions['mistyped_order_number']:
-            # Only invite a choice when there is something to choose. A name the
-            # corpus does not know reaches here too, and "choose one below"
-            # followed by "nothing close was found" contradicts itself.
-            body += ('<p class="notice" role="alert">That product name could not '
-                     'be identified. '
-                     + ('Choose a matching product below, or refine it'
-                        if suggestions['products'] else 'Refine it')
-                     + ' under &ldquo;Use vendor and model instead&rdquo;.</p>')
-        elif order_number and not (vendor or product):
-            body += ('<p class="notice" role="alert">No advisory in this corpus '
-                     'names that order number. Check the digits, or search by '
-                     'vendor and model instead.</p>')
-        def recovery_link(hit):
-            # Correct only the failed identity. Keep the owner's firmware and
-            # network answers so choosing a suggestion cannot reset the risk.
-            query = urllib.parse.urlencode(dict(
-                vendor=hit.vendor, product=hit.name, version=version or '',
-                network_exposure=network_exposure or '',
-                **{key: value or '' for key, value in owner.items()}))
-            return (f'<a class="hit" href="/score?{_esc(query)}">'
-                    f'{_esc(hit.vendor)} / {_esc(hit.name)}</a>')
-        rows = ''.join(recovery_link(h) for h in suggestions['products'][:8])
-        if rows:
-            body += f'<h2>Did you mean</h2><div class="rows">{rows}</div>'
-        # A misspelled manufacturer never had a route back either.
-        vendor_rows = ''.join(
-            f'<a class="hit" href="/?q={urllib.parse.quote(h.vendor)}">'
-            f'{_esc(h.vendor)} <span class="meta">{h.products:,} product entries</span></a>'
-            for h in suggestions['vendors'][:5])
-        if vendor_rows:
-            body += (f'<h2>Did you mean this manufacturer?</h2>'
-                     f'<div class="rows">{vendor_rows}</div>')
-        if not rows and not vendor_rows:
-            body += ('<p class="helper">Nothing close was found. Try a shorter '
-                     'model name, the manufacturer on its own, or '
-                     '<a href="/">search the corpus</a>.</p>')
+
+    # Add to comparison must stay the first /compare? link on the page.
+    actions = []
+    if named:
+        actions.append(components.link_button('Supplier questions', f'/annex?{query}'))
+        actions.append(components.link_button('Add to comparison', f'/compare?{candidate_query}'))
+    actions.append(_export_menu(parameters, resolution.resolved))
+
+    profile = None
+    if dossier is not None and resolution.matches:
+        profile = dossier.build(connection, resolution.matches[0].vendor,
+                                screening=context.get('screening', {}),
+                                certificates=context.get('certificates', {}))
+    items = questions.build(assessment, findings, profile)
+
+    sections = (('overview', 'Overview'), ('exposure', 'Exposure'),
+                ('evidence', 'Evidence'), ('questions', 'Questions'),
+                ('inputs', 'Inputs'))
+    web = report.WebView(
+        actions_html='<div class="rt-assess-actions">' + ''.join(actions) + '</div>',
+        tabs_html=components.tabs(sections, current='overview', label='Sections of this assessment'),
+        inputs_html=_inputs_section(form),
+        questions_html=_questions_section(items, named.vendor if named else '', text_query),
+        evidence=evidence,
+        advisories=_advisory_titles(connection, assessment, findings, evidence),
+        checks={'kev_loaded': any(p['source'] == 'CISA KEV'
+                                  for p in index_module.provenance(connection)),
+                'screening_loaded': bool(len(context.get('screening') or ()))},
+        order_number=order_number, version=version, field_ids=dict(FIELD_IDS))
+
+    body = f'<style>{ASSESS_CSS}</style><h1>Product assessment</h1>'
+    if recognised:
+        body += ('<p class="notice">Product name recognised. Assessing '
+                 + _esc(recognised.vendor) + ' / ' + _esc(recognised.name) + '.</p>')
+    body += _edit_effects(assess, previous, state, assessment)
+    tools = ''
+    if not version and resolution.resolved:
+        tools += ('<p class="notice"><b>Firmware not specified.</b> All known affected versions '
+                  'are in scope. Add the firmware you plan to buy under '
+                  f'“{_esc(EDIT_PANEL)}” below.</p>')
+    if named:
+        tools += _next_steps(named, query, version)
+    body += report.body([(assessment, resolution, findings)], weights=context['weights'],
+                        tools=tools, web=web, bands=context.get('bands'))
+    if not resolution.resolved:
+        body += _recovery(connection, vendor, product, version, order_number,
+                          network_exposure, owner)
     return _page(f'Score: {assessment.product}', body)
+
+
+def _empty_assess(form, notice):
+    samples = (('S7-1500', urllib.parse.urlencode(dict(vendor='Siemens', product='SIMATIC S7-1500'))),
+               ('6ES7518-4AX00-1AB0', urllib.parse.urlencode(dict(order_number='6ES7518-4AX00-1AB0'))))
+    chips = ('<p class="rt-sample"><span>Try</span>'
+             + ''.join(f'<a class="chip" href="/score?{_esc(q)}">{_esc(t)}</a>'
+                       for t, q in samples) + '</p>')
+    return (f'<style>{ASSESS_CSS}</style><h1>Assess a product</h1>'
+            + webui.related_links('/score') + notice
+            + '<div class="rt-assess-empty">'
+            + components.empty_state(
+                'Check the equipment before you buy it',
+                'Start with its order number or model. Leave technical details '
+                'unknown if you are unsure; the result will say what still needs checking.',
+                form + chips)
+            + '</div>')
+
+
+def _next_steps(named, query, version):
+    """Product-specific onward links, the contextual pages with this product filled in."""
+    links = (f'<li><a href="/alternatives?{_esc(query)}">Find alternatives</a></li>'
+             f'<li><a href="/vendor?name={urllib.parse.quote(named.vendor)}">Vendor profile</a></li>'
+             f'<li><a href="/timeline?{_esc(query)}">Advisory timeline</a></li>'
+             f'<li><a href="/lev?{_esc(query)}">Check past exploitation estimates</a></li>'
+             f'<li><a href="/ssvc?{_esc(query)}">Plan response priorities</a></li>')
+    return ('<div class="rt-assess-next rt-assess-section">'
+            + components.context_card(
+                'Take the next step',
+                f'<ul class="rt-related" aria-label="This product">{links}</ul>')
+            + '</div>')
+
+
+def _recovery(connection, vendor, product, version, order_number, network_exposure, owner):
+    """Recovery for every way a lookup can fail, not just a bad model name.
+
+    An order number is matched exactly, so one that found nothing used to end
+    here with no suggestions at all -- and a product name pasted into that box
+    is the commonest way to get here.
+    """
+    body = ''
+    suggestions = search.suggest(connection, vendor=vendor, product=product,
+                                 order_number=order_number)
+    if suggestions['mistyped_order_number']:
+        # Only invite a choice when there is something to choose. A name the
+        # corpus does not know reaches here too, and "choose one below"
+        # followed by "nothing close was found" contradicts itself.
+        body += ('<p class="notice" role="alert">That product name could not '
+                 'be identified. '
+                 + ('Choose a matching product below, or refine it'
+                    if suggestions['products'] else 'Refine it')
+                 + ' under &ldquo;Use vendor and model instead&rdquo;.</p>')
+    elif order_number and not (vendor or product):
+        body += ('<p class="notice" role="alert">No advisory in this corpus '
+                 'names that order number. Check the digits, or search by '
+                 'vendor and model instead.</p>')
+
+    def recovery_link(hit):
+        # Correct only the failed identity. Keep the owner's firmware and
+        # network answers so choosing a suggestion cannot reset the risk.
+        query = urllib.parse.urlencode(dict(
+            vendor=hit.vendor, product=hit.name, version=version or '',
+            network_exposure=network_exposure or '',
+            **{key: value or '' for key, value in owner.items()}))
+        return (f'<a class="hit" href="/score?{_esc(query)}">'
+                f'{_esc(hit.vendor)} / {_esc(hit.name)}</a>')
+    rows = ''.join(recovery_link(h) for h in suggestions['products'][:8])
+    if rows:
+        body += f'<h2>Did you mean</h2><div class="rows">{rows}</div>'
+    # A misspelled manufacturer never had a route back either.
+    vendor_rows = ''.join(
+        f'<a class="hit" href="/?q={urllib.parse.quote(h.vendor)}">'
+        f'{_esc(h.vendor)} <span class="meta">{h.products:,} product entries</span></a>'
+        for h in suggestions['vendors'][:5])
+    if vendor_rows:
+        body += (f'<h2>Did you mean this manufacturer?</h2>'
+                 f'<div class="rows">{vendor_rows}</div>')
+    if not rows and not vendor_rows:
+        body += ('<p class="helper">Nothing close was found. Try a shorter '
+                 'model name, the manufacturer on its own, or '
+                 '<a href="/">search the corpus</a>.</p>')
+    return body
 
 
 def _field(id_, name, label, value='', placeholder='', required=False):
@@ -626,59 +841,94 @@ def _product_next_steps(vendor, product, version=''):
             f'<a class="button secondary" href="/annex?{query}">Prepare supplier questions</a></div>')
 
 
-def _choice(name, label, table, chosen, blank=None, helper=''):
+def _choice(name, label, table, chosen, blank=None, helper='', input_id=''):
     """One labelled dropdown over an exposure table.
 
     Options and their wording come from the table that scores them, so the form
     can never offer a choice the model does not know, or describe it differently.
+    Unknown is always a choice, and is drawn VERIFY-style while selected: an
+    unanswered fact is a gap, not a neutral default.
     """
-    options = ''
+    import re
+    options = [('', blank)] if blank else []
+    options +=[(key, entry[0] if isinstance(entry, tuple) else entry)
+                for key, entry in table.items()]
+    markup = components.select_field(
+        name, label, options, selected=chosen or '',
+        unknown_value='unknown' if 'unknown' in table else '',
+        input_id=input_id or name, help_text=helper)
     if blank:
-        options += f'<option value="">{blank}</option>'
-    for key, entry in table.items():
-        text = entry[0] if isinstance(entry, tuple) else entry
-        selected = ' selected' if key == chosen else ''
-        options += f'<option value="{key}"{selected}>{_esc(text)}</option>'
-    return (f'<div><label for="{name}">{label}</label>'
-            f'<select id="{name}" name="{name}">{options}</select>'
-            + (f'<p class="helper">{helper}</p>' if helper else '') + '</div>')
+        # The blank option is the Unknown choice, but select_field can only mark
+        # an option with a non-empty value, so it is marked here.
+        markup = re.sub(r'<option value=""( selected)?>',
+                        lambda found: '<option value="" class="rt-option--unknown"'
+                        + (found.group(1) or '') + '>? ', markup, count=1)
+        if not chosen:
+            markup = markup.replace('rt-field rt-field--select"',
+                                    'rt-field rt-field--select rt-field--unknown"', 1)
+    return markup
 
 
 def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
                   assessment_type='purchase', remediation='unknown', suffix='',
-                  prerequisites='unknown'):
+                  prerequisites='unknown', ids=False):
     """The facts only the asset owner has, each optional and each explained.
 
     ReTrust supplies the vulnerability intelligence; these describe the plant.
     Nothing here is verified, so every one is labelled operator-reported, and
     leaving one unanswered keeps it unresolved rather than guessing either way.
+    `ids` gives each control the stable id the result page's gap cards link to;
+    the compare page keeps name-plus-suffix ids so several rows stay unique.
     """
+    def field(name):
+        return FIELD_IDS[name] if ids else name + suffix
     return ('<div class="form-grid">'
             + _choice('assessment_type' + suffix, FIELD_LABELS['assessment_type'],
                       score.ASSESSMENT_TYPES, assessment_type,
-                      helper='Recorded for traceability; does not change the calculation.')
+                      helper='Recorded for traceability; does not change the calculation.',
+                      input_id=field('assessment_type'))
             + _choice('network_exposure' + suffix, FIELD_LABELS['network_exposure'],
                       score.NETWORK_EXPOSURES, network_exposure, blank='Unknown',
-                      helper='Deployment context; selection alone does not change the score. Internet isolation alone does not establish a blocked attack path. Reachability below determines A.')
+                      helper='Deployment context; selection alone does not change the score. Internet isolation alone does not establish a blocked attack path. Reachability below determines A.',
+                      input_id=field('network_exposure'))
             + _choice('interface' + suffix, FIELD_LABELS['interface'],
                       score.INTERFACES, interface,
-                      helper='Can a credible attacker reach the vulnerable interface? Select verified blocked only when all relevant network, local and physical paths have been assessed.')
+                      helper='Can a credible attacker reach the vulnerable interface? Select verified blocked only when all relevant network, local and physical paths have been assessed.',
+                      input_id=field('interface'))
             + _choice('prerequisites' + suffix, FIELD_LABELS['prerequisites'],
                       score.PREREQUISITES, prerequisites,
-                      helper='Confirm whether required privileges, user interaction, local or physical access, and other attack conditions can be satisfied.')
+                      helper='Confirm whether required privileges, user interaction, local or physical access, and other attack conditions can be satisfied.',
+                      input_id=field('prerequisites'))
             + _choice('consequence' + suffix, FIELD_LABELS['consequence'],
                       score.CONSEQUENCES, consequence, blank='Unknown',
-                      helper='Highest credible consequence of exploiting the assessed vulnerabilities. H: safety 1.0; process control 0.8; recoverable disruption 0.5; minor disruption 0.2; no material impact 0.')
+                      helper='Highest credible consequence of exploiting the assessed vulnerabilities. H: safety 1.0; process control 0.8; recoverable disruption 0.5; minor disruption 0.2; no material impact 0.',
+                      input_id=field('consequence'))
             + _choice('remediation' + suffix, FIELD_LABELS['remediation'],
                       score.REMEDIATIONS, remediation,
-                      helper='Status of the selected firmware across the listed vulnerabilities. Fix availability alone does not establish that a fix is installed. Fix verified installed and Verified not affected count only when the firmware version is given.')
+                      helper='Status of the selected firmware across the listed vulnerabilities. Fix availability alone does not establish that a fix is installed. Fix verified installed and Verified not affected count only when the firmware version is given.',
+                      input_id=field('remediation'))
             + '</div>')
+
+
+def _conditions_summary(network_exposure, consequence, interface, prerequisites, remediation):
+    """What the plant-context answers currently say, with gaps drawn as gaps."""
+    def shown(field, value):
+        if value in (None, '', 'unknown'):
+            return 'Unknown'
+        return _answer_text(field, value)
+    return components.conditions_row((
+        ('Network', shown('network_exposure', network_exposure)),
+        ('Reachability', shown('interface', interface)),
+        ('Prerequisites', shown('prerequisites', prerequisites)),
+        ('Impact', shown('consequence', consequence)),
+        ('Fix status', shown('remediation', remediation))))
 
 
 def _score_form(vendor, product, version, order_number='', network_exposure=None,
                 consequence=None, interface='unknown',
                 assessment_type='purchase', remediation='unknown',
-                prerequisites='unknown', update=False, carried=None):
+                prerequisites='unknown', update=False, carried=None,
+                firmware_state=None):
     using_model = ' open' if (vendor or product) and not order_number else ''
     # The answers this page was assessed with ride along unseen, so the update
     # can report what changed without the server keeping any session.
@@ -686,25 +936,53 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
         '<input type="hidden" name="was" value="1">'
         + ''.join(f'<input type="hidden" name="was_{key}" value="{_esc(value or "")}">'
                   for key, value in carried.items()))
-    return ('<form class="form-panel" method="get" action="/score">' + hidden +
-            '<div class="order-field">' + _field('o', 'order_number', 'Manufacturer order number or full product name', order_number,
-                                                 'e.g. 6ES7518-4AX00-1AB0') + '</div>'
+    # Firmware is a material input: it is drawn as unverified until the page
+    # has something to confirm it against (Redesign-plan.md item 24).
+    if firmware_state is None:
+        firmware_state = '' if version else 'unverified'
+    firmware_help = ('Firmware is the software running on the equipment. Leave blank if '
+                     'unknown; without it the result stays VERIFY with a range.'
+                     if firmware_state == 'unverified' and not version else
+                     'Some affected ranges could not be checked against this version.'
+                     if firmware_state == 'unverified' else
+                     'Checked against the published affected ranges.')
+    button = components.button('Update assessment' if update else 'Assess product',
+                               kind='secondary' if update else 'primary', type='submit')
+    return ('<form class="form-panel" method="get" action="/score">' + hidden
+            + '<div class="order-field">'
+            + components.text_field(
+                'order_number', 'Manufacturer order number or full product name', order_number,
+                help_text='Printed on the label or the quotation.', mono=True,
+                input_id=FIELD_IDS['order_number'],
+                attrs={'placeholder': 'e.g. 6ES7518-4AX00-1AB0', 'maxlength': MAX_QUERY,
+                       'autocomplete': 'off', 'spellcheck': 'false'})
+            + '</div>'
             f'<details class="form-options"{using_model}><summary>Use vendor and model instead</summary>'
             '<p class="helper">Use these if you do not have an order number. If both are entered, they must agree.</p>'
-            '<div class="candidate-grid">' + _field('v', 'vendor', 'Vendor', vendor, 'e.g. Siemens')
-            + _field('p', 'product', 'Product / model', product, 'e.g. SIMATIC S7-1500')
+            '<div class="candidate-grid">'
+            + components.text_field('vendor', 'Vendor', vendor, input_id=FIELD_IDS['vendor'],
+                                    attrs={'placeholder': 'e.g. Siemens', 'maxlength': MAX_QUERY})
+            + components.text_field('product', 'Product / model', product,
+                                    input_id=FIELD_IDS['product'],
+                                    attrs={'placeholder': 'e.g. SIMATIC S7-1500',
+                                           'maxlength': MAX_QUERY})
             + '</div></details>'
-            + _field('f', 'version', 'Firmware version (optional)', version, 'e.g. 3.1.6')
-            + '<p class="helper">Firmware is the software running on the equipment. Leave blank if unknown; the result will show what still needs checking.</p>'
-            '<section class="site-context"><h3>Network access and operating conditions</h3>'
-            '<p class="helper">These answers are central to the assessment. '
+            + components.text_field('version', 'Firmware version (optional)', version,
+                                    state=firmware_state, help_text=firmware_help, mono=True,
+                                    input_id=FIELD_IDS['version'],
+                                    attrs={'placeholder': 'e.g. 3.1.6', 'maxlength': MAX_QUERY})
+            + '<fieldset class="rt-conditions-card">'
+            '<legend>Network access and operating conditions</legend>'
+            + _conditions_summary(network_exposure, consequence, interface,
+                                  prerequisites, remediation)
+            + '<p class="helper">These answers are central to the assessment. '
             'Use Unknown for unverified inputs. ReTrust uses operator-reported evidence; it does not inspect the network.</p>'
             + _owner_fields(network_exposure, consequence, interface,
                             assessment_type, remediation,
-                            prerequisites=prerequisites)
-            + '</section>'
+                            prerequisites=prerequisites, ids=True)
+            + '</fieldset>'
             + ('<p class="helper">Select Update assessment to recalculate after changing any input.</p>' if update else '')
-            + f'<button type="submit">{"Update assessment" if update else "Assess product"} →</button></form>')
+            + button + '</form>')
 
 
 def _candidate_rows(params):
@@ -1295,10 +1573,27 @@ def _export_comparison(assess, context, provenance, path, candidates):
     return Download(batch.dumps(payload), 'retrust-comparison.json', 'application/json')
 
 
+class ExportUnavailable(Exception):
+    """A download that cannot honestly be produced.
+
+    Raised instead of returning an empty file: a blank CSV or a VEX with no
+    statements still reads as an answer ("nothing affects this"), which is the
+    one thing neither may say by accident. The handler turns it into an error
+    page with `status`.
+    """
+
+    def __init__(self, heading, message, status=404):
+        super().__init__(message)
+        self.heading, self.status = heading, status
+
+
 def _export(assess, context, provenance, path, vendor, product, version, order_number,
             network_exposure=None, owner=None):
     if network_exposure not in score.NETWORK_EXPOSURES:
         network_exposure = None
+    if path.endswith('.csv'):
+        return _export_csv(assess, vendor, product, version, order_number,
+                           network_exposure, owner)
     block = _run_assessment(assess, vendor, product, version, order_number,
                             network_exposure, owner)
     if path.endswith('.json'):
@@ -1313,6 +1608,57 @@ def _export(assess, context, provenance, path, vendor, product, version, order_n
                     provenance=provenance, weights=context['weights'],
                     config_source=context.get('config_source', '')),
                     'retrust-assessment.html', 'text/html')
+
+
+def _export_csv(assess, vendor, product, version, order_number,
+                network_exposure=None, owner=None):
+    """One assessment as a spreadsheet row, with the query that produced it.
+
+    dumps_csv neutralises formula-leading cells, so a hostile product name
+    cannot become a formula when this is opened in a spreadsheet.
+    """
+    if not (vendor or product or order_number):
+        raise ExportUnavailable(
+            'Nothing to export',
+            'Give an order number, or a vendor and product, to export a CSV row.', 400)
+    assessment, resolution, _ = _run_assessment(assess, vendor, product, version,
+                                                order_number, network_exposure, owner)
+    query = dict(vendor=vendor, product=product, version=version,
+                 order_number=order_number)
+    record = batch.to_record(assessment, resolution, None, query)
+    return Download(batch.dumps_csv([record], include_queries=True),
+                    'retrust-assessment.csv', 'text/csv')
+
+
+def _export_vex(connection, assess, provenance, vendor, product, version, order_number,
+                network_exposure=None, owner=None):
+    """The assessment as a CycloneDX VEX document (the CLI's `vex` command).
+
+    A product that did not resolve, or one whose records name no CVE, has
+    nothing to state; that is an error page, never an empty document.
+    """
+    from . import vex
+    if not (vendor or product or order_number):
+        raise ExportUnavailable(
+            'Nothing to export',
+            'Give an order number, or a vendor and product, to export a VEX.', 400)
+    assessment, resolution, _ = _run_assessment(assess, vendor, product, version,
+                                                order_number, network_exposure, owner)
+    if not resolution.resolved:
+        raise ExportUnavailable(
+            'VEX unavailable',
+            'No VEX was written: the product was not identified, so there is nothing to '
+            'make a claim about. Identify it by order number or exact model name.')
+    statements = vex.statements(connection, resolution, version or None)
+    if not statements:
+        raise ExportUnavailable(
+            'VEX unavailable',
+            'No VEX was written: the records for this product name no CVE to make a claim about.')
+    named = resolution.matches[0]
+    subject = f'{named.vendor} {named.name}'.strip()
+    document = vex.document(subject, version or None, statements, provenance)
+    return Download(json.dumps(document, indent=2) + '\n',
+                    'retrust-assessment.vex.json', 'application/json')
 
 
 def build_concurrent_handler(database, assessor, context, dossier, stats, provenance, host, port):
@@ -1494,6 +1840,14 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                            first("order_number"), first("network_exposure"),
                            _owner_from(first))
 
+        def export_vex():
+            return _export_vex(connection, assess, provenance,
+                               first("vendor"), first("product"), first("version"),
+                               first("order_number"),
+                               first("network_exposure") if first("network_exposure")
+                               in score.NETWORK_EXPOSURES else None,
+                               _owner_from(first))
+
         def export_comparison():
             return _export_comparison(assess, context, provenance, path,
                                       _candidate_rows(params))
@@ -1504,7 +1858,10 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                                submitted=any(key in params for key in
                                              ("vendor", "product", "version", "order_number")),
                                network_exposure=first("network_exposure"),
-                               owner=_owner_from(first), previous=_previous_from(first))
+                               owner=_owner_from(first), previous=_previous_from(first),
+                               view=dict(ev=first("ev"), sort=first("sort"),
+                                         dir=first("dir"), show=first("show")),
+                               dossier=dossier)
 
         def compare_page():
             return _compare_page(assess, context, _candidate_rows(params),
@@ -1542,6 +1899,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             "/score": score_page,
             "/export.html": export,
             "/export.json": export,
+            "/export.csv": export,
+            "/export.vex.json": export_vex,
             "/compare": compare_page,
             "/compare.html": export_comparison,
             "/compare.json": export_comparison,
@@ -1620,6 +1979,11 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                 self._send(400, webui.error_page(
                     "Procurement comparison", "Complete the shortlist", str(error),
                     '<p><a href="/compare">Edit candidates →</a></p>'))
+                return
+            except ExportUnavailable as error:
+                self._send(error.status, webui.error_page(
+                    "Export unavailable", error.heading, str(error),
+                    '<p><a href="/score">Back to the assessment</a></p>'))
                 return
             except Exception as error:
                 # A malformed query is the user's typo, not a crash. The message
