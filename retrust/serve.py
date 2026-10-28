@@ -457,42 +457,6 @@ def _edit_effects(assess, previous, state, current):
     return f'<div class="edit-effects" aria-live="polite">{card}</div>'
 
 
-# Styles the assess page needs beyond the shared sheets. Token variables only,
-# so a theme change reaches it. Emitted once, with the page body, because the
-# stylesheets that would normally carry it belong to other modules.
-ASSESS_CSS = """
-.rt-assess-actions{display:flex;flex-wrap:wrap;gap:var(--s8);justify-content:flex-end;align-items:center;margin:var(--s12) 0}
-.rt-assess-section{margin-top:var(--s24)}
-.rt-assess-section>h2{margin:0 0 var(--s12);font-size:1.125rem;font-weight:600;line-height:1.3}
-.rt-assess-section .form-panel{border:0;padding:0;background:transparent}
-.rt-assess-lead{margin:var(--s4) 0 var(--s16);color:var(--text-2);max-width:75ch}
-.rt-assess-empty{max-width:720px;margin:var(--s24) auto 0}
-.rt-assess-empty .rt-empty{padding-bottom:var(--s16)}
-.rt-assess-empty .form-panel{width:100%;text-align:left;box-sizing:border-box}
-.order-field .rt-input{height:52px;font-size:1.125rem}
-.rt-sample{display:flex;flex-wrap:wrap;gap:var(--s8);align-items:center;justify-content:center;margin:var(--s12) 0 0}
-.rt-sample span{color:var(--muted);font-size:.8125rem}
-.rt-conditions-card{margin:var(--s20) 0 0;padding:var(--s16);border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);min-width:0}
-.rt-conditions-card>legend{padding:0 var(--s8);font-family:var(--font-mono);font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.rt-conditions-card .rt-conditions{margin-bottom:var(--s12)}
-.rt-conditions-card .helper{margin:0 0 var(--s12)}
-.rt-conditions-card .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16)}
-.rt-conditions-card .form-grid>div:last-child{grid-column:auto}
-.form-panel>.rt-btn{margin-top:var(--s16)}
-.rt-questions{list-style:none;margin:var(--s12) 0 0;padding:0;display:flex;flex-direction:column}
-.rt-q{display:grid;grid-template-columns:2.5rem minmax(0,1fr) auto;gap:var(--s12);padding:var(--s12) 0;border-top:1px solid var(--rule);align-items:start}
-.rt-q:first-child{border-top:0}
-.rt-q__n{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);padding-top:var(--s4)}
-.rt-q__text{margin:0;font-size:.875rem;line-height:1.45;color:var(--text);overflow-wrap:anywhere}
-.rt-q__why{margin-top:var(--s4)}
-.rt-q__why summary{font-size:.8125rem;color:var(--text-2)}
-.rt-q__why p,.rt-q__why li{font-size:.8125rem;color:var(--text-2);overflow-wrap:anywhere}
-.rt-q__gap{font-family:var(--font-mono);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--verify);border:1px dashed var(--verify);border-radius:var(--r-md);padding:var(--s2) var(--s8);text-decoration:none;white-space:nowrap}
-a.rt-q__gap:hover{color:var(--action-hover)}
-.rt-q__foot{margin:var(--s12) 0 0;display:flex;flex-wrap:wrap;gap:var(--s8)}
-.rt-assess-next .rt-related{margin:0;padding:0;list-style:none}
-@media(max-width:639px){.rt-conditions-card .form-grid{grid-template-columns:1fr}.rt-assess-actions{justify-content:stretch}.rt-assess-actions>*,.rt-assess-actions .rt-menu,.rt-assess-actions .rt-menu>.rt-btn{width:100%;box-sizing:border-box}.rt-q{grid-template-columns:2rem minmax(0,1fr)}.rt-q__gap{grid-column:2}}
-"""
 
 # What the evidence table may be asked for in a URL. Anything else is dropped
 # silently: the values are presentation only, so a hand-edited one has nothing
@@ -694,7 +658,7 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
                 'screening_loaded': bool(len(context.get('screening') or ()))},
         order_number=order_number, version=version, field_ids=dict(FIELD_IDS))
 
-    body = f'<style>{ASSESS_CSS}</style><h1>Product assessment</h1>'
+    body = '<h1>Product assessment</h1>'
     if recognised:
         body += ('<p class="notice">Product name recognised. Assessing '
                  + _esc(recognised.vendor) + ' / ' + _esc(recognised.name) + '.</p>')
@@ -720,7 +684,7 @@ def _empty_assess(form, notice):
     chips = ('<p class="rt-sample"><span>Try</span>'
              + ''.join(f'<a class="chip" href="/score?{_esc(q)}">{_esc(t)}</a>'
                        for t, q in samples) + '</p>')
-    return (f'<style>{ASSESS_CSS}</style><h1>Assess a product</h1>'
+    return ('<h1>Assess a product</h1>'
             + webui.related_links('/score') + notice
             + '<div class="rt-assess-empty">'
             + components.empty_state(

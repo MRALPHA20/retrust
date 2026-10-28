@@ -5,7 +5,7 @@ import html
 import os
 from datetime import date
 
-from . import assets, components, design, doctor, evidenceview, report, score
+from . import assets, components, design, doctor, evidenceview, report, score, webviews
 
 
 def esc(value):
@@ -239,6 +239,7 @@ main h3{font-size:1rem;font-weight:600;margin:0 0 var(--s8)}
 main form{margin:var(--s16) 0 var(--s20)}
 main label{display:block;color:var(--text-2);font-size:.8125rem;font-weight:500;margin:0 0 var(--s4)}
 main input[type=text],main select{width:100%;max-width:42rem;min-height:40px;padding:var(--s8) var(--s12);font-family:var(--font-sans);font-size:.875rem;color:var(--text);background:var(--ground);border:1px solid var(--control-border);border-radius:var(--r-lg)}
+main input.rt-input--mono{font-family:var(--font-mono);font-size:.8125rem}
 main input::placeholder{color:var(--muted);opacity:1}
 main input:focus,main select:focus{outline:2px solid var(--action);outline-offset:2px}
 main button:not(.rt-btn),main .button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 var(--s16);background:var(--action);color:var(--on-action);border:1px solid var(--action);border-radius:var(--r-lg);font-family:var(--font-sans);font-weight:600;font-size:.875rem;cursor:pointer;text-decoration:none;white-space:nowrap;margin-top:var(--s12)}
@@ -367,7 +368,7 @@ main input[type=text],main select,main button:not(.rt-btn),main .button{min-heig
 # report.RESULT_CSS's legacy rules must come before the shell that overrides them.
 STYLESHEET = (design.theme_css(design.DARK, ":root") + assets.font_face_css(served=True)
               + design.BASE_CSS + components.CSS + evidenceview.CSS + report.RESULT_CSS
-              + SHELL_CSS + PAGE_CSS + design.PRINT_CSS)
+              + SHELL_CSS + PAGE_CSS + webviews.CSS + design.PRINT_CSS)
 
 # Kept so callers that took the old name still get the page-level rules.
 CSS = SHELL_CSS + PAGE_CSS
