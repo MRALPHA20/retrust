@@ -260,3 +260,53 @@ def test_a_novel_length_product_name_stays_inside_the_header():
     text = questions.format_report("X" * 330, questions.build(_assessment(), []))
     assert max(len(line) for line in text.splitlines()) <= 80
     assert text.isascii()
+
+
+# --- gap tags ---------------------------------------------------------------
+
+# SHA-256 of the text annex captured before `gap` existed: the tag belongs to
+# the HTML panel and must never leak into the pasteable ASCII.
+ANNEX_DIGESTS = {
+    "everything": "3ce700eebac95eeca9d137390d2a0e8f3eca1298ed618b7a92052e82f938cc47",
+    "silent": "45dcffc3f35fd74ac0c8aa4f963e148878a14f9dd0b9bc81e84d5e9f96289784",
+    "unresolved": "096107e4ccdbfe669c2301eeafc23f5854b82cdda1d7800c644482454604ddc0",
+}
+
+
+def test_the_text_annex_is_byte_identical_to_before_gap_tags():
+    import hashlib
+    cases = {
+        "everything": _everything(),
+        "silent": (_assessment(), [], None),
+        "unresolved": (score.not_assessed("Siemems Mystery PLC", "vendor unknown"),
+                       [], None),
+    }
+    for name, (assessment, findings, profile) in cases.items():
+        text = questions.format_report(
+            "TestPLC 9000", questions.build(assessment, findings, profile))
+        assert hashlib.sha256(text.encode()).hexdigest() == ANNEX_DIGESTS[name], name
+        assert "GAP" not in text
+
+
+def test_each_generator_tags_the_pillar_it_concerns():
+    built = questions.build(*_everything())
+    assert all(q.gap == "" for q in built[-3:])
+    assert next(q for q in built if "62443" in q.text).gap == "C"
+    assert next(q for q in built if "CSAF" in q.text).gap == "V"
+    assert next(q for q in built if "roadmap" in q.text).gap == "P"
+    assert next(q for q in built if "permanent fix" in q.text).gap == "P"
+    assert next(q for q in built if "whether the firmware" in q.text).gap == "E"
+    assert next(q for q in built if "by default" in q.text).gap == "E"
+
+
+def test_kev_questions_are_tagged_exposure():
+    finding = _finding(in_kev=True, remediation="none_available")
+    built = questions.build(_assessment([finding]), [finding])
+    kev = next(q for q in built if "CVE-2026-0001" in q.evidence)
+    assert kev.gap == "E"
+
+
+def test_an_unresolved_product_is_tagged_id_and_positional_use_still_works():
+    built = questions.build(score.not_assessed("Mystery", "vendor unknown"), [])
+    assert [q.gap for q in built] == ["ID", "", "", ""]
+    assert questions.Question("t", "w", ["e"]).gap == ""

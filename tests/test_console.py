@@ -136,6 +136,7 @@ def test_verdicts_take_the_same_colours_as_the_html_report(colour):
     assert set(console.VERDICT_STYLES) == set(report.VERDICT_COLOR)
     assert console.paint_verdict("PREFER") == "\x1b[38;5;42mPREFER\x1b[0m"
     assert console.paint_verdict("CONDITIONAL") == "\x1b[38;5;179mCONDITIONAL\x1b[0m"
+    assert console.paint_verdict("VERIFY") == "\x1b[38;5;141mVERIFY\x1b[0m"
     assert console.paint_verdict("AVOID") == "\x1b[38;5;203mAVOID\x1b[0m"
     assert console.paint_verdict("NOT ASSESSED") == "\x1b[38;5;245mNOT ASSESSED\x1b[0m"
 

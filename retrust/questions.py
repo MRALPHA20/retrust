@@ -41,6 +41,11 @@ class Question:
     text: str
     why: str
     evidence: list = field(default_factory=list)   # CVE / advisory ids, facts
+    # The scoring pillar the ask concerns, for the HTML tag "GAP . C". Last so
+    # positional construction keeps working; deliberately absent from the text
+    # annex, which must stay byte-identical. E exposure, P patch availability,
+    # V vendor practice, C certification, ID product identity, "" standing.
+    gap: str = ""
 
 
 def build(assessment, findings, profile=None):
@@ -72,7 +77,8 @@ def build(assessment, findings, profile=None):
                 why="ReTrust could not resolve this product against the"
                     " advisory corpus, so its history was not assessed at"
                     " all -- which is a different fact from a clean history.",
-                evidence=["product not resolved against the corpus"]))
+                evidence=["product not resolved against the corpus"],
+                gap="ID"))
         elif getattr(assessment, "cleared_count", 0):
             # Advisories do name it; the firmware given is outside all of
             # their ranges. The open question is whether the unit ships on it.
@@ -125,7 +131,7 @@ def _kev(assessment, findings, cited):
             why="CISA's KEV catalogue records observed exploitation of these and"
                 " flags them as used in ransomware campaigns, and the advisory"
                 " offers no vendor fix." + checkable,
-            evidence=_cite(ransomware) + _gate_facts(assessment, "ransomware")))
+            evidence=_cite(ransomware) + _gate_facts(assessment, "ransomware"), gap="E"))
     if plain:
         questions.append(Question(
             text="State, for each CVE cited, the firmware version that fixes it"
@@ -133,7 +139,7 @@ def _kev(assessment, findings, cited):
             why="CISA's KEV catalogue records observed exploitation of these,"
                 " not a prediction of it, and the advisory offers no vendor"
                 " fix." + checkable,
-            evidence=_cite(plain) + _gate_facts(assessment, "exploited")))
+            evidence=_cite(plain) + _gate_facts(assessment, "exploited"), gap="E"))
     return questions
 
 
@@ -158,7 +164,7 @@ def _unfixed(findings, cited):
             " at all. They are cited in descending order of exploitation"
             " probability (FIRST EPSS), so the first ids are the ones least"
             " safe to wait on.",
-        evidence=_cite([f.cve for f in open_ended]))]
+        evidence=_cite([f.cve for f in open_ended]), gap="P")]
 
 
 def _mitigated(findings, cited):
@@ -178,7 +184,7 @@ def _mitigated(findings, cited):
             f" and each has an exploitation probability above {PRESSING_EPSS}"
             " (FIRST EPSS). A mitigation that a routine update silently reverts"
             " is a fix the plant loses without noticing.",
-        evidence=_cite([f.cve for f in stopgap]))]
+        evidence=_cite([f.cve for f in stopgap]), gap="P")]
 
 
 def _undecided(assessment, findings):
@@ -196,7 +202,7 @@ def _undecided(assessment, findings):
             " either no version was checked, or the advisory's version range"
             " is one this tool could not parse. Each was kept in scope rather"
             " than assumed safe, and only the vendor can settle it.",
-        evidence=_cite(sorted({f.advisory_id for f in unsettled})))]
+        evidence=_cite(sorted({f.advisory_id for f in unsettled})), gap="E")]
 
 
 def _wormable(findings):
@@ -215,7 +221,7 @@ def _wormable(findings):
             " and no user action, per its own CVSS vector: the combination that"
             " spreads on its own. What ships enabled and what the manual"
             " requires decide the exposure on day one, before any patch.",
-        evidence=_cite(spreading))]
+        evidence=_cite(spreading), gap="E")]
 
 
 def _certification(profile):
@@ -239,7 +245,7 @@ def _certification(profile):
         text="State the IEC 62443-4-1 (or Common Criteria) certification status"
              " of this product and its development process, the certifying"
              " body, and the dates of the most recent audits.",
-        why=why, evidence=[fact])]
+        why=why, evidence=[fact], gap="C")]
 
 
 def _feed(profile):
@@ -253,7 +259,7 @@ def _feed(profile):
         why="No CSAF feed of this vendor's own is known to this tool, which"
             " would leave disclosure relying on CISA republishing. A channel"
             " the buyer must poll by hand does not scale to a plant.",
-        evidence=["no self-published CSAF feed known to ReTrust"])]
+        evidence=["no self-published CSAF feed known to ReTrust"], gap="V")]
 
 
 def _always():
