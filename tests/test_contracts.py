@@ -1,4 +1,4 @@
-"""WP0 contract layer: names exist, report CSS is unchanged, stubs are stubs."""
+"""Contract layer: the public names exist and the CSS split is stable."""
 
 import inspect
 
@@ -7,10 +7,12 @@ import pytest
 from retrust import components, design, evidenceview, report
 
 def test_report_css_keeps_its_public_names():
-    # WP5a redefined CSS as the web-facing result stylesheet; the split names
-    # other modules import must still exist and be assembled from the parts.
+    # The split names other modules import must still exist; the web page
+    # assembles RESULT_CSS (not the light THEME) and the export both.
+    from retrust import webui
     assert report.THEME and report.RESULT_CSS and report.EXPORT_CSS
-    assert report.RESULT_CSS in report.CSS and report.THEME not in report.CSS
+    assert report.RESULT_CSS in webui.STYLESHEET and report.THEME not in webui.STYLESHEET
+    assert report.RESULT_CSS in report.export_css() and report.THEME in report.export_css()
 
 
 def test_dark_theme_css_contains_every_spec_hex():
@@ -48,8 +50,7 @@ def test_alpha():
         design.alpha("#FFFFFF", 1.5)
 
 
-def test_placeholders_are_empty_strings():
-    # components.CSS (WP3) and evidenceview.CSS (WP5b) are filled in.
+def test_base_and_print_css_are_not_empty():
     assert design.BASE_CSS != "" and design.PRINT_CSS != ""
 
 
@@ -67,8 +68,8 @@ def test_esc_escapes_quotes_and_angle_brackets():
 
 
 def test_evidenceview_contract_signatures():
-    # components.* (WP3) and evidenceview.* (WP5b) are implemented; the
-    # signatures WP5a calls are pinned here and behaviour in test_evidence_view.
+    # The signatures report.py calls are pinned here; behaviour is in
+    # test_evidence_view.
     def names(fn):
         return [p.name for p in inspect.signature(fn).parameters.values()
                 if p.kind is p.POSITIONAL_OR_KEYWORD]

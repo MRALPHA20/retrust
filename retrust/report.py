@@ -17,7 +17,6 @@ drawers the server supplies. Nothing here needs JavaScript.
 """
 
 import html
-import inspect
 import re
 from dataclasses import dataclass, field as dc_field
 from datetime import date
@@ -33,13 +32,6 @@ from .evidenceview import EvidenceView
 # document they attach to a purchase order dark (spec 5.5).
 THEME = (design.theme_css(design.LIGHT, ":root")
          + design.theme_css(design.DARK, ":root[data-theme=dark]"))
-
-# The names the pre-redesign stylesheet used. The web shell still carries rules
-# written against them until it is rebuilt on the new tokens, and a rule that
-# reads an undefined variable silently loses its colour.
-_LEGACY_ALIASES = (":root{--field:var(--ground);--panel:var(--surface);--sunk:var(--bar);"
-                   "--ink:var(--text);--soft:var(--text-2);--faint:var(--muted);"
-                   "--cond:var(--conditional)}\n")
 
 # Kept apart from RESULT_CSS so the comparison page can change without
 # touching the result rules. Appended to RESULT_CSS below.
@@ -184,15 +176,12 @@ code{white-space:nowrap}
 .tw{overflow-x:auto;margin:var(--s12) 0}
 .table-scroll-hint{display:none}
 @media (max-width:700px){.tw table{min-width:760px}.table-scroll-hint{display:block;font-size:.75rem;color:var(--muted);padding:var(--s8) var(--s12);margin:0}}
-.block table,.tw table{width:100%;font-size:.8125rem;background:var(--surface);border:1px solid var(--rule);font-variant-numeric:tabular-nums}
-.block th,.block td,.tw th,.tw td{text-align:left;padding:var(--s8) var(--s12);border-bottom:1px solid var(--rule-row);vertical-align:top}
-.block th,.tw th{font-family:var(--font-mono);font-size:.75rem;font-weight:500;line-height:1.4;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;color:var(--muted);background:var(--bar)}
-.block tbody tr:last-child td,.tw tbody tr:last-child td{border-bottom:none}
-.block th.n,.block td.n,.tw th.n,.tw td.n{text-align:right}
+.tw table{width:100%;font-size:.8125rem;background:var(--surface);border:1px solid var(--rule);font-variant-numeric:tabular-nums}
+.tw th,.tw td{text-align:left;padding:var(--s8) var(--s12);border-bottom:1px solid var(--rule-row);vertical-align:top}
+.tw th{font-family:var(--font-mono);font-size:.75rem;font-weight:500;line-height:1.4;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;color:var(--muted);background:var(--bar)}
+.tw tbody tr:last-child td{border-bottom:none}
+.tw th.n,.tw td.n{text-align:right}
 td.na{color:var(--muted)}
-td.rng{max-width:15rem;overflow-wrap:anywhere;color:var(--text-2)}
-tr.cand td:first-child{border-left:4px solid var(--vc)}
-td.v{color:var(--vc);font-weight:700}
 .bar{display:block;position:relative;height:6px;min-width:5rem;overflow:hidden;background:var(--raised)}
 .bar i{position:absolute;inset:0 auto 0 0;background:var(--vc,var(--muted))}
 tr.unscored{background:var(--bar)}
@@ -222,19 +211,10 @@ footer{margin-top:var(--s32);padding-top:var(--s16);border-top:1px solid var(--r
 .rt-grid>*+*{margin-top:var(--s20)}
 .rt-card,.rt-alert,.rt-gap,.rt-context{break-inside:avoid}
 .block{break-inside:auto}
-.assessment-more-info::details-content{content-visibility:visible;display:block}
+details::details-content{content-visibility:visible!important;display:block!important;height:auto!important}
 .tw{overflow:visible}
 }
 """
-
-# The legacy stylesheet name, now the web-facing result CSS: tokens (dark, as
-# the web shell is), faces, base, components and the result rules. The web
-# page assembles its own stack in webui.py; this exists so importers and the
-# interim shell keep working.
-CSS = (design.theme_css(design.DARK, ":root") + _LEGACY_ALIASES
-       + assets.font_face_css(served=True) + design.BASE_CSS
-       + components.CSS + evidenceview.CSS + RESULT_CSS)
-
 
 def export_css():
     """The stylesheet of the self-contained export, in the order spec 5.5 needs.
@@ -1225,52 +1205,10 @@ def _context_cards(assessment, stability, static):
     return cards
 
 
-def _legacy_evidence(findings, hint):
-    """The pre-redesign findings table, used only while evidenceview is a stub."""
-    ranked = sorted(findings, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))
-    top = ranked[:10]
-    if not top:
-        return ""
-    note = ""
-    if len(ranked) > len(top):
-        # A capped table must say so: "54 need review" above a silent
-        # 10-row table reads as the whole list. And the JSON export caps
-        # at the same 10 and records the remainder in
-        # `findings_truncated` -- claiming it "carries every finding" sent
-        # a buyer to an export described as exhaustive that is not.
-        note = (f'<p class="tnote">Showing the {len(top)} most'
-                f' significant of {len(ranked)} findings, ranked by'
-                ' exploitation probability and then severity. The'
-                ' JSON export carries the same selection and records'
-                ' how many were left out.</p>')
-    return note + _cve_table(top, hint)
-
-
-def _call_view(function, *args, **kwargs):
-    """Call an evidenceview function; None while it is not yet the contract.
-
-    Two shapes mean "not built yet": it raises NotImplementedError, or its
-    signature cannot take the contract's arguments (the original stubs took
-    different ones). Anything else -- including a TypeError raised from inside
-    a real implementation -- is a bug and propagates.
-    """
-    try:
-        inspect.signature(function).bind(*args, **kwargs)
-    except TypeError:
-        return None
-    try:
-        return function(*args, **kwargs)
-    except NotImplementedError:
-        return None
-
-
-def _evidence_views(assessment, findings, web, hint, scope=""):
+def _evidence_views(assessment, findings, web, scope=""):
     """The one place the result page calls evidenceview.
 
-    Returns (exposure_html, evidence_html, drawers_html). Each call is made
-    through the module so a replacement is picked up. While evidenceview is
-    still a stub the page degrades to the previous table rather than failing;
-    once it is complete the fallbacks are dead code and can go.
+    Returns (exposure_html, evidence_html, drawers_html).
     """
     static = web is None
     view = EvidenceView() if web is None else web.evidence
@@ -1279,20 +1217,15 @@ def _evidence_views(assessment, findings, web, hint, scope=""):
     # Only a multi-product page passes a scope; the single-product page keeps
     # the plain ids its fragment links and tests use.
     extra = {"scope": scope} if scope else {}
-    exposure = _call_view(evidenceview.exposure_card, assessment, static=static,
-                          findings=findings, view=view, **extra)
-    if exposure is None:
-        summary = _calculation_summary(assessment)
-        exposure = components.card(summary, "Exposure") if summary else ""
-    evidence = _call_view(evidenceview.evidence_card, findings, assessment, view,
-                          firmware=firmware, advisories=advisories, static=static,
-                          **extra)
-    if evidence is None:
-        evidence = _legacy_evidence(findings, hint)
+    exposure = evidenceview.exposure_card(assessment, static=static,
+                                          findings=findings, view=view, **extra)
+    evidence = evidenceview.evidence_card(findings, assessment, view,
+                                          firmware=firmware, advisories=advisories,
+                                          static=static, **extra)
     drawers = ""
     if not static:
-        drawers = _call_view(evidenceview.drawers, findings, assessment, view,
-                             advisories, firmware=firmware) or ""
+        drawers = evidenceview.drawers(findings, assessment, view, advisories,
+                                       firmware=firmware)
     # The evidence module cannot import this one (circular), so the applied
     # inputs and the "why this answer did not move the score" notes sit next to
     # its card from here. Skipped when the card already carries them.
@@ -1390,7 +1323,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         parts.append(web.tabs_html)
 
     exposure_html, evidence_html, drawers_html = _evidence_views(
-        assessment, findings, web, hint, scope)
+        assessment, findings, web, scope)
 
     if assessment.gates:
         parts.append('<div class="rt-alerts">'
@@ -1504,69 +1437,6 @@ def _pillar_table(assessment, weights, hint=True, section=None):
                  'change the result; the network row does not. Evidence completeness is reported and '
                  'never scored.</p>')
     return "".join(parts)
-
-
-def _cve_table(findings, hint=True):
-    """The most significant CVEs, worst exploitation probability first.
-
-    The affected range is shown because it is what a reader has to check by
-    hand on the rows marked "needs review": saying a range could not be parsed
-    without saying which range leaves them nowhere to start.
-    """
-    parts = ['<h3>Vulnerabilities to review</h3><p class="tnote">A CVE is a reference number '
-             'for a known security weakness. Severity measures possible harm; EPSS estimates '
-             'exploitation in the next 30 days. Neither shows that your equipment was attacked.</p>'
-             '<div class="tw" tabindex="0" role="region" aria-label="CVE evidence, scroll horizontally for more columns">'
-             + _scroll_hint('Scroll sideways to see all evidence →', hint)
-             + '<table><thead><tr><th scope="col">Vulnerability (CVE)</th>'
-             '<th scope="col" class="n">Severity / 10 (CVSS)</th><th scope="col" class="n">30-day estimate (EPSS)</th>'
-             '<th scope="col">Confirmed exploitation record</th><th scope="col">Security notice</th>'
-             '<th scope="col">Affected firmware range</th></tr></thead><tbody>']
-    for f in findings:
-        parts.append(
-            f'<tr><td><code>{_esc(f.cve)}</code>'
-            + ('' if f.decided else ' <span class="meta">needs review</span>')
-            + f'</td><td class="n">{"Not available" if f.cvss is None else f"{f.cvss:.1f}"}</td>'
-            f'<td class="n">{_probability(f.epss)}</td>'
-            f'<td>{"Listed in CISA KEV" if f.in_kev else "No record shown"}</td>'
-            f'<td><code>{_esc(f.advisory_id)}</code></td>'
-            f'<td class="id rng">{_esc(f.version_range)}</td></tr>')
-    parts.append('</tbody></table></div>')
-    return "".join(parts)
-
-
-def _summary_table(blocks, stabilities, hint=True):
-    """Side-by-side ranking, so the decision is visible without scrolling."""
-    rows = []
-    for assessment, resolution, _ in blocks:
-        colour = VERDICT_COLOR.get(assessment.verdict, INERT)
-        st = stabilities.get(id(assessment), stabilities.get(assessment.product))
-        robust = "&mdash;" if st is None else (
-            "Blocked" if st.gated else "Needs verification" if assessment.provisional else
-            "Not tested" if not st.samples else f"{st.agreement:.0%}")
-        note = (assessment.gates[0]["gate"] if assessment.gates
-                else 'Supplier verification required' if assessment.cautions or assessment.third_party_count
-                else (f"Needs verification: {len(assessment.verification)} open"
-                      f" check(s)" if assessment.provisional and assessment.verification else "")
-                if resolution.resolved else resolution.reason)
-        rows.append(
-            f'<tr class="cand" style="--vc:{colour}">'
-            f'<td><b>{_esc(assessment.product)}</b></td>'
-            f'<td class="v">{_esc(assessment.verdict)}</td>'
-            f'<td class="n">{score_label(assessment)}</td>'
-            f'<td class="n">{"&mdash;" if assessment.score is None or not assessment.resolved else assessment.findings_count}</td>'
-            f'<td class="n">{robust}</td>'
-            f'<td>{_esc(note)}</td></tr>')
-    return ('<div class="tw" tabindex="0" role="region" aria-label="Candidate comparison, scroll horizontally for more columns">'
-            + _scroll_hint('Scroll sideways to see all candidates’ evidence →', hint)
-            + '<table><thead><tr><th scope="col">Candidate</th><th scope="col">Verdict</th>'
-            '<th scope="col" class="n">Score</th><th scope="col" class="n">Vulnerabilities</th>'
-            '<th scope="col" class="n">Verdict stability</th><th scope="col">Main reason</th>'
-            '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>'
-            '<p class="tnote">Verdict stability shows how often the most common verdict '
-            'repeated when score weights were changed. Below 90%, the result depends more '
-            'strongly on the chosen weights. This does not measure evidence accuracy or '
-            'the stability of the ranking. A dash means this check was not run.</p>')
 
 
 def _cmp_robust(assessment, st):

@@ -759,11 +759,12 @@ def test_inline_links_meet_the_touch_target_floor_on_small_screens():
     footer links needed raising."""
     from retrust import webui
     rule = ".helper a,footer a,.empty a,.tnote a"
-    assert rule in webui.CSS
+    page_rules = webui.SHELL_CSS + webui.PAGE_CSS
+    assert rule in page_rules
     # and it must live inside the small-screen query, not change the desktop line
     # Property kept: 24px inline-link height, only inside the small-screen
     # query. The query is now the <640px breakpoint of the new shell.
-    small = webui.CSS.split("@media(max-width:639px){")
+    small = page_rules.split("@media(max-width:639px){")
     assert any(rule in part and "min-height:24px" in part for part in small[1:])
 
 

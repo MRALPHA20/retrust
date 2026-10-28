@@ -1,4 +1,4 @@
-"""The assess page (WP6): export menu, new exports, evidence parameters, ids."""
+"""The assess page: export menu, new exports, evidence parameters, ids."""
 from script_policy import without_enhancement
 import html
 import re

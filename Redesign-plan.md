@@ -719,3 +719,44 @@ New modules: D:\karthik\retrust\retrust\design.py, D:\karthik\retrust\retrust\co
 - **D5 Nav:** 4 items (Assess, Compare, Search, Methodology); other pages are contextual "Related evidence" links.
 - **D6 Shortlist:** URL-only, no persistence, no count chip, no drag reorder. (With WP9 the "mark as sent" checkbox may use sessionStorage.)
 - **FYI:** fix the pillar-weight display/copy inconsistency (1.6 item 1) as planned.
+
+---
+
+## 8. What was built
+
+Deviations from the spec and plan that a reader of `Design-spec-document.md` must know. The spec itself is unchanged.
+
+- **Light `--prefer` is `#0C6F5C`, not the spec 5.5 value `#0F7A64`.** The spec value gives 4.09:1 against its own 14% tinted fill, under the 4.5:1 floor. `tests/test_design.py` pins the new value and the ratios.
+- **Plex glyph fallback.** The self-hosted IBM Plex files are Latin-1 subsets and lack `● ◆ ■ ✓ ▲ ▼ ↑ ≥`. Those glyphs render in the system font. They always sit next to a word, so meaning does not depend on the glyph.
+- **D3 (type floor).** Every spec size of 11px is 12px; `css_lint` enforces 12px on the web and export stylesheets (`tests/test_css_lint_global.py`).
+- **D4 (ranking).** The default evidence selection and order are unchanged (top 10 by EPSS, then CVSS). An explicit `sort=` applies to the full in-scope list before the cap. Spec 4.14 "default sort is Z" does not apply. `batch.to_detail` and `tests/test_batch.py` are untouched.
+- **No drag reorder** in the shortlist (D6). The shortlist is URL-only: no persistence, no count chip.
+- **No `role=tablist`.** The result sections use anchor navigation (`nav` with links). Nothing claims tab semantics it does not implement.
+- **No scroll-spy.** The section nav does not track the scroll position.
+- **Navigation has four items (D5)**: Assess, Compare, Search, Methodology. Other pages are contextual "Related evidence" links.
+- **Script (D1).** Exactly one same-origin deferred script on web pages (`/static/retrust.js`), none in exports, no inline handlers. Search suggestions, drawer focus trap, toasts, copy buttons and the `Ctrl K` / `⌘K` hint are the only things it adds; every page works without it. The hint shows `⌘K` on Apple platforms and `Ctrl K` elsewhere; both chords work everywhere.
+- **Print.** A closed `<details>` does not print its content in Chromium. Both the web stylesheet and the export stylesheet now set `details::details-content` visible under `@media print` (`tests/e2e/test_print_browser.py` checks it in a browser). Browsers without `::details-content` support print closed disclosures closed.
+- **Label.** The pillar is still labelled "Exposure safety"; a test pins it and the label has not been decided.
+- **Removed at WP12.** The legacy alias custom properties (`--ink --soft --faint --panel --field --sunk --cond --sans --mono`), the `report.CSS` and `webui.CSS` compatibility names, the pre-redesign findings table and summary table in `report.py`, the stub fallbacks around `evidenceview`, and CSS rules for classes nothing emits.
+- **New guards.** `tests/test_css_lint_global.py` (shadows, gradients, reserved hues, action colour, reduced motion over the assembled web and export CSS) and `tests/test_a11y_markup.py` (markup rules over every screenshot-matrix route and the HTML exports).
+
+### Work packages and commits
+
+| Package | Commit |
+|---|---|
+| Spec and plan | `3408322` |
+| WP0 contracts and stubs | `6e64573` |
+| WPQ / WPC gap tags, terminal VERIFY colour | `4e3cdf1` (merge `dc84ffb`) |
+| WP1 tokens, base and print CSS | `6e40845` (merge `660654a`) |
+| WP3 component primitives | `531d762` (merge `00b1b6d`) |
+| WP2 fonts and static assets | `9d49865` (merge `b31773f`) |
+| WP10a review screenshots and browser tests | `9e74101` |
+| WP4 shell, navigation, snapshot status, error pages | `a00c517` (merge `00665f7`) |
+| WP5b exposure and evidence views | `c53c383` (merge `b61ec20`) |
+| WP5a result composites and light export | `4e9103d` (merge `5a2c32d`) |
+| WP7 comparison table | `2abf51f` |
+| WP6 assess page and export formats | `d7e81bc` (merge `bef38e7`) |
+| WP8 search, methodology and secondary pages | `2c2df4c` (merge `a816782`) |
+| Gate R3 review fixes | `f30f8d0`, `098a46c` |
+| WP9 enhancement script | `3ed256c` |
+| WP12 cleanup, global CSS lint, markup accessibility tests | the commit that adds this section |

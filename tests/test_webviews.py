@@ -177,13 +177,10 @@ def _reviewed(html):
 
     The page also renders an uncapped per-vulnerability contributions table,
     so a whole-page search cannot tell the capped table from the full one.
-    The evidence card's table is `id="evidence-table"`; the legacy heading is
-    the fallback until report.py renders the evidence card (WP5a).
+    The evidence card's table is `id="evidence-table"`.
     """
     import re
-    start = html.find('id="evidence-table"')
-    if start < 0:
-        start = html.index("<h3>Vulnerabilities to review</h3>")
+    start = html.index('id="evidence-table"')
     end = html.find("</table>", start)
     return set(re.findall(r"CVE-\d{4}-\d{4,}", html[start:end]))
 

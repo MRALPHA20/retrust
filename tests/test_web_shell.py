@@ -1,4 +1,4 @@
-"""Control Room shell (WP4): header, navigation, snapshot status, error pages."""
+"""Control Room shell: header, navigation, snapshot status, error pages."""
 
 from script_policy import without_enhancement
 import re
@@ -228,8 +228,11 @@ def test_every_custom_property_in_result_and_page_css_is_defined():
     used = set(re.findall(r"var\((--[\w-]+)", report.RESULT_CSS + webui.PAGE_CSS
                           + webui.SHELL_CSS)) - {"--vc"}
     assert used - defined == set()
-    for alias in ("--ink", "--soft", "--faint", "--panel", "--field", "--sunk", "--cond"):
-        assert alias in defined
+    # The pre-redesign alias names are gone: nothing may define them again.
+    for alias in ("--ink", "--soft", "--faint", "--panel", "--field", "--sunk",
+                  "--cond", "--sans", "--mono"):
+        assert alias not in defined
+        assert not re.search(re.escape(alias) + r"s*:", webui.STYLESHEET)
 
 
 def test_small_screen_rules():

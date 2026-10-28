@@ -1,6 +1,6 @@
-"""Result composites and the light export (WP5a).
+"""Result composites and the light export.
 
-evidenceview is faked with marker strings so none of this depends on WP5b.
+evidenceview is faked with marker strings so none of this depends on its markup.
 """
 import re
 from html.parser import HTMLParser
@@ -430,7 +430,7 @@ def test_hostile_strings_are_escaped_everywhere():
     assert "&lt;img src=x onerror=alert(1)&gt;" in markup
 
 
-@pytest.mark.parametrize("name", ["RESULT_CSS", "EXPORT_CSS", "CSS"])
+@pytest.mark.parametrize("name", ["RESULT_CSS", "EXPORT_CSS"])
 def test_result_css_passes_the_design_lint(name):
     assert css_lint(getattr(report, name)) == []
 
@@ -459,10 +459,3 @@ def test_the_calculation_summary_sits_beside_the_exposure_card():
     markup = block(a, [][:0] or None, [])
     assert markup.index(EXPOSURE) < markup.index("Applied scoring inputs")
     assert markup.count("<h3>Applied scoring inputs</h3>") == 1
-
-
-def test_stub_evidenceview_degrades_instead_of_failing(monkeypatch):
-    def stub(rows, view):
-        raise NotImplementedError
-    monkeypatch.setattr(evidenceview, "evidence_card", stub)
-    assert "Vulnerabilities to review" in block(verify(), None, [finding()])

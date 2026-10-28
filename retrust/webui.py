@@ -178,7 +178,6 @@ def error_page(title, heading, message, actions_html=""):
 
 
 SHELL_CSS = """
-:root{--ink:var(--text);--soft:var(--text-2);--faint:var(--muted);--panel:var(--surface);--field:var(--ground);--sunk:var(--bar);--cond:var(--conditional);--sans:var(--font-sans);--mono:var(--font-mono)}
 body.app{background:var(--ground);color:var(--text);font-size:.875rem;line-height:1.5}
 .rt-header{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s8) var(--s24);padding:var(--s12) var(--s24);background:var(--bar);border-bottom:1px solid var(--rule)}
 .rt-brand{display:inline-flex;align-items:center;gap:var(--s8);color:var(--text);text-decoration:none}
@@ -233,24 +232,11 @@ main h1{font-family:var(--font-sans);font-weight:600;font-size:1.625rem;line-hei
 main h2{font-size:1.125rem;font-weight:600;line-height:1.3;border:0;padding:0;margin:0 0 var(--s8)}
 main h3{font-size:1rem;font-weight:600;margin:0 0 var(--s8)}
 .lead{color:var(--text-2);max-width:42rem;font-size:1rem;line-height:1.6;margin:0 0 var(--s20)}
-.eyebrow{font-family:var(--font-mono);font-weight:500;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 var(--s8)}
 .helper{font-size:.8125rem;color:var(--muted);margin:var(--s8) 0 0}
-.muted{color:var(--muted)}
 .empty{color:var(--text-2);font-size:.875rem}
-.panel{border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);padding:var(--s20);margin:0 0 var(--s16)}
-.panel-heading{display:flex;justify-content:space-between;gap:var(--s12);align-items:baseline;margin-bottom:var(--s12)}
-.panel-heading span{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .notice{padding:var(--s12) var(--s16);border:1px solid var(--rule);border-left:3px solid var(--control-border);border-radius:var(--r-lg);background:var(--surface);color:var(--text-2);font-size:.875rem;margin:var(--s12) 0}
 .section-title{display:flex;align-items:baseline;justify-content:space-between;margin:var(--s24) 0 var(--s12)}
 .section-title span{font-family:var(--font-mono);font-size:.8125rem;color:var(--muted)}
-.hero{margin:0 0 var(--s20)}
-.hero h1{font-size:2rem}
-.hero-mark{display:none}
-.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s12);margin:var(--s20) 0}
-.metric{padding:var(--s16);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-card)}
-.metric strong{display:block;font-family:var(--font-mono);font-weight:500;font-size:1.5rem;line-height:1.2;margin-bottom:var(--s4);font-variant-numeric:tabular-nums}
-.metric span{color:var(--text-2);font-size:.8125rem}
-.metric small{display:block;color:var(--muted);font-family:var(--font-mono);font-size:.75rem;margin-top:var(--s6)}
 main form{margin:var(--s16) 0 var(--s20)}
 main label{display:block;color:var(--text-2);font-size:.8125rem;font-weight:500;margin:0 0 var(--s4)}
 main input[type=text],main select{width:100%;max-width:42rem;min-height:40px;padding:var(--s8) var(--s12);font-family:var(--font-sans);font-size:.875rem;color:var(--text);background:var(--ground);border:1px solid var(--control-border);border-radius:var(--r-lg)}
@@ -269,17 +255,11 @@ main .button.secondary:hover{background:var(--raised);color:var(--text);border-c
 .chips>span{color:var(--muted);font-size:.8125rem}
 .chip{border:1px solid var(--rule);background:var(--raised);border-radius:var(--r-md);padding:var(--s2) var(--s8);font-family:var(--font-mono);font-size:.8125rem;color:var(--text-2);text-decoration:none}
 .chip:hover{border-color:var(--action);color:var(--text)}
-.split{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--s16)}
-.split .panel{margin:0}
 .steps{list-style:none;padding:0;margin:var(--s16) 0 0;display:grid;gap:var(--s16)}
 .steps li{display:flex;gap:var(--s12)}
 .step-number{font-family:var(--font-mono);font-size:.8125rem;color:var(--action);border:1px solid var(--rule);background:var(--raised);border-radius:var(--r-md);min-width:28px;height:28px;display:grid;place-items:center}
 .steps b{font-weight:600}
 .steps p{font-size:.8125rem;color:var(--muted);margin:var(--s2) 0 0}
-.example{display:flex;align-items:center;justify-content:space-between;padding:var(--s12) 0;text-decoration:none;border-bottom:1px solid var(--rule-row);color:var(--text)}
-.example:last-child{border:0;padding-bottom:0}
-.example small{display:block;color:var(--muted);font-size:.8125rem;margin-top:var(--s2)}
-.example .arrow{color:var(--action);margin-left:var(--s8)}
 .rows{display:grid;gap:var(--s8)}
 .hit{display:block;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);padding:var(--s12) var(--s16);text-decoration:none;color:var(--text)}
 .hit:hover{border-color:var(--action);background:var(--raised);color:var(--text)}
@@ -292,12 +272,6 @@ main .button.secondary:hover{background:var(--raised);color:var(--text);border-c
 .form-panel{background:var(--surface);border:1px solid var(--rule);padding:var(--s20);border-radius:var(--r-card)}
 .form-panel>p:first-child{margin-top:0}
 .form-panel .helper{max-width:none}
-.form-divider{font-size:.8125rem;color:var(--muted);margin:var(--s16) 0}
-.site-context{margin-top:var(--s20)}
-.site-context h3{margin-bottom:var(--s12)}
-.site-context .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16)}
-.site-context .form-grid>div:last-child{grid-column:auto}
-.site-context label{min-height:2.8em}
 .form-options{padding:var(--s12) 0;border-width:1px 0 0;border-radius:0;background:transparent;margin:var(--s16) 0}
 .form-options .helper{margin-bottom:var(--s12)}
 .form-options .candidate-grid,.form-options .form-grid{margin-top:var(--s12)}
@@ -313,10 +287,7 @@ main .button.secondary:hover{background:var(--raised);color:var(--text);border-c
 .supplier-questions details p,.supplier-questions details li{color:var(--text-2)}
 .assumption-summary{max-width:75ch;line-height:1.6;margin:var(--s16) 0;color:var(--text-2)}
 .assumption-summary b{color:var(--text)}
-.assessment-edit,.assessment-downloads{margin:var(--s12) 0}
-.assessment-edit .form-panel{border:0;padding:0}
 .edit-effects{color:var(--text-2)}
-.block .coverage{border:0;border-block:1px solid var(--rule);border-radius:0;background:transparent}
 fieldset{border:1px solid var(--rule);border-radius:var(--r-card);padding:var(--s16);margin:0 0 var(--s12);min-width:0}
 legend{font-family:var(--font-mono);font-size:.8125rem;color:var(--text-2);padding:0 var(--s8)}
 .actions{display:flex;gap:var(--s8);flex-wrap:wrap;align-items:center;margin:var(--s16) 0}
@@ -328,8 +299,7 @@ details[open]>summary{margin-bottom:var(--s12)}
 .evidence-details,.assessment-more-info{background:transparent}
 .block{padding-left:var(--s16)}
 .block h2{font-size:1.25rem;overflow-wrap:anywhere}
-.verdict{border-radius:var(--r-card);background:var(--surface)}
-.gate,.caution,.note,.stability{border-radius:var(--r-lg)}
+.note,.stability{border-radius:var(--r-lg)}
 .bar{border:0;border-radius:var(--r-md)}
 .bar i{border-radius:var(--r-md)}
 table{border-radius:var(--r-card);background:var(--surface)}
@@ -340,7 +310,7 @@ caption{text-align:left;padding:var(--s8) var(--s12);color:var(--text-2);font-si
 th.n,td.n{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 .tnote{font-size:.8125rem;color:var(--muted)}
 .meta{font-size:.75rem}
-.src,.sources{overflow-wrap:anywhere}
+.sources{overflow-wrap:anywhere}
 pre{font-size:.8125rem;line-height:1.5;overflow-wrap:anywhere;padding:var(--s16);background:var(--bar);border:1px solid var(--rule);border-radius:var(--r-lg)}
 .reading-summary{max-width:75ch;margin:var(--s20) 0}
 .reading-summary p{line-height:1.6}
@@ -353,37 +323,29 @@ pre{font-size:.8125rem;line-height:1.5;overflow-wrap:anywhere;padding:var(--s16)
 .score-scope{line-height:1.6}
 .result-help{max-width:75ch;line-height:1.6}
 .demo-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s16)}
-.demo-cards .panel{margin:0}
 .demo-cards .step-number{margin-bottom:var(--s12);width:32px}
 .demo-cards p{color:var(--text-2)}
-@media(max-width:1099px){.split{grid-template-columns:1fr}.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid>div:last-child{grid-column:1/-1}}
+@media(max-width:1099px){.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid>div:last-child{grid-column:1/-1}}
 @media(max-width:639px){
 .helper a,footer a,.empty a,.tnote a{display:inline-block;min-height:24px;line-height:24px}
-.metrics{gap:var(--s8)}
-.metric{padding:var(--s12) var(--s8)}
-.metric strong{font-size:1.25rem}
-.metric small{display:none}
-.panel{padding:var(--s16)}
 .search-line{flex-direction:column}
 .search-line button{width:100%}
-.form-grid,.candidate-grid,.lookup-grid,.site-context .form-grid,.reading-facts,.demo-cards{grid-template-columns:1fr}
-.site-context label{min-height:0}
+.form-grid,.candidate-grid,.lookup-grid,.reading-facts,.demo-cards{grid-template-columns:1fr}
 .form-panel{padding:var(--s12)}
 .lookup-form button{width:100%}
 .block{padding-left:var(--s8)}
-.panel-heading{flex-wrap:wrap;gap:var(--s2)}
 main h1{font-size:1.375rem}
 }
 @media(pointer:coarse){
 main input[type=text],main select,main button:not(.rt-btn):not(.ev-open):not(.ev-close),main .button{min-height:44px;font-size:1rem}
 }
+@media print{
+details::details-content{content-visibility:visible!important;display:block!important;height:auto!important}
+}
 """
 
 # One stylesheet, one order (Redesign-plan A2): later layers win ties, and
-# report.RESULT_CSS's legacy rules must come before the shell that overrides them.
+# RESULT_CSS must come before the shell, which overrides some of its rules.
 STYLESHEET = (design.theme_css(design.DARK, ":root") + assets.font_face_css(served=True)
               + design.BASE_CSS + components.CSS + evidenceview.CSS + report.RESULT_CSS
               + SHELL_CSS + PAGE_CSS + webviews.CSS + design.PRINT_CSS)
-
-# Kept so callers that took the old name still get the page-level rules.
-CSS = SHELL_CSS + PAGE_CSS

@@ -1,4 +1,4 @@
-"""Browser checks for the enhancement script (WP9) and for its absence.
+"""Browser checks for the enhancement script and for its absence.
 
 Every behaviour here runs with the real Content-Security-Policy enforced (no
 bypass), and a violation or page error in the console fails the test. The last
@@ -115,12 +115,36 @@ def test_enter_without_a_highlighted_row_submits_the_form_normally(browser, base
         assert page.locator("h1").inner_text().startswith("Search")
 
 
-def test_ctrl_k_focuses_the_field_and_the_hint_is_script_only(browser, base_url):
+def _hint(browser, base_url, platform):
+    """The placeholder the script writes when the browser reports `platform`."""
+    init = ("Object.defineProperty(navigator, 'platform', {get: () => %r});"
+            "Object.defineProperty(navigator, 'userAgentData', {get: () => undefined});"
+            % platform)
+    context = browser.new_context(**OPTIONS)
+    context.add_init_script(init)
+    page = context.new_page()
+    try:
+        page.goto(base_url + "/about", wait_until="networkidle")
+        return page.locator("#rt-global-q").get_attribute("placeholder")
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("platform, hint", [
+    ("MacIntel", "⌘K"), ("iPad", "⌘K"), ("Win32", "Ctrl K"), ("Linux x86_64", "Ctrl K")])
+def test_the_shortcut_hint_names_the_platform_modifier(browser, base_url, platform, hint):
+    placeholder = _hint(browser, base_url, platform)
+    assert placeholder.endswith(" " + hint)
+    assert ("⌘" in placeholder) == (hint == "⌘K")
+
+
+def test_ctrl_k_and_cmd_k_both_focus_the_field_and_the_hint_is_script_only(browser, base_url):
     with session(browser, base_url, "/about") as page:
-        assert "⌘K" in page.locator("#rt-global-q").get_attribute("placeholder")
-        page.locator("h1").click()
-        page.keyboard.press("Control+k")
-        assert page.evaluate("document.activeElement.id") == "rt-global-q"
+        assert page.locator("#rt-global-q").get_attribute("placeholder").endswith(("⌘K", "Ctrl K"))
+        for chord in ("Control+k", "Meta+k"):
+            page.locator("h1").click()
+            page.keyboard.press(chord)
+            assert page.evaluate("document.activeElement.id") == "rt-global-q"
 
 
 def test_a_slow_stale_answer_never_replaces_a_newer_one(browser, base_url):
@@ -373,7 +397,8 @@ def test_every_page_renders_without_javascript(browser, base_url, name):
         # Nothing that needs the script is shown as a dead control.
         assert page.get_by_role("button", name="Copy all").count() == 0
         assert page.get_by_role("checkbox", name="Mark as sent").count() == 0
-        assert "⌘K" not in (page.locator("#rt-global-q").get_attribute("placeholder") or "")
+        placeholder = page.locator("#rt-global-q").get_attribute("placeholder") or ""
+        assert "⌘K" not in placeholder and "Ctrl K" not in placeholder
     finally:
         context.close()
 

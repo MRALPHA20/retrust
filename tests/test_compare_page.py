@@ -1,4 +1,4 @@
-"""The Control Room comparison page (WP7): transposed shortlist table, export
+"""The Control Room comparison page: transposed shortlist table, export
 menu, confirmed clear, and the safety properties that go with them."""
 from script_policy import without_enhancement
 import html

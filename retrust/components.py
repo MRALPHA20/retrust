@@ -1,4 +1,4 @@
-"""UI primitives and formatters for the Control Room redesign (WP3).
+"""UI primitives and formatters for the Control Room redesign.
 
 Components are pure functions: data in, escaped HTML string out, no I/O. Every
 text parameter is escaped inside the function; parameters named *_html accept
@@ -8,7 +8,7 @@ names use an rt- BEM scheme.
 Rules every component follows:
 
 * No JavaScript. Every component works with JS disabled; the optional JS layer
-  (WP9) hooks on plain attributes and classes only. No inline handlers.
+  hooks on plain attributes and classes only. No inline handlers.
 * Status is never colour alone: every status carries a glyph and a word.
 * ``attrs`` dicts add attributes. Names are validated, values are escaped, and
   attributes that would break pairing (id, name, for, type on buttons) cannot

@@ -1,4 +1,4 @@
-"""WP5b: the exposure card, evidence card, drawers, ranking and URL state."""
+"""The exposure card, evidence card, drawers, ranking and URL state."""
 
 import re
 from types import SimpleNamespace
@@ -48,14 +48,14 @@ def table_of(card):
 
 # --- selection and ranking ---------------------------------------------------
 
-def test_default_selection_and_order_equal_todays_cve_table():
+def test_default_selection_and_order_keep_the_epss_then_cvss_ranking():
     fs = many(25)
     today = sorted(fs, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))[:10]
     a = assessed(fs)
     assert ev.shown(fs, a, view()) == today
-    # And the same ten CVEs come out of the legacy renderer, in the same order.
+    # And the rendered table lists those ten CVEs, in that order.
     assert (cves(table_of(ev.evidence_card(fs, a, view())))
-            == cves(report._cve_table(today)))
+            == [f.cve for f in today])
 
 
 def test_default_order_breaks_epss_ties_by_cvss_then_arrival():

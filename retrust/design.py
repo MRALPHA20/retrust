@@ -1,11 +1,10 @@
 """Design tokens and colour maths for the Control Room redesign.
 
-This module is the contract layer (WP0): the names below are stable, WP1 fills
-in BASE_CSS and PRINT_CSS. Nothing in the running app imports it yet.
+The tokens, colour maths and the base and print stylesheets every surface shares.
 
 Decisions confirmed by the user (Redesign-plan.md section 7):
 
-D1  JavaScript is in scope (WP9): one same-origin external script
+D1  JavaScript is in scope: one same-origin external script
     /static/retrust.js, CSP script-src 'self'; connect-src 'self', no inline
     scripts, no on*= handlers, no external URLs. Every page must still work
     with JS disabled.

@@ -1,4 +1,4 @@
-"""WP3: Control Room component primitives."""
+"""Control Room component primitives."""
 
 import html
 import re

@@ -1,6 +1,6 @@
 """Evidence view: exposure table, evidence table, drawers, ranking, filters.
 
-Spec 4.10, 4.12, 4.14, 4.15 and Redesign-plan WP5b. View state lives in the URL
+Spec 4.10, 4.12, 4.14, 4.15. View state lives in the URL
 (plan A7) and is presentation-only: it is never passed to the scorer.
 
 Everything here is a pure function of the findings and the assessment that
@@ -267,7 +267,7 @@ def _sort_value(name, finding, index):
 def _ranked(findings, assessment, state):
     rows = [f for f in (findings or []) if _matches(f, state.ev)]
     if not state.sort:
-        # Today's report._cve_table order, byte for byte (D4). sorted() is
+        # The application's long-standing order: EPSS, then CVSS (D4). sorted() is
         # stable, so ties keep the order the findings arrived in.
         return sorted(rows, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))
     index = _index(assessment)
@@ -594,7 +594,7 @@ def drawers(findings, assessment, view, advisories=None, *, firmware=""):
     """One popover panel per SHOWN row, so drawers always match the table.
 
     Web only. Esc, light dismiss and focus return are the browser's popover
-    behaviour; a focus trap arrives with the script in WP9.
+    behaviour; the focus trap is in the enhancement script.
     """
     rows = shown(findings, assessment, view)
     if not rows:

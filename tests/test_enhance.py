@@ -1,4 +1,4 @@
-"""WP9: the same-origin enhancement script, its route, its policy and /search.json.
+"""The same-origin enhancement script, its route, its policy and /search.json.
 
 The browser behaviour is in tests/e2e/test_enhance_browser.py; this file holds
 what can be checked without one: the bytes served, the headers and policy they

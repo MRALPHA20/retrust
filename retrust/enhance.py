@@ -91,6 +91,17 @@ SCRIPT = r"""'use strict';
   }
 
   // ---------------------------------------------------------- global search
+  // Which shortcut to print in the hint. Both Ctrl+K and Cmd+K always work;
+  // this only decides what the placeholder says, so any failure to read the
+  // platform falls back to the non-Apple wording rather than throwing.
+  function isApple() {
+    try {
+      var nav = window.navigator || {};
+      var platform = (nav.userAgentData && nav.userAgentData.platform) || nav.platform || '';
+      return /mac|iphone|ipad|ipod/i.test(String(platform));
+    } catch (error) { return false; }
+  }
+
   function initSearch() {
     var form = doc.querySelector('form[role=search]');
     var input = form ? form.querySelector('input[name=q]') : null;
@@ -98,7 +109,7 @@ SCRIPT = r"""'use strict';
 
     var base = input.getAttribute('placeholder') || '';
     if (!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) {
-      input.setAttribute('placeholder', base + ' \u2318K');
+      input.setAttribute('placeholder', base + (isApple() ? ' \u2318K' : ' Ctrl K'));
     }
 
     var box = el('div', 'rt-suggest');

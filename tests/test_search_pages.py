@@ -1,4 +1,4 @@
-"""WP8: Search, Methodology and the secondary pages (spec 4.3, 4.19, 4.23, 5.3)."""
+"""Search, Methodology and the secondary pages (spec 4.3, 4.19, 4.23, 5.3)."""
 
 from script_policy import without_enhancement
 import html

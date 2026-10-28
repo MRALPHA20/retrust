@@ -245,7 +245,7 @@ GAP_NAMES = {'E': 'exposure', 'P': 'patch availability', 'V': 'vendor practice',
 
 
 def _gap_tag(code):
-    """`GAP · C` as plain text: the linked form needs the JS layer (WP9)."""
+    """`GAP · C` as plain text: the linked form needs the JS layer."""
     if not code:
         return ''
     name = GAP_NAMES.get(code)
