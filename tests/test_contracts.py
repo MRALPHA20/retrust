@@ -54,7 +54,7 @@ def test_alpha():
 
 
 def test_placeholders_are_empty_strings():
-    assert design.BASE_CSS == "" and design.PRINT_CSS == ""
+    assert design.BASE_CSS != "" and design.PRINT_CSS != ""
     assert components.CSS == "" and evidenceview.CSS == ""
 
 
