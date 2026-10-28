@@ -912,7 +912,7 @@ already going to hear about.
 | Vendor practice | 0.15 | whether the vendor runs its own CSAF feed, and advisory completeness |
 | Certification | 0.05 | IEC 62443 (ISASecure) and Common Criteria certificates |
 
-**Exposure in RT7 follows the ReTrust-OT V1 proposal, with a service-life
+**Exposure in RT8 follows the ReTrust-OT V1 proposal, with a service-life
 threat floor and a severity factor:**
 
 ```

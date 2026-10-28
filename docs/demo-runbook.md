@@ -182,6 +182,12 @@ Keep these distinctions in the presentation.
 
 Enough to know if you last presented an earlier build.
 
+- **A fixed firmware is scored, not floored (RT8).** A firmware version outside
+  every published affected range means no recorded CVE applies, so exposure is
+  100 and the patch and vendor record are still scored. RT7 gave it the
+  evidence-free range and headlined its floor, below the vulnerable release it
+  replaces. The verdict band now also reads the score as displayed, so a page
+  can no longer print "AVOID 60.0".
 - **Bounds instead of a single number (RT4).** An assessment with open
   questions reports a range and the verdict VERIFY, not a point score. The
   range is the conservative and optimistic endpoints of the unresolved inputs,
@@ -194,7 +200,7 @@ Enough to know if you last presented an earlier build.
   advisory findings, with only a vendor certificate behind it, used to score
   well enough to come out PREFER. Absence of evidence is no longer treated as
   evidence.
-- **RT7 checks the selected firmware.** A published patch alone does not clear
+- **The selected firmware is checked.** A published patch alone does not clear
   a KEV blocker. Affected or unresolved firmware still reads AVOID, including
   the HTTPS-only S7-1500 example that previously read VERIFY under RT4. Show the
   assessor the fixed firmware version and supporting evidence; do not present

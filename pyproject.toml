@@ -23,7 +23,7 @@ dependencies = []
 # pytest is for developing the tool, not using it. Screenshot trimming needs
 # nothing: the content height is measured off the PNG scanlines in stdlib.
 dev = ["pytest>=7"]
-docs = ["reportlab>=4"]
+docs = ["reportlab>=4", "playwright>=1.40"]
 
 [project.scripts]
 retrust = "retrust.cli:main"

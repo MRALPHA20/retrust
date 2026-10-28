@@ -88,7 +88,7 @@ ol.qs pre{margin:1.5mm 0 0;font-size:8.2pt;padding:2.5mm 3mm}
 </style>
 
 <div class="plate">
-  <h1>ReTrust</h1><p><b>RT7 update, 27 October 2026:</b> Threat evidence is floored for the equipment's
+  <h1>ReTrust</h1><p><b>RT8 update, 28 October 2026:</b> A named firmware outside every published affected range is now scored, at exposure 100, rather than given the evidence-free range, and verdict bands read the score as displayed. Since RT7, threat evidence is floored for the equipment's
 service life by how each flaw is reached, and CVSS severity scales each flaw's
 contribution, so an unexploited-today critical flaw is no longer scored as harmless.
 Attack reachability is read from each
@@ -97,7 +97,7 @@ network is recorded as context and never moves the score.
 Unknown reachability, OT consequences or firmware status produces VERIFY and a
 provisional range. The current formula is Z=T×I×A×H×U, R=min(1,Z1+.20Z2+.10Z3),
 E=100(1−R), S=E^.60×P^.20×V^.15×C^.05. Historical benchmark measurements below
-predate RT7. See <a href="explainers/scoring.html">the current scoring explanation</a>.</p>
+predate RT8. See <a href="explainers/scoring.html">the current scoring explanation</a>.</p>
   <p class="sub">Score OT hardware for cyber risk before you buy it.</p>
   <dl>
     <dt>Guide</dt><dd>How it works, how to run it, how to use it</dd>

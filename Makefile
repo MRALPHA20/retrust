@@ -1,7 +1,7 @@
 # Bootstrap everything from nothing. Requires git, curl and python3.
 DATA ?= data
 
-.PHONY: all data ingest refresh test eval backtest demo docs guide batch snapshot ci deploy live clean smoke formula-check
+.PHONY: all data ingest refresh test eval backtest demo docs guide screenshots batch snapshot ci deploy live clean smoke formula-check
 
 all: ingest refresh test
 
@@ -50,8 +50,13 @@ snapshot:
 demo:
 	python3 -m retrust.cli demo
 
+# Recapture the documentation screenshots from the running app with Playwright's
+# own Chromium. Install .[docs], then `python3 -m playwright install chromium`.
+screenshots:
+	python3 tools/capture_screenshots.py
+
 # Build the illustrated overview from retained measurements. Install .[docs].
-guide:
+guide: screenshots
 	python3 tools/build_overview.py
 	python3 tools/build_scoring_sheet.py
 
