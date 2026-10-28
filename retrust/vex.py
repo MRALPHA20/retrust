@@ -65,6 +65,21 @@ class Statement:
     justification: str | None = None
 
 
+def has_statements(connection, resolution):
+    """Would statements() return anything, without building it.
+
+    Same walk and same emptiness rule (a matched row naming at least one CVE),
+    stopping at the first hit; for callers that only need to know whether a
+    VEX can be written, such as the export menu on every assessment page.
+    """
+    if not resolution.resolved:
+        return False
+    return any(connection.execute(
+        "SELECT 1 FROM affected WHERE advisory_id = ? AND product_id = ? LIMIT 1",
+        (match_.advisory_id, match_.product_id)).fetchone()
+        for match_ in resolution.matches)
+
+
 def statements(connection, resolution, version=None):
     """One claim per CVE, across every product row the resolution matched.
 

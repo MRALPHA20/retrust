@@ -144,3 +144,71 @@ def test_vex_row_is_disabled_with_a_reason_when_unresolved(handler):
     _, _, body = _get(handler, '/score?vendor=Nope&product=Nothing')
     assert 'Needs an identified product.' in body
     assert 'href="/export.vex.json' not in body
+
+
+ANSWERED = ('/score?vendor=Testco&product=TestPLC+9000&version=1.0&network_exposure=internet_ot'
+            '&interface=exposed&consequence=safety&remediation=available&prerequisites=satisfiable')
+
+
+def _panel_questions(body):
+    return [''.join(html.unescape(t).split()) for t in re.findall(r'<p class="rt-q__text">(.*?)</p>', body)]
+
+
+def _file_questions(text):
+    """The numbered asks of format_report, unwrapped (whitespace dropped: the
+    80-column wrap can break after a hyphen)."""
+    chunks = re.split(r'\n(?= ?\d+\. )', '\n' + text)[1:]
+    out = []
+    for chunk in chunks:
+        ask = chunk.split('\n    why:')[0]
+        out.append(''.join(re.sub(r'^ ?\d+\. ', '', ask).split()))
+    return out
+
+
+@pytest.mark.parametrize('path', [ANSWERED, PAGE])
+def test_export_txt_equals_the_questions_panel_and_downloads(scoring_handler, path):
+    _, _, body = _get(scoring_handler, path)
+    href = html.unescape(re.search(r'href="(/annex\.txt\?[^"]+)"', body).group(1))
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+    assert query['download'] == ['1']
+    # Every answer the page was asked with travels in the link.
+    asked = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+    for key, value in asked.items():
+        assert query[key] == value, key
+    status, headers, text = _get(scoring_handler, href)
+    assert status == 200
+    assert headers['Content-Disposition'].startswith('attachment; filename="retrust-rfq-annex-')
+    panel = _panel_questions(body)
+    assert panel and _file_questions(text) == panel
+
+
+
+def test_has_statements_agrees_with_statements(db):
+    from retrust import match, vex
+    for fields in (dict(vendor='Testco', product='TestPLC 9000'),
+                   dict(vendor='Testco', product='No Such Box'),
+                   dict(vendor='Nobody', product='Nothing')):
+        resolution = match.resolve(db, **fields)
+        assert vex.has_statements(db, resolution) == bool(vex.statements(db, resolution)), fields
+
+
+def test_profile_without_corpus_keeps_what_the_questions_read(db):
+    from retrust import dossier
+    full, lean = dossier.build(db, 'Testco'), dossier.build(db, 'Testco', corpus=False)
+    assert lean.known and lean.spellings == full.spellings and lean.csaf_feed == full.csaf_feed
+    assert full.advisories > 0 and lean.advisories == 0      # the corpus scan was skipped
+
+
+def test_unanswered_unknown_select_is_drawn_by_the_component(scoring_handler):
+    _, _, body = _get(scoring_handler, '/score?vendor=Testco&product=TestPLC+9000')
+    assert re.search(r'<option value="" class="rt-option--unknown" selected>\? Unknown</option>', body)
+    assert 'rt-field rt-field--select rt-field--unknown' in body
+    answered = _get(scoring_handler, PAGE + '&network_exposure=it_ot')[2]
+    assert '<option value="it_ot" selected' in answered
+
+
+def test_serve_does_not_patch_component_markup_or_rebind_components():
+    source = open(serve.__file__, encoding='utf-8').read()
+    assert source.count('components = ') == 0 and source.count('import components') == 0
+    assert '>CONTEXT</p>' not in source and 'import re\n' not in source
+    assert 'card_html[:-' not in open(report.__file__, encoding='utf-8').read()

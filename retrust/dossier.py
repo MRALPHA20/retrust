@@ -89,8 +89,14 @@ class Dossier:
     sanctions_checked: bool = False   # False: only the covered lists were searched
 
 
-def build(connection, vendor, screening=None, certificates=None):
-    """Gather one vendor profile. Both caches are optional."""
+def build(connection, vendor, screening=None, certificates=None, corpus=True):
+    """Gather one vendor profile. Both caches are optional.
+
+    corpus=False skips the counts, CVSS statistics and remediation buckets (the
+    expensive scans of everything the index holds for the vendor). Spellings,
+    the CSAF feed, screening and certificates are still filled in; that is all
+    the supplier questions read, so the assessment page asks for no more.
+    """
     typed = (vendor or "").strip()
     # Punctuation-only input normalises to "", which is also the key of every
     # product whose advisory named no vendor at all. Treat that as unknown rather
@@ -104,7 +110,7 @@ def build(connection, vendor, screening=None, certificates=None):
     profile = Dossier(vendor=spellings[0][0] if spellings else typed,
                       vendor_key=vendor_key, known=bool(spellings), spellings=spellings,
                       csaf_feed=score.CSAF_PUBLISHERS.get(vendor_key))
-    if profile.known:
+    if profile.known and corpus:
         _corpus(connection, profile)
 
     # Both checks run even for a manufacturer the corpus never names: someone

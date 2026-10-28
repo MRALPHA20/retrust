@@ -449,3 +449,25 @@ def test_motion_is_guarded():
     for target in (".rt-btn", ".rt-btn--segment", ".rt-menu__row"):
         assert target in coarse
     assert "44px" in coarse
+
+
+def test_select_field_blank_option_can_be_the_unknown_choice():
+    opts = [("", "Unknown"), ("a", "A")]
+    blank = c.select_field("net", "x", opts, selected="", unknown_value="")
+    assert re.search(r'<option[^>]*value=""[^>]*class="rt-option--unknown"[^>]*selected[^>]*>\? Unknown<', blank)
+    assert "rt-field--unknown" in blank
+    answered = c.select_field("net", "x", opts, selected="a", unknown_value="")
+    assert "rt-field--unknown" not in answered and "rt-option--unknown" in answered
+    # The default, and None, mean no option is Unknown, so a blank stays neutral.
+    for plain in (c.select_field("net", "x", opts), c.select_field("net", "x", opts, unknown_value=None)):
+        assert "rt-option--unknown" not in plain and "rt-field--unknown" not in plain
+
+
+def test_gap_card_action_row_and_context_card_tag():
+    action = c.link_button("Look up", "/vendor?name=A", kind="ghost")
+    card = c.gap_card("t", "b", tag="V", action_html=action)
+    assert card.endswith('<p class="rt-gap__action">' + action + "</p></div>")
+    assert "rt-gap__action" not in c.gap_card("t", "b")
+    assert '<p class="rt-context__tag">UPDATE</p>' in c.context_card("t", "<p>x</p>", tag="UPDATE")
+    assert '<p class="rt-context__tag">CONTEXT</p>' in c.context_card("t", "<p>x</p>")
+    assert "&lt;b&gt;" in c.context_card("t", "x", tag="<b>")

@@ -385,28 +385,30 @@ def text_field(name, label, value="", state="", message="", help_text="",
     return "".join(out)
 
 
-def select_field(name, label, options, selected="", unknown_value="",
+def select_field(name, label, options, selected="", unknown_value=None,
                  input_id="", help_text="", attrs=None):
     """options: sequence of (value, text).
 
-    The option whose value equals ``unknown_value`` (when that is non-empty)
-    is the Unknown choice: its text gets a leading '? ' and, while selected,
-    the control is drawn VERIFY-style (dashed violet). The server renders the
-    modifier class for the initial state and a :has() rule tracks later
-    changes without JS."""
+    The option whose value equals ``unknown_value`` is the Unknown choice: its
+    text gets a leading '? ' and, while selected, the control is drawn
+    VERIFY-style (dashed violet). ``None`` (the default) means no option is
+    Unknown; ``""`` means the blank option is the Unknown one. The server
+    renders the modifier class for the initial state and a :has() rule tracks
+    later changes without JS."""
     fid, help_id, _ = _field_ids(name, input_id)
     sel = str(selected)
-    unk = str(unknown_value)
+    has_unknown = unknown_value is not None
+    unk = str(unknown_value) if has_unknown else ""
     opts = []
     for value, text in options:
         value = str(value)
-        is_unknown = bool(unk) and value == unk
+        is_unknown = has_unknown and value == unk
         shown = ("? " + str(text)) if is_unknown else str(text)
         opts.append("<option%s>%s</option>" % (_attrs([
             ("value", value),
             ("class", "rt-option--unknown" if is_unknown else None),
             ("selected", True if value == sel else None)]), esc(shown)))
-    unknown_now = bool(unk) and sel == unk
+    unknown_now = has_unknown and sel == unk
     base = [("class", "rt-input rt-select__input"), ("id", fid),
             ("name", name),
             ("aria-describedby", help_id if help_text else None)]
@@ -496,10 +498,11 @@ def conditions_row(items):
     return '<ul class="rt-conditions">%s</ul>' % "".join(cells)
 
 
-def gap_card(title, body, field_id="", tag=""):
+def gap_card(title, body, field_id="", tag="", action_html=""):
     """Evidence-gap card: dashed violet, 'GAP · <tag>' line. With field_id the
     title is a link to #field_id and the whole card is clickable through a
-    stretched link (pure CSS)."""
+    stretched link (pure CSS). ``action_html`` is trusted markup (a link
+    button) rendered as the card's last row."""
     tagline = "GAP · " + str(tag) if tag else "GAP"
     if field_id:
         head = ('<a class="rt-gap__link" href="#%s">%s</a>'
@@ -507,20 +510,23 @@ def gap_card(title, body, field_id="", tag=""):
     else:
         head = esc(title)
     body_html = '<p class="rt-gap__body">%s</p>' % esc(body) if body else ""
+    action = ('<p class="rt-gap__action">%s</p>' % action_html
+              if action_html else "")
     return ('<div class="rt-gap"><p class="rt-gap__tag">%s</p>'
-            '<p class="rt-gap__title">%s</p>%s</div>'
-            % (esc(tagline), head, body_html))
+            '<p class="rt-gap__title">%s</p>%s%s</div>'
+            % (esc(tagline), head, body_html, action))
 
 
-def context_card(title, body_html, footer_html=""):
-    """Informational card, solid rule border, 'CONTEXT' tag. body_html and
-    footer_html are trusted markup from other components."""
+def context_card(title, body_html, footer_html="", tag="CONTEXT"):
+    """Informational card, solid rule border, 'CONTEXT' tag (or ``tag``, e.g.
+    UPDATE). body_html and footer_html are trusted markup from other
+    components."""
     foot = ('<div class="rt-context__foot">%s</div>' % footer_html
             if footer_html else "")
-    return ('<div class="rt-context"><p class="rt-context__tag">CONTEXT</p>'
+    return ('<div class="rt-context"><p class="rt-context__tag">%s</p>'
             '<p class="rt-context__title">%s</p>'
             '<div class="rt-context__body">%s</div>%s</div>'
-            % (esc(title), body_html, foot))
+            % (esc(tag), esc(title), body_html, foot))
 
 
 _ALERTS = {

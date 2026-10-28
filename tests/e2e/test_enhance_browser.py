@@ -214,6 +214,48 @@ def test_export_choice_shows_a_toast_closes_the_menu_and_downloads(browser, base
         toast.wait_for(state="detached", timeout=8000)
 
 
+_ADD_LINK = """([menu, href, label]) => { const a = document.createElement('a');
+    a.className = 'rt-menu__row'; a.href = href; a.textContent = label;
+    document.getElementById(menu).appendChild(a); }"""
+
+
+def test_unavailable_export_shows_an_error_toast_and_never_claims_success(browser, base_url):
+    """/export.vex.json answers 404 for a product it cannot make a claim about;
+    the menu link is real, so the script must look before it announces."""
+    with session(browser, base_url, S7, accept_downloads=True) as page:
+        button = page.locator(".rt-menu > [popovertarget]").first
+        menu = button.get_attribute("popovertarget")
+        page.evaluate(_ADD_LINK, [menu, "/export.vex.json?vendor=Nobody&product=Nothing", "VEX (test)"])
+        start = page.url
+        downloads = []
+        page.on("download", lambda download: downloads.append(download))
+        button.click()
+        page.get_by_role("link", name="VEX (test)").click()
+        toast = page.locator(".rt-toast[role=alert]")
+        toast.wait_for()
+        assert "Export unavailable" in toast.text_content()
+        assert "nothing to export" in toast.text_content()
+        page.wait_for_timeout(5600)
+        assert toast.is_visible(), "an error toast persists"
+        assert page.locator(".rt-toast--prefer").count() == 0, "no success toast"
+        assert page.url == start and not downloads
+        assert not _popover_open(page, menu)
+
+
+def test_export_check_that_cannot_run_falls_back_to_the_plain_link(browser, base_url):
+    with session(browser, base_url, S7, accept_downloads=True) as page:
+        page.route("**/export.csv*", lambda route: route.abort() if route.request.method == "HEAD"
+                   else route.continue_())
+        button = page.locator(".rt-menu > [popovertarget]").first
+        menu = button.get_attribute("popovertarget")
+        button.click()
+        with page.expect_download() as download:
+            page.locator("#%s a[href^='/export.csv']" % menu).click()
+        assert download.value.suggested_filename == "retrust-assessment.csv"
+        page.wait_for_timeout(300)
+        assert page.locator(".rt-toast").count() == 0, "no success claimed without an answer"
+
+
 # ---- loading state ------------------------------------------------------------
 
 # The page's own listener is added after the script's, so the script sees every
@@ -230,7 +272,7 @@ def _submit_and_hold(page):
     page.locator("form button[type=submit]").first.click()
 
 
-def test_submit_switches_to_the_loading_look_and_blocks_a_second_submit(browser, base_url):
+def test_submit_switches_to_the_loading_look_and_lets_a_second_submit_through(browser, base_url):
     with session(browser, base_url, "/score") as page:
         width = page.evaluate("%s.getBoundingClientRect().width" % _BUTTON)
         _submit_and_hold(page)
@@ -247,8 +289,9 @@ def test_submit_switches_to_the_loading_look_and_blocks_a_second_submit(browser,
         assert state["note"] == "Resolving product… · Matching firmware… · Scoring…"
         assert "waking up" not in state["note"]                 # not hosted
         page.locator("form button[type=submit]").first.click(force=True)  # a second attempt
-        # first submit went through (not prevented), the second was stopped by the script
-        assert page.evaluate("window.__submits") == [False, True]
+        # a GET re-submit is idempotent: neither was stopped by the script
+        assert page.evaluate("window.__submits") == [False, False]
+        assert page.locator(".rt-btn--loading").count() == 1      # still one spinner, not two
 
 
 def test_hosted_demo_adds_the_waking_up_sentence_after_four_seconds(browser, base_url):
@@ -275,6 +318,46 @@ def test_pageshow_restores_the_form_from_the_back_forward_cache(browser, base_ur
         assert page.evaluate("%s.outerHTML" % _BUTTON) == before
         page.locator("form button[type=submit]").first.click()   # usable again
         assert page.evaluate("window.__submits")[-1] is False
+
+
+def test_a_cancelled_navigation_does_not_leave_the_form_blocked(browser, base_url):
+    """Esc/Stop/network error: the page stays, so nothing resets the spinner by
+    navigation. The form must still submit, and one submit must not stack a
+    second spinner. (A real held request cannot be used: with a navigation in
+    flight Playwright cannot evaluate in the page, so the submit is cancelled
+    by a listener instead, exactly as the other loading tests do.)"""
+    with session(browser, base_url, "/score") as page:
+        _submit_and_hold(page)
+        assert page.locator(".rt-btn--loading").count() == 1
+        for _ in range(2):
+            page.locator("form button[type=submit]").first.click(force=True)
+        assert page.evaluate("window.__submits") == [False, False, False]
+        assert page.locator(".rt-btn--loading").count() == 1
+        assert page.locator(".rt-loadnote").count() == 1
+        # The user gives up and edits the form: it still works after the Stop.
+        page.locator("#field-order-number").fill(ORDER + "X")
+        page.locator("#field-order-number").press("Enter")
+        assert page.evaluate("window.__submits")[-1] is False
+
+
+def test_busy_state_clears_on_a_safety_timer_and_when_the_tab_returns(browser, base_url):
+    with session(browser, base_url, "/score") as page:
+        page.clock.install()
+        page.goto(base_url + "/score", wait_until="networkidle")
+        _submit_and_hold(page)
+        assert page.locator(".rt-btn--loading").count() == 1     # set synchronously by the submit
+        page.clock.run_for(60000)
+        assert page.locator(".rt-btn--loading").count() == 1, "still within the cold-start allowance"
+        page.clock.run_for(31000)
+        assert page.locator(".rt-btn--loading").count() == 0
+        assert page.locator("form[data-rt-busy]").count() == 0
+        page.locator("form button[type=submit]").first.click()
+        assert page.locator(".rt-btn--loading").count() == 1     # set synchronously by the submit
+        page.evaluate("""() => { const set = v => { Object.defineProperty(document, 'visibilityState',
+            {get: () => v, configurable: true}); document.dispatchEvent(new Event('visibilitychange')); };
+            set('hidden'); set('visible'); }""")
+        assert page.locator(".rt-btn--loading").count() == 0
+        assert page.locator("form[data-rt-busy]").count() == 0
 
 
 def test_a_real_submit_navigates_and_leaves_no_loading_state_behind(browser, base_url):

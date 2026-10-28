@@ -120,6 +120,20 @@ def test_print_css_rules_present():
     assert css.count("{") == css.count("}")
 
 
+def test_print_css_hides_site_chrome_not_the_identity_header():
+    """A bare `header` selector also hid <header class="rt-identity">, so a
+    printed verdict carried no product. Every hiding selector must name real
+    classes (rt-card / rt-toast, not card / toast)."""
+    css = design.PRINT_CSS
+    hide = next(rule for rule in css.split(chr(10)) if "display:none!important" in rule
+                and "[popover]" in rule)
+    selectors = [part.strip() for part in hide.split("{")[0].split(",")]
+    assert "header" not in selectors and ".rt-header" in selectors
+    assert "rt-identity" not in hide
+    assert ".card{" not in css and ".toast" not in hide.replace(".rt-toast", "")
+    assert ".rt-card{break-inside:avoid}" in css
+
+
 @pytest.mark.parametrize("css", [design.BASE_CSS, design.PRINT_CSS,
                                  design.theme_css(design.DARK),
                                  design.theme_css(design.LIGHT)])

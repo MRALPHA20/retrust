@@ -8,8 +8,8 @@ Rules the string below must keep (tests/test_enhance.py checks the first two):
   * no innerHTML, outerHTML, insertAdjacentHTML, document.write, eval or
     new Function: every node is built with createElement and textContent, so
     text from the index can never become markup;
-  * no URL other than a same-origin path (the only request is
-    fetch('/search.json?q=...'));
+  * no URL other than a same-origin path (the requests are
+    fetch('/search.json?q=...') and a HEAD check of an export menu link);
   * every behaviour sits in its own try/catch, so one failure cannot take the
     others (or the page) down.
 
@@ -47,6 +47,11 @@ SCRIPT = r"""'use strict';
   function safePath(href) {
     return typeof href === 'string' && href.charAt(0) === '/'
       && href.charAt(1) !== '/' && href.charAt(1) !== '\\';
+  }
+
+  // The one place the script navigates: only same-origin paths get here.
+  function navigate(href) {
+    if (safePath(href)) { window.location.assign(href); }
   }
 
   // ---------------------------------------------------------------- toasts
@@ -163,8 +168,7 @@ SCRIPT = r"""'use strict';
     }
 
     function go(row) {
-      var href = row ? row.getAttribute('data-href') : '';
-      if (safePath(href)) { window.location.assign(href); }
+      navigate(row ? row.getAttribute('data-href') : '');
     }
 
     function render(data, typed) {
@@ -340,18 +344,46 @@ SCRIPT = r"""'use strict';
   }
 
   // ------------------------------------------------------------ export menu
+  // What a failed export means, from the status alone: the error page itself is
+  // never read or shown, so nothing from the server can become markup here.
+  function exportReason(status) {
+    if (status === 400) { return 'the request is incomplete.'; }
+    if (status === 404) { return 'there is nothing to export for this product.'; }
+    if (status === 429 || status === 503) { return 'the server is busy, try again shortly.'; }
+    return 'the server answered ' + status + '.';
+  }
+
   function initExportMenu() {
     doc.addEventListener('click', function (event) {
       var link = closest(event.target, '.rt-menu__list a[href]');
       if (!link || event.defaultPrevented) { return; }
+      var href = link.getAttribute('href');
+      // Anything but a plain click (new tab, save as) keeps the browser's own action.
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey
+          || typeof fetch !== 'function' || !safePath(href)) { return; }
       var name = link.getAttribute('data-filename');
       if (!name) {
-        name = 'retrust-' + (link.getAttribute('href') || '').split('?')[0].split('/').pop();
+        name = 'retrust-' + (href || '').split('?')[0].split('/').pop();
       }
-      toast('Exported ' + name, 'success');
       var menu = closest(link, '.rt-menu__list');
-      // Hiding does not cancel the download: the anchor's own action still runs.
+      // /export.csv and /export.vex.json can answer with an error page, so ask
+      // first: announcing "Exported" before the answer would be a false claim.
+      event.preventDefault();
       attempt(function () { menu.hidePopover(); });
+      fetch(href, { method: 'HEAD', credentials: 'same-origin' }).then(function (response) {
+        attempt(function () {
+          if (response.ok) {
+            // The attachment keeps this page in place; the toast follows the go-ahead.
+            navigate(href);
+            toast('Exported ' + name, 'success');
+          } else {
+            toast('Export unavailable: ' + exportReason(response.status), 'error');
+          }
+        });
+      }, function () {
+        // The check itself failed (offline, blocked): behave like the plain link.
+        attempt(function () { navigate(href); });
+      });
     });
   }
 
@@ -361,6 +393,9 @@ SCRIPT = r"""'use strict';
     '/compare': ['Comparing\u2026', 'Resolving product\u2026 \u00B7 Matching firmware\u2026 \u00B7 Scoring\u2026'],
     '/': ['Searching\u2026', 'Searching the index\u2026']
   };
+  // Long enough for a cold start of the hosted plan; after this the form is
+  // usable again even if the navigation never happened (Esc, Stop, network error).
+  var SAFETY_MS = 90000;
   var WAKING = 'The hosted demo is waking up on the free plan; this can take a minute.';
   var busy = [];
 
@@ -371,8 +406,9 @@ SCRIPT = r"""'use strict';
     var button = (submitter && submitter.tagName === 'BUTTON') ? submitter
       : (form.querySelector('button[type=submit].rt-btn--primary') || form.querySelector('button[type=submit]'));
     if (!words || !button) { return; }
-    // Only a form that really switched to its loading look is guarded against a
-    // second submit, so a form left alone can never be stuck.
+    // Marks a form that really switched to its loading look. It never blocks a
+    // second submit: a GET form is idempotent, and a navigation that was
+    // cancelled must not leave the form unusable.
     form.setAttribute('data-rt-busy', '1');
 
     var label = button.textContent.trim();
@@ -402,6 +438,7 @@ SCRIPT = r"""'use strict';
         note.appendChild(el('span', 'rt-loadnote__wake', ' ' + WAKING));
       }, WAKE_MS));
     }
+    timers.push(setTimeout(stopLoading, SAFETY_MS));
     busy.push({ form: form, button: button, saved: saved, stack: stack, note: note, timers: timers });
   }
 
@@ -423,12 +460,18 @@ SCRIPT = r"""'use strict';
     doc.addEventListener('submit', function (event) {
       var form = event.target;
       if (!form || form.tagName !== 'FORM' || !closest(form, 'main')) { return; }
-      if (form.getAttribute('data-rt-busy') === '1') { event.preventDefault(); return; }
-      if (event.defaultPrevented) { return; }
+      // A re-submit goes through, as the browser would; the look is already on.
+      if (event.defaultPrevented || form.getAttribute('data-rt-busy') === '1') { return; }
       attempt(function () { startLoading(form, event.submitter); });
     });
     // Back/forward restores the page from memory, spinner and all.
     window.addEventListener('pageshow', stopLoading);
+    // Coming back to a tab that never navigated: the load was cancelled or lost.
+    var wasHidden = false;
+    doc.addEventListener('visibilitychange', function () {
+      if (doc.visibilityState === 'hidden') { wasHidden = true; return; }
+      if (wasHidden) { wasHidden = false; stopLoading(); }
+    });
   }
 
   // ------------------------------------------------------ supplier questions

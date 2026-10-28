@@ -89,3 +89,27 @@ def test_print_media_rule_is_shipped_in_both_stylesheets():
     from retrust import report, webui
     rule = "details::details-content{content-visibility:visible!important"
     assert rule in webui.STYLESHEET and rule in report.export_css()
+
+
+def test_print_keeps_the_product_identity_and_hides_the_site_header(chromium, base_url):
+    """`header{display:none}` used to take <header class="rt-identity"> with it,
+    leaving a printed verdict with no product, vendor or order number."""
+    page = chromium.new_page()
+    try:
+        page.goto(base_url + "/score?" + S7, wait_until="load")
+        probe = """() => {
+          const seen = el => !!el && el.checkVisibility() && el.getBoundingClientRect().height > 0;
+          const identity = document.querySelector('header.rt-identity');
+          return {identity: seen(identity), title: seen(document.querySelector('.rt-identity__title')),
+                  text: identity ? identity.textContent : '',
+                  site: seen(document.querySelector('header.rt-header'))};
+        }"""
+        page.emulate_media(media="screen")
+        assert page.evaluate(probe)["site"] is True      # control: it shows on screen
+        page.emulate_media(media="print")
+        printed = page.evaluate(probe)
+        assert printed["identity"] and printed["title"]
+        assert "S7-1500" in printed["text"]
+        assert printed["site"] is False
+    finally:
+        page.close()

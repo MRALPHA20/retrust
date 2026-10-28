@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 from datetime import date
 
-from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline, webviews
+from . import alternatives, batch, components, lev, questions, report, score, search, sensitivity, ssvc, timeline, vex, webviews
 from . import webui, supplychain, identity, webcache, assets
 from .webui import page as _page
 from . import index as index_module
@@ -113,9 +113,6 @@ def _search_hits(connection, query):
     for hit in found:
         unique.setdefault((hit.vendor, hit.name), hit)
     return list(unique.values())[:MAX_RESULTS]
-
-
-from . import components  # noqa: E402  (kept here so the import block stays untouched)
 
 
 SAMPLE_QUERIES = ('S7-1500', '6ES7518-4AX00-1AB0', 'Moxa EDS-405A')
@@ -310,15 +307,11 @@ CONSERVATIVE = {'consequence': ('safety',), 'interface': ('exposed',),
                 'remediation': ('affected', 'available')}
 
 # Phrases in an assessment's verification list, and the form field that
-# closes each. One table, owned by report.py, because the gap cards on the page
-# and the "still open" sentence here must name the same fields; this name stays
-# as an alias for callers that already import it.
+# closes each. The tables are owned by report.py, because the gap cards on the
+# page and the "still open" sentence here must name the same fields; these
+# names are the ones _still_open and the tests refer to.
 OPEN_QUESTIONS = report.GAP_RULES
 DATA_GAPS = tuple(phrase for phrase, _, _ in report.DATA_GAP_RULES)
-
-# Component helpers, reached through report so this module needs no new import
-# line (several pages are edited in parallel and import lines conflict).
-components = report.components
 
 
 def _previous_from(params_first):
@@ -484,9 +477,7 @@ def _edit_effects(assess, previous, state, current):
             tail += ('<p class="helper">Only data gaps hold the range open, and no answer'
                      ' can close them; see what to check next.</p>')
     card = components.context_card('Since your last update',
-                                   f'<p>{lead}</p><ul>{items}</ul>{tail}')
-    # context_card has one fixed tag; this one reports an update, not context.
-    card = card.replace('>CONTEXT</p>', '>UPDATE</p>', 1)
+                                   f'<p>{lead}</p><ul>{items}</ul>{tail}', tag='UPDATE')
     return f'<div class="edit-effects" aria-live="polite">{card}</div>'
 
 
@@ -664,7 +655,9 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     query = candidate_query = text_query = ''
     if named:
         query = urllib.parse.urlencode(dict(vendor=named.vendor, product=named.name, version=version))
-        text_query = query
+        # The page's whole whitelisted parameter set, as the export links
+        # carry it, so the downloaded file asks what the panel shows.
+        text_query = parameters + '&download=1'
         candidate_fields = dict(
             vendor_0=vendor or ('' if order_number else named.vendor),
             product_0=product or ('' if order_number else named.name),
@@ -681,16 +674,16 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         actions.append(components.link_button('Add to comparison', f'/compare?{candidate_query}'))
     # The same test _export_vex applies, so the menu never offers a download
     # that would 404.
-    from . import vex
-    has_statements = bool(resolution.resolved
-                          and vex.statements(connection, resolution, version or None))
+    has_statements = vex.has_statements(connection, resolution)
     actions.append(_export_menu(parameters, resolution.resolved, has_statements))
 
     profile = None
     if dossier is not None and resolution.matches:
+        # Only the questions read this profile, and they need no corpus statistics.
         profile = dossier.build(connection, resolution.matches[0].vendor,
                                 screening=context.get('screening', {}),
-                                certificates=context.get('certificates', {}))
+                                certificates=context.get('certificates', {}),
+                                corpus=False)
     items = questions.build(assessment, findings, profile)
 
     sections = (('overview', 'Overview'), ('exposure', 'Exposure'),
@@ -872,24 +865,16 @@ def _choice(name, label, table, chosen, blank=None, helper='', input_id=''):
     Unknown is always a choice, and is drawn VERIFY-style while selected: an
     unanswered fact is a gap, not a neutral default.
     """
-    import re
     options = [('', blank)] if blank else []
-    options +=[(key, entry[0] if isinstance(entry, tuple) else entry)
+    options += [(key, entry[0] if isinstance(entry, tuple) else entry)
                 for key, entry in table.items()]
-    markup = components.select_field(
-        name, label, options, selected=chosen or '',
-        unknown_value='unknown' if 'unknown' in table else '',
+    # A table's own 'unknown' key is the Unknown choice; otherwise the blank
+    # option is (select_field draws it the same way), and without either
+    # nothing is Unknown.
+    unknown = 'unknown' if 'unknown' in table else ('' if blank else None)
+    return components.select_field(
+        name, label, options, selected=chosen or '', unknown_value=unknown,
         input_id=input_id or name, help_text=helper)
-    if blank:
-        # The blank option is the Unknown choice, but select_field can only mark
-        # an option with a non-empty value, so it is marked here.
-        markup = re.sub(r'<option value=""( selected)?>',
-                        lambda found: '<option value="" class="rt-option--unknown"'
-                        + (found.group(1) or '') + '>? ', markup, count=1)
-        if not chosen:
-            markup = markup.replace('rt-field rt-field--select"',
-                                    'rt-field rt-field--select rt-field--unknown"', 1)
-    return markup
 
 
 def _owner_fields(network_exposure=None, consequence=None, interface='unknown',
@@ -1071,7 +1056,7 @@ def _comparison_warning(rows):
         return ''
     # "review" is the amber alert and carries no role=alert: this is advice
     # about the comparison, not an error.
-    return report.components.alert(
+    return components.alert(
         'review', 'Firmware is not given for every candidate',
         'Some candidates have firmware specified and others do not. '
         'Add a version for each to compare on equal terms.')
@@ -1100,7 +1085,6 @@ def _remove_hrefs(entries, rows):
 
 def _clear_shortlist():
     """Destructive control that always confirms, with a native popover (no JS)."""
-    components = report.components
     return (components.button('Clear shortlist', 'destructive',
                               attrs={'popovertarget': 'clear-shortlist'})
             + '<div class="rt-confirm" id="clear-shortlist" popover role="alertdialog" '
@@ -1117,7 +1101,6 @@ def _clear_shortlist():
 
 def _compare_page(assess, context, candidates, submitted=False):
     """A shortlist with separate input fields and ranked, explainable results."""
-    components = report.components
     filled = _comparison_rows(candidates)
     boxes = ''
     for i in range(min(MAX_CANDIDATES, max(2, len(filled) + 1))):
@@ -1303,8 +1286,11 @@ def _timeline_page(connection, vendor, product):
     return _page(f"Timeline: {subject}", body)
 
 
-def _annex_data(connection, assess, dossier, context, vendor, product, version):
-    assessment, resolution, findings = assess(vendor, product, version or None)
+def _annex_data(connection, assess, dossier, context, vendor, product, version,
+                order_number='', network_exposure=None, owner=None):
+    # Same call the assessment page makes, so the questions equal the panel's.
+    assessment, resolution, findings = _run_assessment(
+        assess, vendor, product, version, order_number, network_exposure, owner)
     profile = None
     if resolution.matches:
         profile = dossier.build(connection, resolution.matches[0].vendor,
@@ -1312,16 +1298,18 @@ def _annex_data(connection, assess, dossier, context, vendor, product, version):
     return assessment, resolution, questions.build(assessment, findings, profile)
 
 
-def _annex_text(connection, assess, dossier, context, vendor, product, version, download=False):
+def _annex_text(connection, assess, dossier, context, vendor, product, version, download=False,
+                order_number='', network_exposure=None, owner=None):
     """The annex as bare text: what actually gets pasted into an RFQ.
 
     Returned as text/plain so "select all, copy" needs no care about markup,
     and a procurement template can curl it straight into a document. With
     download=True the same bytes come back as an attachment.
     """
-    if not (vendor or product):
+    if not (vendor or product or order_number):
         return PlainText("Give vendor and product: /annex.txt?vendor=...&product=...")
-    assessment, _, items = _annex_data(connection, assess, dossier, context, vendor, product, version)
+    assessment, _, items = _annex_data(connection, assess, dossier, context, vendor, product,
+                                       version, order_number, network_exposure, owner)
     text = questions.format_report(assessment.product, items)
     if not download:
         return PlainText(text)
@@ -1719,7 +1707,6 @@ def _export_vex(connection, assess, provenance, vendor, product, version, order_
     A product that did not resolve, or one whose records name no CVE, has
     nothing to state; that is an error page, never an empty document.
     """
-    from . import vex
     if not (vendor or product or order_number):
         raise ExportUnavailable(
             'Nothing to export',
@@ -2001,7 +1988,10 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             "/annex.txt": lambda: _annex_text(
                 connection, assess, dossier, context,
                 first("vendor"), first("product"), first("version"),
-                download=first("download") == "1"),
+                download=first("download") == "1", order_number=first("order_number"),
+                network_exposure=first("network_exposure") if first("network_exposure")
+                in score.NETWORK_EXPOSURES else None,
+                owner=_owner_from(first)),
             "/ssvc": lambda: _ssvc_page(
                 connection, assess, first("vendor"), first("product"), first("version"),
                 first("exposure") or "controlled", first("automatable") or "yes",

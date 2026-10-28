@@ -1084,13 +1084,6 @@ def _gap_for(item):
     return "", "", "Open check"
 
 
-def _gap_link(card_html, href, label):
-    """Append a ghost link row to a gap card (spec 4.11's optional action row)."""
-    action = ('<p class="rt-gap__action">'
-              + components.link_button(label, href, kind="ghost") + "</p>")
-    return card_html[:-len("</div>")] + action + "</div>"
-
-
 def _gap_cards(assessment, resolution, findings, weights, web):
     static = web is None
     ids = {} if web is None else (web.field_ids or {})
@@ -1113,13 +1106,13 @@ def _gap_cards(assessment, resolution, findings, weights, web):
         applied = (f"Neutral {score.MISSING_PILLAR:.0f} applied at weight {weight}."
                    if weight else
                    f"Neutral {score.MISSING_PILLAR:.0f} applied at the pillar's full weight.")
-        card = components.gap_card(f"{label}: no usable evidence",
-                                   "Nothing was found to measure this part. " + applied,
-                                   "", _letter(spec))
+        action = ""
         if not static:
             href = "/vendor" + ("?name=" + quote_plus(vendor) if vendor else "")
-            card = _gap_link(card, href, "Look up vendor evidence")
-        cards.append(card)
+            action = components.link_button("Look up vendor evidence", href, kind="ghost")
+        cards.append(components.gap_card(f"{label}: no usable evidence",
+                                         "Nothing was found to measure this part. " + applied,
+                                         "", _letter(spec), action_html=action))
     # A firmware that was never given is a material gap even when no checklist
     # line happened to name it.
     if (assessment.score is not None and not assessment.evidence_free

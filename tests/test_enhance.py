@@ -82,8 +82,23 @@ def test_the_script_never_builds_markup_or_reaches_out(forbidden):
     assert forbidden not in enhance.SCRIPT
 
 
-def test_the_only_request_is_a_same_origin_search():
-    assert re.findall(r"fetch\(([^,]+),", enhance.SCRIPT) == ["'/search.json?q=' + encodeURIComponent(typed)"]
+def test_the_only_requests_are_a_same_origin_search_and_a_head_check_of_an_export_link():
+    assert re.findall(r"fetch\(([^,]+),", enhance.SCRIPT) == [
+        "'/search.json?q=' + encodeURIComponent(typed)", "href"]
+    # The second is a HEAD, only after the same-origin path guard, and it never
+    # reads the answer's body (no response.text/json on it).
+    export = enhance.SCRIPT[enhance.SCRIPT.index("function initExportMenu"):
+                            enhance.SCRIPT.index("// ---------------------------------------------------------- loading")]
+    assert "!safePath(href)" in export and "method: 'HEAD'" in export
+    assert ".text()" not in export and ".json()" not in export
+
+
+def test_a_resubmit_is_not_swallowed_and_loading_has_a_safety_reset():
+    loading = enhance.SCRIPT[enhance.SCRIPT.index("// ---------------------------------------------------------- loading"):
+                             enhance.SCRIPT.index("// ------------------------------------------------------ supplier")]
+    assert "preventDefault" not in loading
+    assert "var SAFETY_MS = 90000;" in loading and "setTimeout(stopLoading, SAFETY_MS)" in loading
+    assert "'pageshow', stopLoading" in loading and "visibilitychange" in loading
 
 
 def test_the_script_is_plain_ascii_and_strict():

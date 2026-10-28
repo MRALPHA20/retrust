@@ -173,8 +173,9 @@ input:not([type=checkbox]):not([type=radio]),select,textarea{min-height:44px;fon
 
 # Print switches to the LIGHT tokens (spec 5.5) and drops interactive chrome.
 PRINT_CSS = "@media print{" + theme_css(LIGHT, ":root") + """body{background:#fff;color:var(--text)}
-header,nav,.skip-link,.search,[role=search],.actions,form,[popover],dialog,.popover,.toast{display:none!important}
-.card{break-inside:avoid}
+/* Site chrome only: the identity block (product, vendor, order number) must print. */
+.rt-header,nav,.skip-link,.rt-search,[role=search],.actions,form,[popover],dialog,.rt-toasts,.rt-toast{display:none!important}
+.rt-card{break-inside:avoid}
 tr{break-inside:avoid}
 thead{display:table-header-group}
 .tw{overflow:visible}
