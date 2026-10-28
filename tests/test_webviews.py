@@ -219,8 +219,10 @@ def test_assessment_only_collapses_the_four_additional_rows():
     parser.feed(report._assessment_block(assessment, findings=[finding], weights=score.DEFAULT_WEIGHTS))
     visible, extra = ' '.join(parser.visible), ' '.join(parser.extra)
     assert parser.attrs is not None and 'open' not in parser.attrs
+    # The four main pillars are the meters in the score card (not table rows
+    # any more): visible outside the disclosure, absent from it.
     for label in ('Exposure safety', 'Available fixes', 'Vendor security practices', 'Certification evidence'):
-        assert label in parser.visible_rows and label not in parser.extra_rows
+        assert label in visible and label not in extra
     for label in ('Attack activity', 'Issue severity', 'Network access', 'Evidence completeness'):
         assert label in parser.extra_rows and label not in parser.visible_rows
     assert 'Influence is the weight' in extra

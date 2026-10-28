@@ -306,9 +306,12 @@ def test_report_is_self_contained(workspace):
 def test_report_defines_both_themes(workspace):
     connection = index.connect(str(workspace / "data" / "retrust.db"))
     markup = report.render(_blocks(connection))
-    assert "prefers-color-scheme: dark" in markup or \
-           "prefers-color-scheme:dark" in markup
+    # Property kept: a light default plus an explicit dark override. The OS
+    # preference no longer flips the document (spec 5.5), so the auto-dark
+    # media query must be gone; the data-theme selector stays for screenshots.
+    assert "prefers-color-scheme" not in markup
     assert "[data-theme=dark]" in markup
+    assert markup.index(":root{--ground:#FFFFFF") < markup.index(":root[data-theme=dark]{")
 
 
 def test_report_escapes_hostile_text(workspace):
