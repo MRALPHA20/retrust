@@ -330,6 +330,12 @@ def _why_unmoved(field, value, state, result):
         return ('Deployment context: recorded with the result but not scored, because a'
                 ' network route alone does not establish an attack path. Attack'
                 ' reachability (A) is the answer the score uses.')
+    if getattr(result, 'cleared_count', 0):
+        # Ahead of every per-answer reason: the published ranges, not any
+        # answer, already rule out each recorded flaw for this firmware.
+        return ('The firmware you gave is outside every published affected range, so'
+                ' none of the recorded flaws applies and exposure is already 100/100.'
+                ' No answer has anything left to change.')
     if field == 'remediation' and value in ('applied', 'not_affected'):
         if not state['version']:
             return ('A fixed or not-affected claim counts only for a named firmware. Add'

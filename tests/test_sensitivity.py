@@ -513,3 +513,17 @@ def test_fast_weight_trials_match_full_assessments(monkeypatch, hardcoded, certi
     assert actual.verdicts == dict(Counter(sensitivity._band(value,bands) for value in expected))
     assert actual.score_min == min(expected) and actual.score_max == max(expected)
     assert actual.score_median == sorted(expected)[len(expected)//2]
+
+
+def test_a_cleared_firmware_is_not_capped_by_its_out_of_range_record():
+    """The scorer never caps on outside_range findings; reweighting must not either."""
+    from retrust import score
+    from retrust.match import Finding
+    record = [Finding(cve='CVE-1', advisory_id='A', cvss=9.8, cwe='CWE-798', epss=None,
+                      in_kev=False, ransomware=False, version_range='<2.0', decided=False,
+                      remediation='none_available', version_supplied=True, outside_range=True)]
+    result = score.assess('P', record, network_exposure='isolated')
+    assert result.cleared_count == 1
+    assert not any(note.startswith('Capped below PREFER') for note in result.notes)
+    # Weightings that lean on exposure (100 here) must be free to reach PREFER.
+    assert sensitivity.stability(record, network_exposure='isolated').score_max > 79.9

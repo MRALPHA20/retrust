@@ -30,7 +30,9 @@ def test_all_products_gate_checks_five_operating_scenarios(formula_database):
     result = formula_check.run(db, data)
     assert result['passed']
     assert result['counts']['products_checked'] == 1
-    assert result['counts']['assessments_checked'] == 5
+    # Five scenarios plus the late firmware, which clears the <2.0 range.
+    assert result['counts']['assessments_checked'] == 6
+    assert result['counts']['cleared_firmware_assessments'] == 1
     assert result['failures'] == []
 
 

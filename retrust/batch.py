@@ -197,7 +197,8 @@ def to_record(assessment, resolution, stability=None, query=None):
         "exposure_max": assessment.exposure_max,
         "provisional": assessment.provisional,
         "verification": list(assessment.verification),
-        "cves": assessment.findings_count if assessment.score is not None else None,
+        "cves": assessment.findings_count
+                if assessment.score is not None and assessment.resolved else None,
         "undecided": assessment.undecided_count,
         "confidence": assessment.confidence,
         "network_exposure": assessment.network_exposure,

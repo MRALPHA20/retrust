@@ -1040,3 +1040,37 @@ def test_the_verdict_follows_the_score_as_displayed(monkeypatch):
         result = score.assess('P', [finding], network_exposure='it_ot', interface='blocked',
                               consequence='control', remediation='affected')
         assert (result.score, result.verdict) == (round(raw, 1), verdict)
+
+
+CLEARED = dict(START, version='9.0', network_exposure='isolated')
+
+
+def test_the_panel_names_the_ranges_not_an_answer_for_a_cleared_firmware(scoring_handler):
+    """9.0 is outside <2.0: no answer moves it, and the panel must say why truthfully."""
+    page = _update(scoring_handler, CLEARED, dict(CLEARED, remediation='applied'))
+    assert 'outside every published affected range' in page
+    assert 'is inside a published affected range' not in page
+    page = _update(scoring_handler, CLEARED, dict(CLEARED, interface='exposed'))
+    assert 'outside every published affected range' in page
+    assert 'verified-blocked reachability' not in page
+
+
+def test_a_cleared_firmware_is_asked_about_its_firmware_not_its_history(db, tmp_path):
+    from retrust import cli, questions
+    context = cli._context(data_dir=str(tmp_path))
+    assessment, _, findings = cli._assess(db, 'Testco', 'TestPLC 9000', '9.0', None,
+                                          context=context)
+    asked = ' '.join(q.text + ' ' + q.why for q in questions.build(assessment, findings))
+    assert 'Confirm in writing the exact firmware' in asked
+    assert 'No advisory in this index names' not in asked
+
+
+def test_an_unidentified_product_reads_as_unmeasured_not_saturated(scoring_handler, db, tmp_path):
+    from retrust import batch, cli
+    _, _, page = _get(scoring_handler, '/score?vendor=Nobody&product=Nothing+123')
+    assert 'VERIFY' in page and 'has reached its maximum (R = 1)' not in page
+    context = cli._context(data_dir=str(tmp_path))
+    assessment, resolution, _ = cli._assess(db, 'Nobody', 'Nothing 123', None, None,
+                                            context=context)
+    # A count of 0 would read as a clean history; nothing was looked up.
+    assert batch.to_record(assessment, resolution)['cves'] is None

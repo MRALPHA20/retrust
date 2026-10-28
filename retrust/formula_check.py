@@ -18,6 +18,10 @@ SCENARIOS = {
 }
 
 
+# A version beyond any range this corpus publishes as "<x".
+LATE_FIRMWARE = '99999'
+
+
 # RT7 service-life threat floors, restated here rather than imported so a
 # change to exposure.THREAT_FLOORS has to be made twice to pass.
 FLOORS = {'wormable': .50, 'remote': .30, 'local': .15, 'physical': .05}
@@ -154,6 +158,14 @@ def run(db='data/retrust.db', data_dir='data'):
                 counts['assessments_checked'] += 1
                 if a.score is None: counts['unscored_assessments'] += 1
                 if a.evidence_free: counts['evidence_free_assessments'] += 1
+                # A firmware past every "<x" range: exercises the cleared path,
+                # where the published ranges rule out every recorded CVE.
+                v, _, _ = cli._assess(connection, row['vendor'], row['name'], LATE_FIRMWARE, None,
+                                      context=context, **SCENARIOS['reachable'])
+                if v.inputs:
+                    validate(v, v.inputs[0], SCENARIOS['reachable'], context['weights'], context['bands'])
+                    counts['assessments_checked'] += 1
+                    if v.cleared_count: counts['cleared_firmware_assessments'] += 1
                 if not a.inputs: continue
                 fs, advisories, certificates, gates, vendor_key = a.inputs
                 for name, options in list(SCENARIOS.items())[1:]:
@@ -171,7 +183,7 @@ def run(db='data/retrust.db', data_dir='data'):
         return dict(passed=not counts['failures'], model_version=score.SCORING_VERSION,
                     source_build=identity.build_fingerprint(), data_fingerprint=identity.data_fingerprint(connection, data_dir),
                     checked_at=datetime.now(timezone.utc).isoformat(), counts=dict(counts), failures=failures,
-                    scope='Every indexed vendor/model; reachable, minor impact, verified blocked, unknown and unverified-fix scenarios. Unidentified and evidence-free products are checked as full-range VERIFY. Arithmetic consistency, not predictive accuracy.')
+                    scope='Every indexed vendor/model; reachable, minor impact, verified blocked, unknown and unverified-fix scenarios, plus a late firmware that clears every published range. Unidentified and evidence-free products are checked as full-range VERIFY. Arithmetic consistency, not predictive accuracy.')
     finally:
         connection.close()
         context['screening'].close()

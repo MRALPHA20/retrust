@@ -155,8 +155,11 @@ def stability(findings, advisories=(), certificates=(), screening_gates=(),
     # this assessment's unrounded measurements and the scorer's own composite.
     by_name = {p.name: p for p in probe.pillars if p.scored}
     usable = [(spec, by_name[spec.name]) for spec in PILLARS if spec.name in by_name]
-    first_party = [finding for finding in findings if not finding.third_party]
-    capped = bool(score_module._unmitigable_cves(first_party or findings))
+    # Findings marked outside_range are the product's record, kept for its
+    # patch and vendor pillars; the scorer never caps on them, so neither may this.
+    in_range = [finding for finding in findings if not getattr(finding, "outside_range", False)]
+    first_party = [finding for finding in in_range if not finding.third_party]
+    capped = bool(score_module._unmitigable_cves(first_party or in_range))
     prefer = bands[0][0]
     scores, verdicts = [], {}
     for _ in range(samples):

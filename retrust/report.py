@@ -357,7 +357,9 @@ def _calculation_summary(assessment):
         parts.append('<p class="tnote">No material operational impact is recorded (H = 0), so these paths contribute no operational risk.</p>')
     elif factors and all(item['U'][1] == 0 for item in factors):
         parts.append('<p class="tnote">The assessed vulnerabilities are recorded as fixed or not applicable (U = 0), so these paths contribute zero.</p>')
-    elif assessment.exposure_min == 0:
+    elif assessment.exposure_min == 0 and not getattr(assessment, 'evidence_free', False):
+        # An evidence-free range starts at 0 because nothing was measured, not
+        # because the risk index saturated.
         parts.append('<p class="tnote">The conservative risk index has reached its maximum (R = 1). Further increases cannot reduce exposure safety below zero.</p>')
     if any(note.startswith('Capped below PREFER:') for note in assessment.notes):
         parts.append('<p class="tnote"><b>Policy cap applies:</b> The final score cannot enter PREFER while the stated unfixable credential issue remains. Exposure can change while the capped score remains the same.</p>')
@@ -679,7 +681,7 @@ def _summary_table(blocks, stabilities, hint=True):
             f'<td><b>{_esc(assessment.product)}</b></td>'
             f'<td class="v">{_esc(assessment.verdict)}</td>'
             f'<td class="n">{score_label(assessment)}</td>'
-            f'<td class="n">{"&mdash;" if assessment.score is None else assessment.findings_count}</td>'
+            f'<td class="n">{"&mdash;" if assessment.score is None or not assessment.resolved else assessment.findings_count}</td>'
             f'<td class="n">{robust}</td>'
             f'<td>{_esc(note)}</td></tr>')
     return ('<div class="tw" tabindex="0" role="region" aria-label="Candidate comparison, scroll horizontally for more columns">'

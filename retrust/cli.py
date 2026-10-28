@@ -432,7 +432,8 @@ def cmd_compare(args):
                 "score_min": assessment.score_min, "score_max": assessment.score_max,
                 "provisional": assessment.provisional,
                 "reason": "" if resolution.resolved else resolution.reason,
-                "cves": assessment.findings_count if assessment.score is not None else None,
+                "cves": assessment.findings_count
+                        if assessment.score is not None and assessment.resolved else None,
                 "robust": "not sampled" if st is None else
                           "gated" if st.gated else "not sampled" if not st.samples else f"{st.agreement:.0%}",
                 "worst": assessment.worst_risk,

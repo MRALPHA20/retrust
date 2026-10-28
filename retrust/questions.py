@@ -73,6 +73,20 @@ def build(assessment, findings, profile=None):
                     " advisory corpus, so its history was not assessed at"
                     " all -- which is a different fact from a clean history.",
                 evidence=["product not resolved against the corpus"]))
+        elif getattr(assessment, "cleared_count", 0):
+            # Advisories do name it; the firmware given is outside all of
+            # their ranges. The open question is whether the unit ships on it.
+            cleared = assessment.cleared_count
+            questions.append(Question(
+                text="Confirm in writing the exact firmware the delivered unit"
+                     " ships with, and that the vendor lists it as fixed or not"
+                     " affected for every advisory published for this product.",
+                why=f"The firmware given is outside the published affected range"
+                    f" of all {cleared} CVE(s) recorded for {assessment.product},"
+                    " so none of them applies -- but only if the unit actually"
+                    " arrives on that firmware.",
+                evidence=[f"firmware outside the affected range of {cleared}"
+                          " recorded CVE(s)"]))
         else:
             questions.append(Question(
                 text="List every security advisory published for this product"
