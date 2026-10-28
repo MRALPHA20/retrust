@@ -358,6 +358,9 @@ pre{font-size:.8125rem;line-height:1.5;overflow-wrap:anywhere;padding:var(--s16)
 .panel-heading{flex-wrap:wrap;gap:var(--s2)}
 main h1{font-size:1.375rem}
 }
+@media(pointer:coarse){
+main input[type=text],main select,main button:not(.rt-btn),main .button{min-height:44px;font-size:1rem}
+}
 """
 
 # One stylesheet, one order (Redesign-plan A2): later layers win ties, and
