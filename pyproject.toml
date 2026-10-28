@@ -35,5 +35,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["retrust*"]
 
+[tool.setuptools.package-data]
+retrust = ["static/fonts/*.woff2", "static/fonts/OFL.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

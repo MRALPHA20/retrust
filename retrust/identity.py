@@ -8,9 +8,19 @@ from pathlib import Path
 
 @lru_cache(maxsize=1)
 def build_fingerprint():
+    root = Path(__file__).parent
     digest = hashlib.sha256()
-    for path in sorted(Path(__file__).parent.glob('*.py')):
+    for path in sorted(root.glob('*.py')):
         digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    # Bundled static files are served code too. Names are hashed as POSIX paths
+    # relative to the package, sorted by that string, so the result does not
+    # depend on the OS, the directory walk order or where the package lives.
+    static = sorted((p.relative_to(root).as_posix(), p)
+                    for p in (root / 'static').rglob('*')
+                    if p.is_file() and '__pycache__' not in p.parts)
+    for name, path in static:
+        digest.update(name.encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
 
