@@ -14,9 +14,11 @@ stamped on.
 
 import html
 import re
+from dataclasses import dataclass, field as dc_field
 from datetime import date
 
 from . import identity, score
+from .evidenceview import EvidenceView
 
 # One palette, written once and emitted three times. The bare :root is the
 # light default; the two dark selectors let the reader's OS preference and an
@@ -39,7 +41,7 @@ THEME = (f":root{{font-size:17px;{FACES};{LIGHT}}}\n"
          f"@media(prefers-color-scheme:dark){{:root:not([data-theme=light]){{{DARK}}}}}\n"
          f":root[data-theme=dark]{{{DARK}}}\n")
 
-CSS = THEME + """
+RESULT_CSS = """
 *{box-sizing:border-box}
 body{margin:0;background:var(--field);color:var(--ink);font:1rem/1.6 var(--sans)}
 .wrap{max-width:58rem;margin:0 auto;padding:2.5rem 1.4rem 4rem}
@@ -128,6 +130,33 @@ tr.unscored .bar i{background:var(--faint)}
 footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--rule);
  font-size:.875rem;color:var(--faint)}
 """
+
+# Assembled here so existing callers are unchanged. The split exists so the
+# redesign can put design/components CSS between the two (Redesign-plan A2).
+CSS = THEME + RESULT_CSS
+
+
+@dataclass
+class WebView:
+    """Web-only context for the result renderer; None means export/static mode.
+
+    Not used yet: later work packages thread it through the composites so one
+    renderer serves both the page and the download.
+    """
+
+    actions_html: str = ""      # export menu / action buttons (components output)
+    tabs_html: str = ""         # in-page section nav
+    inputs_html: str = ""       # "what was assessed" editable inputs panel
+    questions_html: str = ""    # supplier questions block
+    evidence: EvidenceView = dc_field(default_factory=EvidenceView)
+    # advisory id -> (title, released date string)
+    advisories: dict = dc_field(default_factory=dict)
+    # e.g. {"kev_loaded": bool, "screening_loaded": bool}
+    checks: dict = dc_field(default_factory=dict)
+    order_number: str = ""
+    version: str = ""
+    # logical gap name -> DOM id of the input a gap card should link to
+    field_ids: dict = dc_field(default_factory=dict)
 
 # Identifiers turn up in prose too -- a KEV gate names the CVEs it fired on --
 # and they should read as part numbers there as well. Substituted after

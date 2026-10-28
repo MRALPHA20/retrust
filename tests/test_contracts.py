@@ -1,0 +1,94 @@
+"""WP0 contract layer: names exist, report CSS is unchanged, stubs are stubs."""
+
+import hashlib
+import inspect
+
+import pytest
+
+from retrust import components, design, evidenceview, report
+
+# Captured from git HEAD before the THEME/RESULT_CSS split.
+REPORT_CSS_SHA256 = (
+    "0e80c7d1e78a60d7a29f3565121a82d9ab16219d305bb232fbf7a7dd4fcb15f9")
+
+
+def test_report_css_is_byte_identical_after_the_split():
+    assert report.CSS == report.THEME + report.RESULT_CSS
+    assert len(report.CSS) == 6277
+    assert hashlib.sha256(report.CSS.encode()).hexdigest() == REPORT_CSS_SHA256
+
+
+def test_dark_theme_css_contains_every_spec_hex():
+    css = design.theme_css(design.DARK, ":root")
+    assert css.startswith(":root{")
+    for hexv in ("#0B0E13", "#0F131A", "#131821", "#1E2633", "#263042",
+                 "#6F7F99", "#E6EAF0", "#C5CCD8", "#8B96A8", "#5CCBEE",
+                 "#9BE0F5", "#06121A", "#2FBFA0", "#F0A53A", "#FF6B5E",
+                 "#A78BFA", "#1A0604"):
+        assert hexv in css
+
+
+def test_theme_css_has_derived_and_scale_tokens():
+    css = design.theme_css(design.LIGHT, ":root[data-theme=dark]")
+    assert css.startswith(":root[data-theme=dark]{")
+    for status in ("prefer", "conditional", "avoid", "verify"):
+        for part in ("fill", "edge", "track"):
+            assert "--%s-%s:#" % (status, part) in css
+    for name in ("--avoid-alert:", "--overlay-shadow:", "--s2:2px",
+                 "--s48:48px", "--r-sm:2px", "--r-card:6px",
+                 "--t-fast:120ms", "--t-load:200ms", "--font-sans:",
+                 "--font-mono:"):
+        assert name in css
+    assert css.count("{") == 1 and css.endswith("}\n")
+
+
+def test_alpha():
+    assert design.alpha("#FF6B5E", 0.14) == "#FF6B5E24"
+    assert design.alpha("#ff6b5e", 0.5) == "#FF6B5E80"
+    assert design.alpha("#000000", 0) == "#00000000"
+    assert design.alpha("#000000", 1) == "#000000FF"
+    with pytest.raises(ValueError):
+        design.alpha("#FFF", 0.5)
+    with pytest.raises(ValueError):
+        design.alpha("#FFFFFF", 1.5)
+
+
+def test_placeholders_are_empty_strings():
+    assert design.BASE_CSS == "" and design.PRINT_CSS == ""
+    assert components.CSS == "" and evidenceview.CSS == ""
+
+
+def test_webview_constructs_with_defaults():
+    view = report.WebView()
+    assert isinstance(view.evidence, evidenceview.EvidenceView)
+    assert view.advisories == {} and view.checks == {} and view.field_ids == {}
+    assert view.actions_html == view.order_number == view.version == ""
+    assert report.WebView().evidence is not view.evidence
+
+
+def test_esc_escapes_quotes_and_angle_brackets():
+    assert components.esc('<a href="x">&\'') == (
+        "&lt;a href=&quot;x&quot;&gt;&amp;&#x27;")
+
+
+def test_stubs_raise_not_implemented():
+    stubs = [(components, n) for n in (
+        "fmt_score", "fmt_range", "fmt_z", "fmt_cvss", "fmt_prob",
+        "fmt_weight", "icon", "verdict_badge", "signal_chip", "button",
+        "link_button", "text_field", "select_field", "checkbox", "radio",
+        "toggle", "conditions_row", "gap_card", "context_card", "alert",
+        "panel_label", "card", "tabs", "tooltip", "menu", "meta_chip",
+        "skeleton", "empty_state", "toast")]
+    stubs += [(evidenceview, n) for n in (
+        "rank", "counts", "exposure_card", "evidence_card", "drawers")]
+    for module, name in stubs:
+        fn = getattr(module, name)
+        params = [p for p in inspect.signature(fn).parameters.values()
+                  if p.default is inspect.Parameter.empty]
+        with pytest.raises(NotImplementedError):
+            fn(*([None] * len(params)))
+
+
+def test_glyphs():
+    assert set(components.GLYPH) == {"PREFER", "CONDITIONAL", "AVOID",
+                                    "VERIFY", "OK"}
