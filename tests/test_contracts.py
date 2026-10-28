@@ -55,7 +55,7 @@ def test_alpha():
 
 def test_placeholders_are_empty_strings():
     assert design.BASE_CSS == "" and design.PRINT_CSS == ""
-    assert components.CSS == "" and evidenceview.CSS == ""
+    assert evidenceview.CSS == ""  # components.CSS is filled in by WP3
 
 
 def test_webview_constructs_with_defaults():
@@ -72,14 +72,8 @@ def test_esc_escapes_quotes_and_angle_brackets():
 
 
 def test_stubs_raise_not_implemented():
-    stubs = [(components, n) for n in (
-        "fmt_score", "fmt_range", "fmt_z", "fmt_cvss", "fmt_prob",
-        "fmt_weight", "icon", "verdict_badge", "signal_chip", "button",
-        "link_button", "text_field", "select_field", "checkbox", "radio",
-        "toggle", "conditions_row", "gap_card", "context_card", "alert",
-        "panel_label", "card", "tabs", "tooltip", "menu", "meta_chip",
-        "skeleton", "empty_state", "toast")]
-    stubs += [(evidenceview, n) for n in (
+    # components.* are implemented by WP3 (see tests/test_components.py).
+    stubs = [(evidenceview, n) for n in (
         "rank", "counts", "exposure_card", "evidence_card", "drawers")]
     for module, name in stubs:
         fn = getattr(module, name)
