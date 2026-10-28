@@ -1,5 +1,6 @@
 """Control Room shell (WP4): header, navigation, snapshot status, error pages."""
 
+from script_policy import without_enhancement
 import re
 import threading
 import urllib.error
@@ -117,7 +118,7 @@ def test_footer_carries_disclaimer_and_links(handler):
 def test_no_script_anywhere(handler):
     for path in ("/", "/about", "/score?vendor=Testco&product=TestPLC", "/nope"):
         _, body = _fetch(handler, path)
-        assert "<script" not in body
+        assert "<script" not in without_enhancement(body)
 
 
 def test_hosted_and_local_strings(handler, monkeypatch):

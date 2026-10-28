@@ -3,14 +3,16 @@
 Pages are self-contained and uncached; the only things the server hands out
 with a long cache lifetime are files shipped inside the package. Everything
 here is an exact-name lookup into a fixed table, so a request path is never
-used as a filename. New asset kinds (for example a script) belong in `_FILES`
-and reuse `Asset` unchanged.
+used as a filename. The one generated asset, the same-origin enhancement
+script, lives in `enhance.py` and is looked up by its exact route the same way.
 """
 
 import hashlib
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
+
+from . import enhance
 
 IMMUTABLE = "public, max-age=31536000, immutable"
 
@@ -42,6 +44,24 @@ _FILES = {FONT_PREFIX + name: (("static", "fonts"), name, "font/woff2")
           for name in FONT_FILES}
 
 
+# The enhancement script is Python source (retrust/enhance.py), so the
+# identity fingerprint already covers it. Pages reference it as
+# SCRIPT_PATH?v=<sha8>, which is why the long cache lifetime is safe: a new
+# script is a new URL, and the pages that name the URL are never cached.
+SCRIPT_PATH = "/static/retrust.js"
+SCRIPT_TYPE = "text/javascript; charset=utf-8"
+
+
+@lru_cache(maxsize=None)
+def script_version():
+    return hashlib.sha256(enhance.SCRIPT.encode("utf-8")).hexdigest()[:8]
+
+
+def script_tag():
+    """The only script element any page carries: external, same-origin, deferred."""
+    return '<script src="%s?v=%s" defer></script>' % (SCRIPT_PATH, script_version())
+
+
 def _read(parts, name):
     """The bytes of a bundled file, or None if it is not there."""
     try:
@@ -55,6 +75,8 @@ def _read(parts, name):
 
 @lru_cache(maxsize=None)
 def _cached(path):
+    if path == SCRIPT_PATH:
+        return Asset(enhance.SCRIPT.encode("utf-8"), SCRIPT_TYPE)
     parts, name, kind = _FILES[path]
     body = _read(parts, name)
     return None if body is None else Asset(body, kind)
@@ -68,7 +90,7 @@ def static_asset(path):
     """
     if not isinstance(path, str) or ".." in path or "\\" in path:
         return None
-    if path not in _FILES:
+    if path not in _FILES and path != SCRIPT_PATH:
         return None
     asset = _cached(path)
     if asset is None:
@@ -77,7 +99,7 @@ def static_asset(path):
 
 
 def is_static_path(path):
-    return isinstance(path, str) and path in _FILES
+    return isinstance(path, str) and (path in _FILES or path == SCRIPT_PATH)
 
 
 @lru_cache(maxsize=None)

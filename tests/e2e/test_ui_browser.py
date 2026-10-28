@@ -8,31 +8,23 @@ stays green.
     python -m pytest tests/e2e -q -p no:cacheprovider
     RETRUST_E2E_BROWSERS=chromium,firefox,webkit python -m pytest tests/e2e -q
 
-The checks that need markup owned by later work packages (export menu popover,
-evidence drawer, aria-sort) look for the feature first and xfail with a reason
-while it is absent; they start asserting as soon as it lands.
+The export menu, evidence drawer and aria-sort checks assert on the real
+markup (`.rt-menu > [popovertarget]`, `.ev-open` / `ev-d-*`, `th[aria-sort] a`).
+The script-specific checks, including every page with JavaScript off, are in
+test_enhance_browser.py.
 """
 
-import os
 import pathlib
-import socket
-import subprocess
-import sys
-import time
-import urllib.request
 
 import pytest
 
 pytest.importorskip("playwright")
-from playwright.sync_api import sync_playwright  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DB = ROOT / "data" / "retrust.db"
 
 pytestmark = pytest.mark.skipif(not DB.exists(), reason="data/retrust.db is absent")
 
-BROWSERS = [name.strip() for name in
-            os.environ.get("RETRUST_E2E_BROWSERS", "chromium").split(",") if name.strip()]
 WIDTHS = [375, 640, 1024, 1100, 1440]
 S7 = "/score?vendor=Siemens&product=SIMATIC+S7-1500&version=3.1.6"
 PAGES = {
@@ -50,44 +42,6 @@ PAGES = {
     "alternatives": "/alternatives?vendor=Siemens&product=SIMATIC+S7-1500",
 }
 CSP_MARKERS = ("content security policy", "content-security-policy", "violates the following")
-
-
-@pytest.fixture(scope="session")
-def base_url():
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    env = {k: v for k, v in os.environ.items() if k != "RETRUST_HOSTED"}
-    server = subprocess.Popen([sys.executable, "-m", "retrust.cli", "serve", "--port", str(port)],
-                              cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    base = f"http://127.0.0.1:{port}"
-    try:
-        deadline = time.monotonic() + 90
-        while True:
-            if server.poll() is not None:
-                pytest.skip(f"retrust serve exited with status {server.returncode}")
-            try:
-                with urllib.request.urlopen(base + "/healthz", timeout=2):
-                    break
-            except OSError:
-                if time.monotonic() > deadline:
-                    pytest.skip("retrust serve did not become healthy")
-                time.sleep(.5)
-        yield base
-    finally:
-        server.terminate()
-        server.wait(timeout=10)
-
-
-@pytest.fixture(scope="session", params=BROWSERS)
-def browser(request):
-    with sync_playwright() as playwright:
-        try:
-            launched = getattr(playwright, request.param).launch()
-        except Exception as error:  # browser binaries not installed
-            pytest.skip(f"{request.param} is not installed: {str(error).splitlines()[0]}")
-        yield launched
-        launched.close()
 
 
 def _open(browser, base, path, width=1280, height=900, **options):
@@ -228,14 +182,13 @@ def test_640px_viewport_loses_no_content(browser, base_url, name):
         narrow_context.close()
 
 
-# ---- features owned by later work packages: xfail until present ----------
+# ---- popover menu, drawer and sortable headers (real markup, no xfail) ----
 
 def test_export_menu_closes_on_escape_and_returns_focus(browser, base_url):
     context, page = _open(browser, base_url, S7)
     try:
-        invoker = page.locator("[popovertarget]").first
-        if not page.locator("[popovertarget]").count():
-            pytest.xfail("export menu popover lands in WP5b/WP6")
+        invoker = page.locator(".rt-menu > [popovertarget]").first
+        assert invoker.count() == 1, "the assessment has an export menu"
         invoker.focus()
         page.keyboard.press("Enter")
         target = invoker.get_attribute("popovertarget")
@@ -250,13 +203,17 @@ def test_export_menu_closes_on_escape_and_returns_focus(browser, base_url):
 def test_evidence_drawer_closes_on_escape_and_returns_focus(browser, base_url):
     context, page = _open(browser, base_url, S7)
     try:
-        invoker = page.locator("[data-drawer], summary.drawer, a[href^='#drawer-']").first
-        if not page.locator("[data-drawer], summary.drawer, a[href^='#drawer-']").count():
-            pytest.xfail("evidence drawer lands in WP5b/WP6")
+        invoker = page.locator(".ev-open").first
+        assert page.locator(".ev-open").count(), "the evidence table has drawer openers"
         invoker.focus()
         page.keyboard.press("Enter")
+        target = invoker.get_attribute("popovertarget")
+        assert target.startswith("ev-d-")
+        assert page.locator(f"#{target}:popover-open").count() == 1
         page.keyboard.press("Escape")
-        assert page.evaluate("document.activeElement === arguments[0]", invoker.element_handle())
+        assert page.locator(f"#{target}:popover-open").count() == 0
+        assert page.evaluate("document.activeElement.getAttribute('popovertarget')") == target
+        assert page.evaluate("document.activeElement.classList.contains('ev-open')")
     finally:
         context.close()
 
@@ -264,14 +221,16 @@ def test_evidence_drawer_closes_on_escape_and_returns_focus(browser, base_url):
 def test_aria_sort_follows_sort_navigation(browser, base_url):
     context, page = _open(browser, base_url, S7)
     try:
-        sortable = page.locator("th a[href*='sort=']")
-        if not page.locator("th[aria-sort]").count() or not sortable.count():
-            pytest.xfail("sortable headers with aria-sort land in WP6")
-        before = page.locator("th[aria-sort]:not([aria-sort=none])").count()
-        assert before == 1, "exactly one column carries the active sort"
-        sortable.last.click()
+        # Only the sorted column carries aria-sort (EPSS descending by default).
+        assert page.locator("th[aria-sort] a").count() == 1
+        other = page.locator("th:not([aria-sort]) a.ev-sort").last
+        name = other.text_content().strip()
+        other.click()
         page.wait_for_load_state("networkidle")
-        assert page.locator("th[aria-sort]:not([aria-sort=none])").count() == 1
+        sorted_now = page.locator("th[aria-sort] a")
+        assert sorted_now.count() == 1
+        assert sorted_now.text_content().strip().startswith(name)
+        assert "sort=" in page.url
     finally:
         context.close()
 

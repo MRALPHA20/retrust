@@ -7,6 +7,7 @@ table. The rendering is report.py's and is tested there.
 """
 
 import json
+import re
 import threading
 import urllib.error
 import urllib.parse
@@ -14,7 +15,8 @@ import urllib.request
 
 import pytest
 
-from retrust import index, report, serve
+from retrust import assets, index, report, serve
+from script_policy import script_problems
 
 ADVISORY = {
     "document": {"title": "T", "tracking": {
@@ -420,8 +422,21 @@ def test_a_hostile_vendor_comes_back_escaped(handler):
     assert "&lt;img" in body
 
 
-@pytest.mark.parametrize("path", ["/", "/?q=test", "/about", "/compare?c=A%7CB"])
+@pytest.mark.parametrize("path", ["/", "/?q=test", "/about", "/compare?c=A%7CB",
+                                  "/score?vendor=Testco&product=TestPLC"])
 def test_no_page_ever_emits_a_script(handler, path):
+    """Decision D1: exactly one same-origin external deferred script on web
+    pages; never an inline script or an on*= handler."""
+    _, _, body = _get(handler, path)
+    assert script_problems(body) == []
+    assert re.findall(r"<script[^>]*>", body.lower()) == [
+        '<script src="%s?v=%s" defer>' % (assets.SCRIPT_PATH, assets.script_version())]
+
+
+@pytest.mark.parametrize("path", ["/export.html?vendor=Testco&product=TestPLC",
+                                  "/compare.html?c=A%7CB", "/search.json?q=Test",
+                                  "/static/retrust.js"])
+def test_exports_and_data_responses_carry_no_script_element(handler, path):
     _, _, body = _get(handler, path)
     assert "<script" not in body.lower()
 
@@ -484,9 +499,16 @@ def test_responses_are_not_cacheable_or_frameable(handler):
 def test_the_policy_forbids_fetching_and_executing(handler):
     _, headers, _ = _get(handler, "/")
     policy = headers["Content-Security-Policy"]
+    directives = {part.split()[0]: part.split()[1:] for part in policy.split(";") if part.strip()}
     assert "default-src 'none'" in policy
     assert "form-action 'self'" in policy
     assert "font-src 'self'" in policy
+    # Scripts and requests: this origin only; no inline code, no eval.
+    assert directives["script-src"] == ["'self'"]
+    assert directives["connect-src"] == ["'self'"]
+    assert "'unsafe-eval'" not in policy
+    assert "'unsafe-inline'" not in directives["script-src"] + directives["default-src"]
+    assert directives["style-src"] == ["'unsafe-inline'"]    # styles only, unchanged
     assert headers["X-Content-Type-Options"] == "nosniff"
     assert headers["Referrer-Policy"] == "no-referrer"
 

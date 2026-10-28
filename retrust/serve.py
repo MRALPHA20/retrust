@@ -70,7 +70,13 @@ Bound to 127.0.0.1 unless --host says otherwise, and that is printed when it is.
 On a loopback bind, the Host header must name this machine to prevent
   DNS-rebinding pages from reading the local index.
 No page or download is cached (Cache-Control: no-store) and none may be framed.
-Only the bundled font files are cacheable, found by exact name and never by path.
+Only the bundled font files and the enhancement script are cacheable, found by
+  exact name and never by path.
+Pages work without scripts. One same-origin script (/static/retrust.js) adds
+  search suggestions, focus handling, copy and notifications; it never loads
+  anything from another origin and builds the page with textContent, never HTML.
+The policy allows scripts and requests from this origin only; inline scripts,
+  eval and other origins stay blocked.
 A connection that stalls is dropped after 10 seconds and releases its worker.
 Request workers own independent read-only advisory and screening connections.
 Active and queued work is bounded; excess requests receive 503 with a retry hint.
@@ -121,6 +127,41 @@ def _secondary_head(title, lead, route=None):
             + (webui.related_links(route) if route else ''))
 
 
+def _assessment_link(hit, query):
+    fields = dict(vendor=hit.vendor, product=hit.name)
+    if any(index_module.normalize_order_number(number) == index_module.normalize_order_number(query)
+           for number in hit.order_numbers):
+        fields['order_number'] = query
+    return '/score?' + urllib.parse.urlencode(fields)
+
+
+def _order_shown(hit, query):
+    wanted = index_module.normalize_order_number(query)
+    for number in hit.order_numbers:
+        if index_module.normalize_order_number(number) == wanted:
+            return number
+    return hit.order_numbers[0] if hit.order_numbers else ''
+
+
+SUGGESTIONS = 8
+MIN_SUGGEST = 2
+
+
+def _search_json(connection, query):
+    """The popover's rows: the same hits `/` lists, capped, as plain data.
+
+    Every string comes from the index and is only JSON-encoded here; the
+    script displays them with textContent, so no HTML is built anywhere.
+    """
+    results = []
+    if len(query) >= MIN_SUGGEST:
+        for hit in _search_hits(connection, query)[:SUGGESTIONS]:
+            results.append({'order_number': _order_shown(hit, query), 'name': hit.name,
+                            'vendor': hit.vendor, 'href': _assessment_link(hit, query)})
+    empty = len(query) >= MIN_SUGGEST and not results
+    return JsonText(json.dumps({'query': query, 'results': results, 'empty': empty}))
+
+
 def _search_page(connection, stats, query):
     """A starting point for a buyer, backed by the actual local index."""
     form = (
@@ -152,18 +193,10 @@ def _search_page(connection, stats, query):
     hits = _search_hits(connection, query)
 
     def assessment_link(hit):
-        fields = dict(vendor=hit.vendor, product=hit.name)
-        if any(index_module.normalize_order_number(number) == index_module.normalize_order_number(query)
-               for number in hit.order_numbers):
-            fields['order_number'] = query
-        return '/score?' + urllib.parse.urlencode(fields)
+        return _assessment_link(hit, query)
 
     def order_shown(hit):
-        wanted = index_module.normalize_order_number(query)
-        for number in hit.order_numbers:
-            if index_module.normalize_order_number(number) == wanted:
-                return number
-        return hit.order_numbers[0] if hit.order_numbers else ''
+        return _order_shown(hit, query)
 
     meta = '{:,} advisory record(s) · Open assessment →'
     if hits:
@@ -569,10 +602,11 @@ def _export_menu(parameters, resolved, has_statements=True):
     reason = ('Needs an identified product.' if not resolved
               else '' if has_statements else 'No CVE statements for this product.')
     return components.menu('Export evidence', (
-        ('HTML report', f'/export.html?{parameters}', '.html', ''),
-        ('JSON', f'/export.json?{parameters}', '.json', ''),
-        ('CSV', f'/export.csv?{parameters}', '.csv', ''),
-        ('VEX', f'/export.vex.json?{parameters}', 'CycloneDX', reason),
+        ('HTML report', f'/export.html?{parameters}', '.html', '', 'retrust-assessment.html'),
+        ('JSON', f'/export.json?{parameters}', '.json', '', 'retrust-assessment.json'),
+        ('CSV', f'/export.csv?{parameters}', '.csv', '', 'retrust-assessment.csv'),
+        ('VEX', f'/export.vex.json?{parameters}', 'CycloneDX', reason,
+         'retrust-assessment.vex.json'),
     ), 'export-menu', kind='primary')
 
 
@@ -1122,7 +1156,8 @@ def _compare_page(assess, context, candidates, submitted=False):
     stabilities = {id(block[0]): stability for block, _, stability in entries if stability}
     parameters = _comparison_parameters(filled)
     export = components.menu('Export comparison', [
-        (label, f'/compare.{extension}?{parameters}', tag, '')
+        (label, f'/compare.{extension}?{parameters}', tag, '',
+         f'retrust-comparison.{extension}')
         for extension, label, tag in (('html', 'HTML report', 'HTML'),
                                       ('json', 'JSON', 'JSON'),
                                       ('csv', 'CSV', 'CSV'))], 'export-comparison')
@@ -1560,6 +1595,10 @@ class PlainText(str):
     """A page that is text, not markup. _send switches the content type on it."""
 
 
+class JsonText(str):
+    """JSON for the enhancement script. Not a download: no Content-Disposition."""
+
+
 class Download(str):
     """Generated in memory with a fixed filename; no server-side file writes."""
 
@@ -1935,6 +1974,7 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
         routes = {
             "/": lambda: _search_page(connection, stats, first("q")),
             "/healthz": health,
+            "/search.json": lambda: _search_json(connection, first("q")),
             "/formula-check.json": formula_validation,
             "/robots.txt": lambda: PlainText("User-agent: *\nDisallow: /\n"),
             "/demo": _demo_page,
@@ -2052,7 +2092,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             else:
                 payload = markup.encode("utf-8")
                 kind = (markup.content_type if isinstance(markup, Download) else
-                        "text/plain" if isinstance(markup, PlainText) else "text/html")
+                        "text/plain" if isinstance(markup, PlainText) else
+                        "application/json" if isinstance(markup, JsonText) else "text/html")
                 content_type, cache_control = f"{kind}; charset=utf-8", "no-store"
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -2062,10 +2103,13 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                 self.send_header('X-ReTrust-Revision', revision)
             if isinstance(markup, Download):
                 self.send_header("Content-Disposition", f'attachment; filename="{markup.filename}"')
-            # The pages are self-contained, so the strictest policy that still
-            # works is the correct one: nothing may be fetched or executed.
+            # Pages are self-contained and work without scripts. The one script
+            # is same-origin and external, so there is no 'unsafe-inline' or
+            # 'unsafe-eval' for scripts, and requests (fetch) may go only to
+            # this origin. Everything else stays at default-src 'none'.
             self.send_header("Content-Security-Policy",
-                             "default-src 'none'; style-src 'unsafe-inline'; "
+                             "default-src 'none'; script-src 'self'; connect-src 'self'; "
+                             "style-src 'unsafe-inline'; "
                              "font-src 'self'; form-action 'self'; "
                              "base-uri 'none'; frame-ancestors 'none'")
             self.send_header("X-Content-Type-Options", "nosniff")

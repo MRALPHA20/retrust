@@ -1,5 +1,6 @@
 """WP8: Search, Methodology and the secondary pages (spec 4.3, 4.19, 4.23, 5.3)."""
 
+from script_policy import without_enhancement
 import html
 import re
 import urllib.parse
@@ -161,7 +162,7 @@ def test_page_hygiene(handler, path):
     assert status == 200
     main = body[body.index("<main"):body.index("</main>")]
     assert main.count("<h1") == 1
-    assert "<script" not in body
+    assert "<script" not in without_enhancement(body)
     assert main.count("rt-btn--primary") <= 1
     ids = re.findall(r'\sid="([^"]+)"', body)
     assert len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1]

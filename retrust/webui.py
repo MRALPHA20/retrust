@@ -1,4 +1,4 @@
-"""Shared presentation for the local browser. No scripts or remote assets."""
+"""Shared presentation for the local browser. One same-origin script, no remote assets."""
 
 import contextvars
 import html
@@ -143,7 +143,8 @@ def page(title, body, subtitle="", active=None):
         f'<li><a href="{route}">{label}</a></li>' for route, label in (
             ("/about", "Methodology"), ("/about#sources", "Source coverage")))
     return (
-        '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8">'
+        '<!doctype html><html lang="en" data-theme="dark"'
+        + (' data-hosted="1"' if hosted else '') + '><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<title>{esc(title if title == "ReTrust" else title + " · ReTrust")}</title>'
         f'<style>{STYLESHEET}</style></head>'
@@ -167,7 +168,7 @@ def page(title, body, subtitle="", active=None):
         f'<ul class="rt-footer__links">{footer_links}<li>{source_note()}</li></ul>'
         f'{related_links(None)}'
         f'<p class="rt-footer__mode">{assessment_label} · {workspace_label} · {workspace_detail}</p>'
-        '</div></footer></body></html>')
+        '</div></footer>' + assets.script_tag() + '</body></html>')
 
 
 def error_page(title, heading, message, actions_html=""):

@@ -1,4 +1,5 @@
 """The assess page (WP6): export menu, new exports, evidence parameters, ids."""
+from script_policy import without_enhancement
 import html
 import re
 import urllib.parse
@@ -33,13 +34,13 @@ def test_add_to_comparison_is_the_first_compare_link(scoring_handler):
 def test_empty_page_has_one_primary_button_and_no_script(handler):
     _, _, body = _get(handler, '/score')
     assert body.count('class="rt-btn rt-btn--primary') == 1
-    assert 'Assess product' in body and '<script' not in body.lower()
+    assert 'Assess product' in body and '<script' not in without_enhancement(body).lower()
     assert 'href="/score?vendor=Siemens' in body
 
 
 def test_result_page_has_no_script_and_unique_ids(scoring_handler):
     _, _, body = _get(scoring_handler, PAGE)
-    assert '<script' not in body.lower()
+    assert '<script' not in without_enhancement(body).lower()
     ids = _ids(body)
     assert len(ids) == len(set(ids))
 
@@ -70,7 +71,7 @@ def test_drawer_count_equals_shown_rows(scoring_handler):
 def test_invalid_evidence_parameters_are_ignored_not_echoed(scoring_handler, query):
     status, _, body = _get(scoring_handler, PAGE + '&' + query)
     assert status == 200
-    assert '<script' not in body.lower()
+    assert '<script' not in without_enhancement(body).lower()
     assert 'nope' not in body and '&lt;script' not in body
 
 

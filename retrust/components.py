@@ -596,11 +596,13 @@ def tooltip(trigger_html, text, tip_id=""):
 def menu(button_label, items, menu_id, *, kind="primary"):
     """Popover menu: a native ``popovertarget`` button opens a ``popover``
     list; light dismiss and Esc are the browser's. Rows are <a>.
-    items: sequence of (label, href, format_tag, disabled_reason). A row with
-    a disabled_reason has no href, aria-disabled and shows the reason."""
+    items: sequence of (label, href, format_tag, disabled_reason[, filename]).
+    A row with a disabled_reason has no href, aria-disabled and shows the
+    reason. ``filename`` becomes data-filename, which the enhancement script
+    names in its "Exported ..." toast."""
     mid = _slug(menu_id)
     rows = []
-    for index, (text, href, tag, why) in enumerate(items):
+    for index, (text, href, tag, why, *extra) in enumerate(items):
         tag_html = ('<span class="rt-menu__tag">%s</span>' % esc(tag)
                     if tag else "")
         if why:
@@ -613,9 +615,10 @@ def menu(button_label, items, menu_id, *, kind="primary"):
                 '<span class="rt-menu__reason" id="%s">%s</span></a>'
                 % (rid, esc(text), tag_html, rid, esc(why)))
         else:
-            rows.append('<a class="rt-menu__row" href="%s">'
+            named = (' data-filename="%s"' % esc(extra[0])) if extra and extra[0] else ""
+            rows.append('<a class="rt-menu__row" href="%s"%s>'
                         '<span class="rt-menu__text">%s</span>%s</a>'
-                        % (esc(_safe_href(href)), esc(text), tag_html))
+                        % (esc(_safe_href(href)), named, esc(text), tag_html))
     return ('<div class="rt-menu"><button type="button" '
             'class="rt-btn rt-btn--%s" popovertarget="%s">'
             '<span class="rt-btn__label">%s</span>%s</button>'
@@ -656,8 +659,9 @@ _TOAST = {"success": (GLYPH[OK], "prefer"), "error": (GLYPH[AVOID], "avoid"),
 
 
 def toast(message, kind="info"):
-    """Markup only; unused until WP9. role=status, errors role=alert (and
-    persistent, which is the JS layer's job). kind: info | success | error."""
+    """Markup for one toast; the enhancement script builds the same structure
+    client-side. role=status, errors role=alert (and persistent, which is the
+    JS layer's job). kind: info | success | error."""
     kind = kind if kind in _TOAST else "info"
     glyph, tone = _TOAST[kind]
     return ('<div class="rt-toast rt-toast--%s" role="%s">'
@@ -831,8 +835,32 @@ CSS = """
 .rt-toast--prefer .rt-toast__glyph{color:var(--prefer)}
 .rt-toast--avoid .rt-toast__glyph{color:var(--avoid)}
 .rt-toast--neutral .rt-toast__glyph{color:var(--muted)}
+.rt-toast__text{min-width:0;overflow-wrap:anywhere}
+.rt-toast__close{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;margin:calc(-1 * var(--s4)) calc(-1 * var(--s6)) calc(-1 * var(--s4)) 0;padding:0;border:0;border-radius:var(--r-md);background:transparent;color:var(--text-2);font-size:18px;line-height:1;cursor:pointer}
+.rt-toast__close:hover{background:var(--raised);color:var(--text)}
+.rt-toast__close:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+
+/* Enhancement script only (retrust.js): none of these exist in the no-JS markup. */
+.rt-toasts{position:fixed;left:var(--s16);bottom:var(--s16);z-index:100;display:flex;flex-direction:column;align-items:flex-start;gap:var(--s8);max-width:calc(100% - var(--s32));pointer-events:none}
+.rt-toasts .rt-toast{pointer-events:auto;box-shadow:var(--overlay-shadow)}
+.rt-search{position:relative}
+.rt-suggest{position:absolute;left:0;right:0;top:100%;z-index:60;box-sizing:border-box;margin-top:var(--s4);background:var(--surface);color:var(--text);border:1px solid var(--control-border);border-radius:var(--r-lg);box-shadow:var(--overlay-shadow);overflow:hidden}
+.rt-suggest[hidden],.rt-suggest__empty[hidden],.rt-suggest__list[hidden]{display:none}
+.rt-suggest__list{margin:0;padding:var(--s4) 0;list-style:none}
+.rt-suggest__row{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--s2) var(--s12);box-sizing:border-box;min-height:44px;padding:var(--s8) var(--s12);cursor:pointer;font-family:var(--font-sans);font-size:14px;line-height:1.4}
+.rt-suggest__row:hover,.rt-suggest__row[aria-selected=true]{background:var(--raised);box-shadow:inset 2px 0 0 var(--action)}
+.rt-suggest__no{flex:none;font-family:var(--font-mono);font-size:13px;color:var(--action)}
+.rt-suggest__name{flex:1 1 8rem;min-width:0;color:var(--text);overflow-wrap:anywhere}
+.rt-suggest__vendor{flex:none;margin-left:auto;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.rt-suggest__empty{margin:0;padding:var(--s12);font-size:14px;line-height:1.45;color:var(--text-2)}
+.rt-spinner{display:inline-block;flex:none;box-sizing:border-box;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:rt-spin 1s linear infinite}
+.rt-loadnote{margin:var(--s8) 0 0;font-family:var(--font-mono);font-size:12px;line-height:1.5;color:var(--text-2)}
+.rt-sent{margin-top:var(--s4);font-size:13px;color:var(--text-2)}
+.rt-qlist>li[data-sent] .rt-q__text,.rt-questions>li[data-sent] .rt-q__text{color:var(--muted)}
+.rt-tip[data-dismissed] .rt-tip__bubble{visibility:hidden;opacity:0;transition:none}
 
 @media (pointer:coarse){
+.rt-toast__close,.ev-drawer .ev-close{min-width:44px;min-height:44px}
 .rt-btn,.rt-btn--segment{min-height:44px}
 .rt-menu__row{min-height:44px}
 .rt-input{min-height:44px}
@@ -842,6 +870,6 @@ CSS = """
 @media (prefers-reduced-motion:reduce){
 .rt-btn,.rt-input,.rt-check__box,.rt-toggle__track,.rt-toggle__knob,.rt-tabs__tab{transition:none}
 .rt-tip:hover .rt-tip__bubble,.rt-tip:focus-within .rt-tip__bubble{transition:visibility 0s linear 150ms}
-.rt-icon--spinner,.rt-skel__line{animation:none}
+.rt-icon--spinner,.rt-skel__line,.rt-spinner{animation:none}
 }
 """

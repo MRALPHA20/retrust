@@ -182,7 +182,7 @@ def test_fonts_are_served_while_every_calculation_slot_is_taken(server):
 
 def test_the_safety_text_describes_the_cache_policy():
     assert "No page or download is cached" in serve.SAFETY
-    assert "Only the bundled font files are cacheable" in serve.SAFETY
+    assert "Only the bundled font files and the enhancement script are cacheable" in serve.SAFETY
 
 
 # --- the build fingerprint --------------------------------------------------

@@ -1,5 +1,6 @@
 """The Control Room comparison page (WP7): transposed shortlist table, export
 menu, confirmed clear, and the safety properties that go with them."""
+from script_policy import without_enhancement
 import html
 import re
 import urllib.parse
@@ -232,7 +233,7 @@ def test_one_primary_button_and_it_is_the_export_menu(page):
     menu = re.search(r'<div class="rt-menu">.*?</div></div>', markup, re.S).group(0)
     assert "rt-btn--primary" in menu and "Export comparison" in menu
     assert "popovertarget=" in menu and " popover>" in menu
-    rows = re.findall(r'<a class="rt-menu__row" href="([^"]+)"><span class="rt-menu__text">'
+    rows = re.findall(r'<a class="rt-menu__row" href="([^"]+)"(?: data-filename="[^"]+")?><span class="rt-menu__text">'
                       r'([^<]+)</span><span class="rt-menu__tag">([^<]+)</span>', menu)
     assert [(label, tag) for _, label, tag in rows] == [
         ("HTML report", "HTML"), ("JSON", "JSON"), ("CSV", "CSV")]
@@ -288,7 +289,7 @@ def test_hostile_candidate_names_are_escaped_everywhere(page):
     rows = [["", hostile, "", '"><b>ORD</b>'], ["", "Alpha", "", ""]]
     markup = page(rows=rows,
                   assessments={hostile: (assessment(hostile), resolved(), [])})
-    assert "<script" not in markup.lower()
+    assert "<script" not in without_enhancement(markup).lower()
     assert "<script>alert(1)" not in markup
     assert "<img src=x" not in markup
     assert "&lt;script&gt;alert(1)" in markup
@@ -296,7 +297,7 @@ def test_hostile_candidate_names_are_escaped_everywhere(page):
 
 
 def test_the_page_carries_no_script_element(page):
-    assert "<script" not in page().lower()
+    assert "<script" not in without_enhancement(page()).lower()
 
 
 def test_static_table_has_no_remove_links(two):
