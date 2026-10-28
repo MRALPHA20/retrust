@@ -42,6 +42,15 @@ PAGES = {
     "alternatives": "/alternatives?vendor=Siemens&product=SIMATIC+S7-1500",
 }
 CSP_MARKERS = ("content security policy", "content-security-policy", "violates the following")
+# Firefox's own browser chrome requests /favicon.ico and logs the document's
+# default-src 'none' against it. That is not a page resource: the page loads
+# nothing outside its policy, and a missing tab icon is the only effect.
+BROWSER_CHROME_NOISE = "FaviconLoader"
+
+
+def csp_problems(messages):
+    return [m for m in messages if any(k in m.lower() for k in CSP_MARKERS)
+            and BROWSER_CHROME_NOISE not in m]
 
 
 def _open(browser, base, path, width=1280, height=900, **options):
@@ -75,7 +84,7 @@ def test_no_csp_violations_in_console(browser, base_url, name):
     page.on("pageerror", lambda e: messages.append(str(e)))
     try:
         page.goto(base_url + PAGES[name], wait_until="networkidle")
-        bad = [m for m in messages if any(k in m.lower() for k in CSP_MARKERS)]
+        bad = csp_problems(messages)
         assert not bad, bad
     finally:
         context.close()
@@ -90,11 +99,22 @@ def test_single_h1(browser, base_url, name):
         context.close()
 
 
+def _tabs_to_links(browser):
+    # Safari and the WebKit engine do not put links in the Tab order unless the
+    # user enables "Press Tab to highlight each item" (Option+Tab otherwise).
+    # The skip link is a link, so there it cannot be the first Tab stop; the
+    # page cannot change that. The test then proves the link works once focused.
+    return browser.browser_type.name != "webkit"
+
+
 @pytest.mark.parametrize("name", ["home", "result-avoid", "compare"])
 def test_skip_link_is_first_focusable(browser, base_url, name):
     context, page = _open(browser, base_url, PAGES[name])
     try:
-        page.keyboard.press("Tab")
+        if _tabs_to_links(browser):
+            page.keyboard.press("Tab")
+        else:
+            page.locator("a.skip-link").focus()
         first = page.evaluate("""() => { const e = document.activeElement;
             return {tag: e.tagName, href: e.getAttribute('href') || '', text: e.textContent.trim().toLowerCase()}; }""")
         assert first["tag"] == "A" and first["href"].startswith("#") and "skip" in first["text"], first
@@ -117,6 +137,10 @@ def test_focus_ring_visible_while_tabbing(browser, base_url, name):
                 return {el: e.tagName + ' ' + (e.textContent || '').trim().slice(0, 30),
                         style: s.outlineStyle, width: parseFloat(s.outlineWidth),
                         shadow: s.boxShadow}; }"""))
+        # Without link stops (WebKit) 8 Tabs can leave the document: body is
+        # then the active element, which has no ring to show.
+        seen = [f for f in seen if not f["el"].startswith("BODY")]
+        assert seen, "Tab never reached a control"
         flat = [f for f in seen if not (f["style"] not in ("none", "hidden") and f["width"] >= 2)
                 and f["shadow"] in ("none", "")]
         assert not flat, f"focused elements without a visible ring: {flat}"
@@ -279,5 +303,61 @@ def test_cve_openers_are_links_and_drawer_close_is_not_primary(browser, base_url
         closers = page.evaluate("""() => [...document.querySelectorAll('.ev-close')].map(
             e => getComputedStyle(e).backgroundColor)""")
         assert closers and all(c == "rgba(0, 0, 0, 0)" for c in closers)
+    finally:
+        context.close()
+
+
+# ---- WP10b regressions found in the full matrix ----
+
+@pytest.mark.parametrize("width", [1100, 1180, 1279, 1440])
+def test_header_search_placeholder_is_not_clipped(browser, base_url, width):
+    # At 1100 the single-row header once left the field 273px wide, cutting
+    # the script's "Ctrl K" hint to "Ct".
+    context, page = _open(browser, base_url, "/about", width=width)
+    try:
+        page.wait_for_function("document.getElementById('rt-global-q').placeholder.length > 24")
+        fit = page.evaluate("""() => {
+            const i = document.getElementById('rt-global-q'), s = getComputedStyle(i);
+            const c = document.createElement('canvas').getContext('2d');
+            c.font = s.fontWeight + ' ' + s.fontSize + ' ' + s.fontFamily;
+            return {text: c.measureText(i.placeholder).width,
+                    room: i.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight)}; }""")
+        assert fit["text"] <= fit["room"], fit
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("width", [640, 794])
+@pytest.mark.parametrize("name", ["result-avoid", "compare"])
+def test_print_layout_fits_the_page_and_hides_action_buttons(browser, base_url, name, width):
+    # Print is the light theme without chrome; tables must shrink to the page
+    # instead of keeping their screen min-width and being cut off on paper.
+    context, page = _open(browser, base_url, PAGES[name], width=width)
+    try:
+        page.emulate_media(media="print")
+        sizes = page.evaluate("({s: document.documentElement.scrollWidth,"
+                              " c: document.documentElement.clientWidth})")
+        assert sizes["s"] <= sizes["c"], sizes
+        shown = page.evaluate("""() => [...document.querySelectorAll(
+            '.rt-assess-actions, .rt-tip__bubble, .table-scroll-hint')]
+            .filter(e => e.getClientRects().length).map(e => e.className)""")
+        assert shown == []
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("width", [375, 1440])
+def test_export_menu_opens_under_its_button(browser, base_url, width):
+    # A popover is in the top layer, where its static position is the viewport
+    # corner: unanchored it opened at (0, 0), nowhere near the button.
+    context, page = _open(browser, base_url, S7, width=width)
+    try:
+        button = page.locator(".rt-menu > [popovertarget]").first
+        button.click()
+        menu = page.locator("#" + button.get_attribute("popovertarget"))
+        b, m = button.bounding_box(), menu.bounding_box()
+        assert 0 <= m["y"] - (b["y"] + b["height"]) <= 24, (b, m)
+        assert m["x"] >= -1 and m["x"] + m["width"] <= width + 1, m
+        assert b["x"] - 1 <= m["x"] + m["width"] and m["x"] <= b["x"] + b["width"] + 1, (b, m)
     finally:
         context.close()

@@ -803,17 +803,24 @@ CSS = """
 .rt-tabs__tab[aria-current]{color:var(--text);border-bottom-color:var(--action)}
 
 .rt-tip{position:relative;display:inline-flex;align-items:center}
-.rt-tip__bubble{position:absolute;left:0;top:100%;z-index:20;box-sizing:border-box;width:max-content;max-width:280px;margin-top:var(--s6);padding:var(--s8) var(--s10);background:var(--raised);color:var(--text);border:1px solid var(--control-border);border-radius:var(--r-lg);font-family:var(--font-sans);font-size:12px;font-weight:400;line-height:1.4;text-align:left;text-transform:none;letter-spacing:0;visibility:hidden;opacity:0;pointer-events:none}
+.rt-tip__bubble{white-space:normal;position:absolute;left:0;top:100%;z-index:20;box-sizing:border-box;width:max-content;max-width:280px;margin-top:var(--s6);padding:var(--s8) var(--s10);background:var(--raised);color:var(--text);border:1px solid var(--control-border);border-radius:var(--r-lg);font-family:var(--font-sans);font-size:12px;font-weight:400;line-height:1.4;text-align:left;text-transform:none;letter-spacing:0;visibility:hidden;opacity:0;pointer-events:none}
 .rt-tip:hover .rt-tip__bubble,.rt-tip:focus-within .rt-tip__bubble{visibility:visible;opacity:1;transition:opacity var(--t-fast) ease-out 150ms,visibility 0s linear 150ms}
 
 .rt-menu{position:relative;display:inline-block}
-.rt-menu__list{box-sizing:border-box;width:240px;margin:0;padding:var(--s4) 0;inset:auto;position:absolute;background:var(--surface);color:var(--text);border:0;border-radius:var(--r-lg);box-shadow:var(--overlay-shadow)}
+.rt-menu>[popovertarget]{anchor-name:--rt-menu}
+.rt-menu{anchor-scope:--rt-menu}
+/* A popover sits in the top layer: its static position is the viewport corner, not the button, so it is anchored explicitly. */
+.rt-menu__list{box-sizing:border-box;width:240px;margin:0;padding:var(--s4) 0;position:fixed;inset:auto;top:50%;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text);border:0;border-radius:var(--r-lg);box-shadow:var(--overlay-shadow)}
 .rt-menu__list:not(:popover-open){display:none}
 .rt-menu__row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2) var(--s8);box-sizing:border-box;min-height:44px;padding:var(--s8) var(--s12);font-family:var(--font-sans);font-size:14px;color:var(--text);text-decoration:none}
 .rt-menu__row[href]:hover{background:var(--raised)}
 .rt-menu__tag{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
 .rt-menu__row--disabled{color:var(--muted);cursor:not-allowed}
 .rt-menu__reason{flex-basis:100%;font-size:12px;line-height:1.4;color:var(--muted)}
+@supports (anchor-name:--a){
+@position-try --rt-menu-right{left:auto;right:anchor(right);top:anchor(bottom)}
+.rt-menu__list{position-anchor:--rt-menu;top:anchor(bottom);left:anchor(left);transform:none;margin-top:var(--s6);position-try-fallbacks:--rt-menu-right,flip-block}
+}
 @supports not selector(:popover-open){.rt-menu__list{display:block;position:static;margin-top:var(--s6)}}
 
 .rt-meta{display:inline-block;padding:var(--s2) var(--s8);background:var(--surface);color:var(--text-2);border:1px solid var(--rule);border-radius:var(--r-sm);font-family:var(--font-mono);font-size:12px;line-height:1.4}

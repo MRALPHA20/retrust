@@ -14,7 +14,7 @@ import pytest
 
 pytest.importorskip("playwright")
 
-from test_ui_browser import CSP_MARKERS, DB, PAGES, S7  # noqa: E402
+from test_ui_browser import DB, PAGES, S7, csp_problems  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not DB.exists(), reason="data/retrust.db is absent")
 
@@ -30,8 +30,7 @@ def session(browser, base, path, **options):
     context = browser.new_context(**{**OPTIONS, **options})
     page = context.new_page()
     problems = []
-    page.on("console", lambda m: problems.append(m.text)
-            if any(k in m.text.lower() for k in CSP_MARKERS) else None)
+    page.on("console", lambda m: problems.extend(csp_problems([m.text])))
     page.on("pageerror", lambda e: problems.append("pageerror: %s" % e))
     try:
         page.goto(base + path, wait_until="networkidle")
@@ -175,6 +174,10 @@ def test_drawer_traps_focus_and_returns_it_to_the_opener(browser, base_url):
     with session(browser, base_url, S7) as page:
         opener = page.locator(".ev-open").first
         target = opener.get_attribute("popovertarget")
+        # Safari does not focus a button on click, so the popover has no
+        # previously focused element to return to. A keyboard user focuses the
+        # opener first, which is the case this test is about.
+        opener.focus()
         opener.click()
         assert _popover_open(page, target)
         drawer = "#%s" % target
@@ -290,15 +293,22 @@ def test_a_real_submit_navigates_and_leaves_no_loading_state_behind(browser, bas
 # ---- supplier questions -------------------------------------------------------
 
 def test_copy_all_puts_numbered_questions_on_the_clipboard(browser, base_url):
-    with session(browser, base_url, ANNEX,
-                 permissions=["clipboard-read", "clipboard-write"]) as page:
+    # Only Chromium has the clipboard permission names; elsewhere the text
+    # handed to navigator.clipboard.writeText is captured instead.
+    chromium = browser.browser_type.name == "chromium"
+    options = {"permissions": ["clipboard-read", "clipboard-write"]} if chromium else {}
+    with session(browser, base_url, ANNEX, **options) as page:
+        if not chromium:
+            page.evaluate("""() => { window.__clip = '';
+                Object.defineProperty(navigator, 'clipboard', {value: {
+                  writeText: t => { window.__clip = t; return Promise.resolve(); }}}); }""")
         count = page.locator("ol > li .rt-q__text").count()
         assert count > 1
         page.get_by_role("button", name="Copy all").click()
         toast = page.locator(".rt-toast").first
         toast.wait_for()
         assert "Copied %d questions" % count in toast.text_content()
-        clip = page.evaluate("navigator.clipboard.readText()")
+        clip = page.evaluate("navigator.clipboard.readText()" if chromium else "window.__clip")
         assert clip.startswith("1. ") and ("\n%d. " % count) in clip
 
 

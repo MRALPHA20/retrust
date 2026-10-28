@@ -178,6 +178,9 @@ header,nav,.skip-link,.search,[role=search],.actions,form,[popover],dialog,.popo
 tr{break-inside:avoid}
 thead{display:table-header-group}
 .tw{overflow:visible}
+.tw table,.tw table.rt-cmp,.ev-table{min-width:0!important;width:100%}
+.tw th,.tw td,.ev-table th,.ev-table td{white-space:normal!important;overflow-wrap:anywhere;padding-left:var(--s6)!important;padding-right:var(--s6)!important}
+.rt-tip__bubble,.rt-assess-actions,.table-scroll-hint{display:none!important}
 a{color:var(--action)}
 }
 """

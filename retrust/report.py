@@ -213,6 +213,9 @@ footer{margin-top:var(--s32);padding-top:var(--s16);border-top:1px solid var(--r
 .block{break-inside:auto}
 details::details-content{content-visibility:visible!important;display:block!important;height:auto!important}
 .tw{overflow:visible}
+.tw table,.tw table.rt-cmp,.ev-table{min-width:0!important;width:100%}
+.tw th,.tw td,.ev-table th,.ev-table td{white-space:normal!important;overflow-wrap:anywhere;padding-left:var(--s6)!important;padding-right:var(--s6)!important}
+.rt-tip__bubble,.rt-assess-actions,.table-scroll-hint{display:none!important}
 }
 """
 

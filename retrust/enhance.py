@@ -287,6 +287,15 @@ SCRIPT = r"""'use strict';
   function initDrawers() {
     var openers = {};
     var current = null;
+    var escaped = false;
+
+    // WebKit moves focus to a focusable scroll container (the table wrapper)
+    // when a popover closes, so after Esc "focus is not on body" is not
+    // enough to tell that the browser failed to restore it. Esc is always
+    // meant to hand focus back to the opener.
+    doc.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && current) { escaped = true; }
+    }, true);
 
     doc.addEventListener('click', function (event) {
       var opener = closest(event.target, '[popovertarget]');
@@ -307,8 +316,11 @@ SCRIPT = r"""'use strict';
         if (current === drawer) { current = null; }
         var opener = openers[drawer.id];
         var at = doc.activeElement;
+        var byEscape = escaped;
+        escaped = false;
         // The browser normally restores focus; this covers the cases where it did not.
-        if (opener && opener.isConnected && (!at || at === doc.body || drawer.contains(at))) {
+        if (opener && opener.isConnected
+            && (byEscape || !at || at === doc.body || drawer.contains(at))) {
           opener.focus();
         }
       }
