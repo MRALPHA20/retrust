@@ -17,7 +17,8 @@ from . import index, report
 # on the day panel or the night one, and an alarm legible on only one of them is
 # not an alarm.
 STYLES = {"prefer": "38;5;42", "conditional": "38;5;179", "avoid": "38;5;203",
-          "gate": "38;5;160",    # a hard gate is the same red as the verdict it forces
+          "verify": "38;5;141",  # violet: unproven, which is not the amber of a known caveat
+          "gate": "38;5;160",   # a hard gate is the same red as the verdict it forces
           "faint": "38;5;245",   # inert: nothing was assessed, so it says nothing
           # Chrome, never a state. Both are the same mid grey on purpose: quieter
           # than the text is the requirement, and on a background we cannot see,
@@ -28,7 +29,7 @@ STYLES = {"prefer": "38;5;42", "conditional": "38;5;179", "avoid": "38;5;203",
 # Mirrors report.VERDICT_COLOR, and a test asserts it still does, so terminal and
 # report cannot drift into disagreeing about what a verdict looks like.
 VERDICT_STYLES = {"PREFER": "prefer", "CONDITIONAL": "conditional",
-                  "VERIFY": "conditional", "AVOID": "avoid", "NOT ASSESSED": "faint"}
+                  "VERIFY": "verify", "AVOID": "avoid", "NOT ASSESSED": "faint"}
 
 ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 _forced_off = False
