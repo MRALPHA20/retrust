@@ -54,8 +54,8 @@ def test_alpha():
 
 
 def test_placeholders_are_empty_strings():
+    # components.CSS (WP3) and evidenceview.CSS (WP5b) are filled in.
     assert design.BASE_CSS != "" and design.PRINT_CSS != ""
-    assert evidenceview.CSS == ""  # components.CSS is filled in by WP3
 
 
 def test_webview_constructs_with_defaults():
@@ -71,16 +71,19 @@ def test_esc_escapes_quotes_and_angle_brackets():
         "&lt;a href=&quot;x&quot;&gt;&amp;&#x27;")
 
 
-def test_stubs_raise_not_implemented():
-    # components.* are implemented by WP3 (see tests/test_components.py).
-    stubs = [(evidenceview, n) for n in (
-        "rank", "counts", "exposure_card", "evidence_card", "drawers")]
-    for module, name in stubs:
-        fn = getattr(module, name)
-        params = [p for p in inspect.signature(fn).parameters.values()
-                  if p.default is inspect.Parameter.empty]
-        with pytest.raises(NotImplementedError):
-            fn(*([None] * len(params)))
+def test_evidenceview_contract_signatures():
+    # components.* (WP3) and evidenceview.* (WP5b) are implemented; the
+    # signatures WP5a calls are pinned here and behaviour in test_evidence_view.
+    def names(fn):
+        return [p.name for p in inspect.signature(fn).parameters.values()
+                if p.kind is p.POSITIONAL_OR_KEYWORD]
+    assert names(evidenceview.shown) == ["findings", "assessment", "view"]
+    assert names(evidenceview.rank) == ["findings", "assessment", "view"]
+    assert names(evidenceview.counts) == ["findings", "assessment"]
+    assert names(evidenceview.exposure_card) == ["assessment"]
+    assert names(evidenceview.evidence_card) == ["findings", "assessment", "view"]
+    assert names(evidenceview.drawers) == ["findings", "assessment", "view",
+                                           "advisories"]
 
 
 def test_glyphs():
