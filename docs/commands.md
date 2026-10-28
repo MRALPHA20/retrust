@@ -40,11 +40,11 @@ Terminal background and fonts follow your terminal's own settings.
 
 ## Take a shortlist from review to a decision record
 
-In the browser, **Compare candidates** accepts a manufacturer order number or
+In the browser, **Compare** accepts a manufacturer order number or
 vendor/model for each row, plus optional firmware. Exact order-number searches
-and **Compare this product** retain that identifier in the next assessment.
+and **Add to comparison** retain that identifier in the next assessment.
 
-Download the complete comparison as HTML, JSON or CSV. HTML includes the ranked
+Use **Export comparison** to download the complete comparison as HTML, JSON or CSV. HTML includes the ranked
 results, original inputs, scoring weights and source provenance. JSON preserves
 each query for later `retrust diff`; CSV includes query columns for spreadsheet
 review. A mixed-firmware warning flags candidates assessed on different scopes.

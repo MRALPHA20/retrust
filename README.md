@@ -33,8 +33,16 @@ python3 -m retrust.cli setup
 python3 -m retrust.cli serve
 ```
 
-Open **http://127.0.0.1:8765/**. Search for a product, select **Assess a product**,
-and supply the firmware and operating conditions you can verify.
+Open **http://127.0.0.1:8765/**. Search for a product (press `Ctrl K` or `⌘K`
+from any page), open its assessment, and supply the firmware and operating
+conditions you can verify. The top bar has four places: **Assess**,
+**Compare**, **Search** and **Methodology**. Use **Export evidence** for the
+HTML report, JSON, CSV or VEX.
+
+Every page works without JavaScript. One same-origin script only adds search
+suggestions, focus handling, toasts, copy and loading feedback. Fonts are
+bundled and the server fetches nothing from the network. Exported reports
+contain no script and are self-contained.
 
 For the terminal:
 

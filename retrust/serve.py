@@ -618,7 +618,7 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         network_exposure = None
     owner = owner or {}
     recognised = None
-    # A full title copied from Explore is a product identifier, not a part
+    # A full title copied from Search is a product identifier, not a part
     # number. Recognise an exact title or an explicitly named vendor/model;
     # suggestions never become matches. Never override conflicting fields.
     if order_number and not (vendor or product):
@@ -853,7 +853,7 @@ def _lookup_error():
     return components.alert(
         'error', 'Enter both the manufacturer and product/model',
         body_html='<p class="rt-alert__text">If you are unsure, '
-                  '<a href="/">find the product in Explore</a> first.</p>')
+                  '<a href="/">find the product in Search</a> first.</p>')
 
 
 def _product_next_steps(vendor, product, version=''):

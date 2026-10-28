@@ -126,8 +126,10 @@ $ retrust compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</pre></l
      <code>retrust shell</code> gives you a menu covering everything here, prints
      the equivalent command each time, and saves the result as HTML, JSON or CSV
      when you are done. <b>Prefer a browser?</b> <code>retrust serve</code> puts
-     search, scoring, comparison, alternatives and vendor profiles on
-     <code>127.0.0.1:8765</code>, local to your machine and read-only.</p>
+     search, assessment, comparison and the supporting evidence pages on
+     <code>127.0.0.1:8765</code>, local to your machine and read-only. It works
+     without JavaScript; <code>Ctrl K</code> (<code>&#8984;K</code> on macOS)
+     jumps to search.</p>
   <table class="qs-legend">
     <tr>
       <td><span class="v-prefer">PREFER</span> &ge;80</td>
@@ -459,10 +461,12 @@ what you typed.</p>
 <p>The candidate string is pipe-separated: <span class="id">Vendor|Product|Version|OrderNumber</span>,
 and everything after the vendor is optional.</p>
 
-<p>In the browser, <b>Compare candidates</b> provides separate fields for an
+<p>In the browser, <b>Compare</b> provides separate fields for an
 order number, vendor, model and optional firmware. An exact order-number
 search keeps that identifier when you open its assessment and compare it.
-Download the whole shortlist as HTML, JSON or CSV. Each download retains the
+The shortlist is kept in the page address only, so bookmark the link to keep
+it. Use <b>Export comparison</b> to download the whole shortlist as HTML, JSON
+or CSV. Each download retains the
 original inputs; HTML and JSON also include source provenance and weights.
 Keep the downloaded file as your decision record: downloads use the current
 local index. A warning appears when only some candidates specify firmware.</p>

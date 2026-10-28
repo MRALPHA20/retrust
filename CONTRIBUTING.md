@@ -28,6 +28,7 @@ assessments use the downloaded snapshot.
 | `retrust/exposure.py`, `score.py` | Exposure factors, scoring and decision policy |
 | `retrust/cli.py`, `shell.py`, `console.py` | Command and terminal interfaces |
 | `retrust/serve.py`, `webui.py`, `webviews.py` | HTTP routes, browser layout and result views |
+| `retrust/enhance.py`, `retrust/static/` | The one same-origin script and the bundled fonts; pages must keep working without the script |
 | `retrust/bootstrap.py`, `csaf.py`, `index.py` | Public source fetching, parsing and indexing |
 | `retrust/formula_check.py` | Independent all-product formula validation |
 | `tests/test_*.py` | Automated regression cases |
@@ -35,6 +36,13 @@ assessments use the downloaded snapshot.
 | `examples/` | Small sample inputs without confidential information |
 | `scripts/` | Build and deployment operations |
 | `tools/` | Documentation generation and benchmark utilities |
+
+Pages must work with JavaScript off, load nothing from another origin and add
+no inline scripts or event-handler attributes; the Content Security Policy
+enforces this and `tests/test_enhance.py` checks it. After a UI change, run
+`make guide` to regenerate `docs/assets/workspace-comparison.png` and the PDF
+guides (needs `.[docs]` and `python3 -m playwright install chromium`). Keep
+the review screenshots (`make screenshots-review`) out of the repository.
 
 Keep the existing Python package layout. Avoid moving application modules just
 to group them visually: imports, CLI entry points and deployment fingerprints

@@ -29,11 +29,13 @@ loaded database, rather than a slide or a fixed example.
 
 ### 2. Identify the hardware (one minute)
 
-Search for `6ES7518-4AX00-1AB0`. Open the result and add the firmware version
-under **Edit product, firmware, or network exposure**. Explain that the order number is
-a procurement identifier and the firmware narrows the affected ranges.
+Press `Ctrl K` (`⌘K` on macOS) and type `6ES7518-4AX00-1AB0`, or use **Search**
+in the top bar. Open the result and add the firmware version under **Inputs:
+product, firmware and network exposure** (the last section of the result).
+Explain that the order number is a procurement identifier and the firmware
+narrows the affected ranges.
 
-Alternatively, use **Assess a product** and enter the order number directly.
+Alternatively, open **Assess** and enter the order number directly.
 A conflicting product name is refused rather than silently ignored.
 
 ### 3. Explain the evidence (one minute)
@@ -41,9 +43,10 @@ A conflicting product name is refused rather than silently ignored.
 On `/demo`, step 2 is **Assess Siemens SIMATIC IPC477E Pro** -- open that.
 (The ABB AC 800M below is reached from step 3's **Open example comparison**,
 or from the CLI line in this step; `/demo` has no ABB example of its own.)
-Walk through the four scored parts -- exposure
-safety, available fixes, vendor security practices and certification evidence --
-and point out that attack activity and issue severity are shown beside them but
+Use the section bar -- **Overview**, **Exposure**, **Evidence**, **Questions**,
+**Inputs** -- to walk down the page. Under **Overview**, the verdict badge and
+score sit above the four scored parts -- exposure safety, available fixes,
+vendor security practices and certification evidence -- and point out that attack activity and issue severity are shown beside them but
 feed exposure rather than scoring twice. Evidence completeness is reported
 separately and never scored. Higher scores are better; low
 coverage still needs review. A missing firmware version leaves all known
@@ -114,12 +117,16 @@ A complete patch record cannot buy back dangerous flaws.
 Presenter note: that attribution note is the feature, not an apology -- read
 it aloud. The tool reaches a verdict only on the operator's answers, says
 which answers, and keeps the published-evidence range in view. The same
-questions appear on the score page's edit panel.
+questions appear as gap cards under **What to check next** and again in the
+**Inputs** section of the result.
 
 ### 4. Compare candidates (one minute)
 
-Open the guided demo's comparison. Order number, vendor, model, and firmware each have their
-own field; edit the shortlist without learning command syntax. Known-exploited
+Open the guided demo's comparison (or **Compare** in the top bar). Order
+number, vendor, model, and firmware each have their own field under **Edit
+candidates or add another**; edit the shortlist without learning command
+syntax. The shortlist lives in the page address only: copy the URL to keep it,
+and **Clear shortlist** empties it. Known-exploited
 vulnerabilities can trigger an AVOID gate regardless of the weighted score.
 The ranking runs PREFER, CONDITIONAL, VERIFY, AVOID: a disqualified product
 never outranks one that still needs checks.
@@ -130,17 +137,19 @@ products**. Use equivalent candidates for an actual procurement decision.
 
 ### 5. Take the result away (one minute)
 
-On a comparison, use **Download comparison report**, **Download comparison JSON**,
-or **Download comparison CSV** to retain the full shortlist and its original
-queries. The report includes evidence and provenance; CSV is ready for spreadsheet
-review. Downloads recompute against the current local index.
+On a comparison, open **Export comparison** and choose HTML, JSON or CSV to
+retain the full shortlist and its original queries. The report includes
+evidence and provenance; CSV is ready for spreadsheet review. Exports
+recompute against the current local index.
 
-On an assessment, use **Download report** for a self-contained HTML document
-or **Technical data (JSON)** for the structured evidence. A verdict reached through
+On an assessment, open **Export evidence** and choose **HTML report** for a
+self-contained document (no script, nothing fetched), **JSON** for the
+structured evidence, **CSV** for a spreadsheet or **VEX** (CycloneDX). A verdict reached through
 operator answers carries them into the record: JSON and CSV exports include an
 "assertions" field, so the file shows what was asserted rather than verified.
-Open **Prepare supplier questions** to produce the RFQ annex, then follow the
-plain-text link for copying into a requisition.
+Open **Supplier questions** (or the **Questions** section) to produce the RFQ
+annex, then use **Copy all** or **Export as .txt** to paste it into a
+requisition.
 
 ### 6. State the limits (30 seconds)
 
@@ -176,7 +185,11 @@ Keep these distinctions in the presentation.
 - Save a snapshot with `python3 -m retrust.cli snapshot` and keep a known-good
   copy separately. A snapshot holds data; preserve any custom scoring config too.
 - Keep the default loopback bind. The browser server has no authentication.
-- Test projector resolution and browser zoom on the presentation machine.
+- Test projector resolution and browser zoom on the presentation machine. The
+  layout reflows down to a phone width; the section bar scrolls sideways.
+- The pages work with JavaScript off. The one same-origin script only adds
+  search suggestions, focus handling, toasts, copy and loading feedback, and
+  the fonts are bundled, so nothing needs the network.
 
 ## What changed in this version
 

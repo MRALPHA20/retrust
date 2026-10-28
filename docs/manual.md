@@ -192,50 +192,106 @@ person actually signing the purchase order would rather use.
 retrust serve                  # http://127.0.0.1:8765
 ```
 
-Search, score, compare, alternatives and vendor profiles as pages, rendered by
-the same function that writes the report, so the browser and the printed PDF
-cannot drift into showing one assessment two ways. A scored product links
-onward -- its vendor's profile, its family's alternatives, a comparison started
-with it -- so the next question is a click rather than a form refilled.
+The top bar has four places: **Assess**, **Compare**, **Search** and
+**Methodology**. Vendor profiles, advisory timelines, alternatives, supplier
+questions, response priority and exploitation estimates are reached from a
+result as **Related evidence** links, so the next question is a click rather
+than a form refilled. Pages are rendered by the same function that writes the
+exported report, so the browser and the exported file cannot drift into
+showing one assessment two ways.
 
-**Start with what you know.** The assessment form asks for product identity
-and optional firmware first. Expand **Use vendor and model instead** if you
-do not have an order number. **Site details and fixes (optional)** holds the
-questions for your technical team; leaving them unknown keeps a conservative
-first assessment. Results show the verdict and any supplier-verification
-requirement before editing or download controls. **What this score covers**
-separates scored device-vendor findings from bundled-software issues that still
-need supplier review. Evidence completeness is explained under **What evidence
-was checked?**; it is not a percentage chance that the equipment is secure.
+**Find a product.** The search box in the top bar and the **Search** page match
+a manufacturer order number, a product name or a vendor. Press `Ctrl K`
+(`⌘K` on macOS; both work everywhere) to jump to the box from any page. With
+the script on, matches appear as you type: use the up and down arrow keys to
+move, `Enter` to open a match and `Esc` to close the list. Without it, `Enter`
+submits the form to the Search page.
 
-**Compare and retain a shortlist.** Each browser candidate accepts an order
-number, or a vendor and model, plus optional firmware. Exact order-number
-searches retain that identifier through assessment and comparison. Download
-the complete comparison as HTML, JSON or CSV. All three formats retain the
-original inputs; HTML and JSON also include source provenance and weights.
-The JSON can be kept for a later `retrust diff`. Downloads assess against the
-current local index, so retain the downloaded file as the decision record.
-If only some candidates have firmware specified, a warning prompts you to
-make their scope comparable.
-Each candidate also keeps its own assessment type, network exposure,
+**Start with what you know.** **Assess** asks for the product identity and
+optional firmware first. Expand **Use vendor and model instead** if you do not
+have an order number. **Network access and operating conditions** holds the
+questions for your technical team; leaving them as Unknown keeps a conservative
+first assessment.
+
+**Read the result in five sections.** The bar under the product name links to
+**Overview**, **Exposure**, **Evidence**, **Questions** and **Inputs**; they
+are anchors, so the browser's back button and a copied link keep your place.
+
+- **Overview** has the ReTrust verdict (PREFER, CONDITIONAL, AVOID or VERIFY),
+  the score and, for VERIFY, the provisional range. Higher scores are more
+  favourable under the chosen settings; the score is not a probability of
+  compromise and not a certification. Below it are the mandatory-blocker line,
+  the four scored pillars (E exposure safety, P available fixes, V vendor
+  security practices, C certification evidence) with their weights, and the
+  gap cards under **What to check next**. A gap card names one input that is
+  missing (reachability, impact, firmware fix status, network exposure or
+  firmware version) and what to ask; resolving it narrows or removes the
+  range. **Show supporting evidence** opens the evidence behind a pillar.
+- **Exposure** shows the top review units, the formula
+  `R = min(1, Z1 + 0.20·Z2 + 0.10·Z3)` with the numbers filled in, and the
+  T, I, A, H, U and Z factors per unit. A range appears wherever an answer is
+  missing.
+- **Evidence** lists the CVEs. Filter with **All**, **Unpatched**,
+  **Network** and **KEV**; click a column heading to sort (ID, weakness,
+  CVSS, signals, vector, fix, Z). With no sort chosen the list keeps its
+  default selection: the ten highest by EPSS, then CVSS. An explicit sort is
+  applied to every in-scope CVE before the list is cut to ten. Select a CVE ID
+  to open its evidence drawer: the advisory, affected versions, fix status,
+  signals (CVSS, vector, EPSS, LEV, KEV) and how the CVE enters the score.
+  With the script on, focus stays inside the open drawer and `Esc` closes it.
+  A table that shows ten of many says so.
+- **Questions** lists numbered requests for the supplier. **Why ask this**
+  gives the evidence behind each. **Mark as sent** tracks your progress in
+  that browser session only; **Copy all** and **Export as .txt** take the
+  full text away.
+- **Inputs** is headed **Inputs: product, firmware and network exposure**.
+  Change any answer and select **Assess product**; the URL carries every
+  input, so a result can be bookmarked or sent.
+
+**Export evidence.** The **Export evidence** menu offers the **HTML report**
+(self-contained, no script), **JSON**, **CSV** and **VEX** (CycloneDX). Every
+export keeps the original inputs, and a verdict reached through operator
+answers carries them as assertions. The JSON can be kept for a later
+`retrust diff`. Exports assess against the current local index, so retain the
+downloaded file as the decision record.
+
+**Compare and retain a shortlist.** **Compare** takes up to twelve candidates,
+each an order number or a vendor and model, plus optional firmware. The table
+puts verdict, score, the four pillars, blockers, open gaps, unpatched CVEs,
+KEV count, verdict stability and the main reason side by side, in the order
+PREFER, CONDITIONAL, VERIFY, AVOID: a score overridden by a blocker is never
+marked best. **Edit candidates or add another** changes the list and
+**Clear shortlist** empties it. The shortlist is the URL and nothing else:
+nothing is stored, so bookmark or send the link to keep it. **Export
+comparison** offers HTML, JSON and CSV; all three retain the original inputs,
+and HTML and JSON also include source provenance and weights. If only some
+candidates have firmware specified, a warning prompts you to make their scope
+comparable. Each candidate keeps its own assessment type, network exposure,
 operational consequence, verified reachability and fix status through the
-assessment-to-comparison link, editing and all three downloads. Expand that
-candidate's **Site details and fixes** to review or change these answers.
+assessment-to-comparison link, editing and the exports.
 
 **Use the supporting pages without learning the terminal.** Vendor profiles,
 advisory history, alternatives, supplier questions, response priority and past
 exploitation estimates explain their purpose and offer example lookups. Enter
-the manufacturer and model shown on your quotation, or use Explore to find the
-exact name. On a result page, expand **Change product** to revise the lookup.
-The timeline accepts a manufacturer alone for its full history.
+the manufacturer and model shown on your quotation, or use Search to find the
+exact name. On a result page, open **Inputs: product, firmware and network
+exposure** to revise the lookup. The timeline accepts a manufacturer alone for
+its full history.
 
-Supplier questions appear as numbered requests. Expand **Why ask this?** for
-the evidence, or use **Open text to copy** to paste the complete text into an
-email or quotation request. ReTrust does not send messages. Response priorities
-display their assumed access, automation and impact settings; agree those with
-your technical and operations teams before using the suggested timing. Related
-products require an engineer's suitability check. **Data & methodology** includes
-**Which page should I use?**, verdict definitions and a glossary.
+Response priorities display their assumed access, automation and impact
+settings; agree those with your technical and operations teams before using
+the suggested timing. Related products require an engineer's suitability
+check. **Methodology** includes **Which page should I use?**, verdict
+definitions, the scoring formula and a glossary.
+
+**It works without scripts.** Every page and form works with JavaScript off.
+One same-origin script, `/static/retrust.js`, only adds search suggestions,
+drawer focus handling, toasts, copy buttons, the shortcut hint and a loading
+note on slow hosts. It builds the page with `textContent`, makes no request
+except `/search.json` on this server, and is absent from exported reports,
+which stay self-contained and script-free. Fonts (IBM Plex) are bundled with
+the server; no page fetches anything from the network. Colour is never the
+only signal: every verdict carries a word and a shape.
 
 **It is deliberately small and deliberately local.** One standard-library HTTP
 server, no dependencies, and the security posture is the point rather than an
@@ -249,7 +305,7 @@ contract, and tests hold it:
 | GET only | no request body is ever read |
 | No path becomes a filename | routing is an explicit table, so traversal has no code to live in |
 | Nothing written, nothing executed | every request is the same function call the CLI makes |
-| Everything escaped | and a CSP of `default-src 'none'` on every response |
+| Everything escaped | and a CSP of `default-src 'none'; script-src 'self'; connect-src 'self'` (fonts and styles aside) on every response |
 | Host header checked | a DNS-rebinding page in a browser cannot read the index through it |
 | Nothing cached, nothing framed | `Cache-Control: no-store`, `frame-ancestors 'none'` |
 | Stalled connections dropped | stalled clients release their request workers |
@@ -885,8 +941,9 @@ environment that needs it.
 retrust screenshot reports/comparison.html --both-themes
 ```
 
-Documentation screenshots are regenerated by `make docs`, so they are always
-produced by the current code instead of hand-updated and left to drift.
+The published screenshot (`docs/assets/workspace-comparison.png`) is
+regenerated by `make screenshots` and the PDF guides by `make guide`, so they
+are always produced by the current code instead of hand-updated and left to drift.
 
 ## How the score is built
 

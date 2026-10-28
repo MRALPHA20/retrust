@@ -310,7 +310,10 @@ def test_incomplete_evidence_lookup_explains_required_identity(handler, path):
     _, _, page = _get(handler, path + '?vendor=Testco')
     assert 'role="alert"' in page
     assert 'Enter both the manufacturer and product/model' in page
-    assert 'find the product in Explore' in page
+    # Property kept: the recovery link names the nav item that exists ("Search")
+    # and points at the search page.
+    assert '<a href="/">find the product in Search</a>' in page
+    assert 'in Explore' not in page
 
 
 def test_timeline_names_the_combined_query_not_the_first_matched_variant(handler):

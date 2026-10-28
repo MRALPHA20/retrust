@@ -143,7 +143,7 @@ def build():
     shot=ROOT/'docs/assets/workspace-comparison.png'
     if shot.exists():
         im=Image(str(shot)); im.drawHeight=im.imageHeight*499/im.imageWidth; im.drawWidth=499
-        story += [im,Spacer(1,9),p('Actual local RT8 browser capture. Without the site and firmware evidence, ungated candidates require verification rather than receiving a completed recommendation.','Small')]
+        story += [im,Spacer(1,9),p('Actual local RT8 browser capture of the Compare page. Without the site and firmware evidence, ungated candidates require verification rather than receiving a completed recommendation.','Small')]
     story += [p('1. Start with the requisition. Enter an order number or vendor/model and, where known, firmware. Verify that the resolved product is the intended variant.'),
         p('2. Read the deciding evidence. Purchase blockers force AVOID. Otherwise missing attack access, credible OT consequence or firmware applicability produces VERIFY, a provisional range and specific checks.'),
         p('3. Resolve the checks with a network owner, operations engineer and supplier. Weight sensitivity is deferred while material evidence is missing. When inputs are resolved, it tests how much the result depends on weights.'),
