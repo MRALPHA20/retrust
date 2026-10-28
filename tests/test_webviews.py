@@ -94,9 +94,14 @@ def test_timeline_discloses_missing_dates_and_dataset_reference_date():
 def test_assessment_table_displays_probabilities_as_percentages():
     finding = Finding('CVE-2026-0001', 'A', 7.5, None, .039, False,
                       False, '<2', True, 'vendor_fix')
-    rendered = report._cve_table([finding])
-    assert '3.9%' in rendered and '>0.039<' not in rendered
-    assert 'No record shown' in rendered
+    # Property kept: a small probability is shown in a readable, rounded form and
+    # never as a raw fraction or zero. The design spec (5.2) replaced the
+    # percentage with a leading-dot decimal (.04), so that is what is asserted.
+    from retrust import evidenceview
+    rendered = evidenceview.evidence_card(
+        [finding], score.assess('PLC', [finding], {'A'}), evidenceview.EvidenceView())
+    assert 'EPSS .04' in rendered and '>0.039<' not in rendered
+    assert 'EPSS .00' not in rendered and '3.9%' not in rendered
     assessment = score.assess('PLC', [finding], {'A'})
     table = report._pillar_table(assessment, score.DEFAULT_WEIGHTS)
     assert 'Influence' in table and '%' in table
@@ -172,9 +177,13 @@ def _reviewed(html):
 
     The page also renders an uncapped per-vulnerability contributions table,
     so a whole-page search cannot tell the capped table from the full one.
+    The evidence card's table is `id="evidence-table"`; the legacy heading is
+    the fallback until report.py renders the evidence card (WP5a).
     """
     import re
-    start = html.index("<h3>Vulnerabilities to review</h3>")
+    start = html.find('id="evidence-table"')
+    if start < 0:
+        start = html.index("<h3>Vulnerabilities to review</h3>")
     end = html.find("</table>", start)
     return set(re.findall(r"CVE-\d{4}-\d{4,}", html[start:end]))
 
