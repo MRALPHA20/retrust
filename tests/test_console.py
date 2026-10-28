@@ -227,6 +227,19 @@ def test_overview_describes_an_index_that_has_data(db_path):
     assert "No index" not in text
 
 
+def test_a_long_index_path_is_shown_whole(tmp_path):
+    """Longer than the terminal on every platform: wrapped, it could not be copied."""
+    directory = tmp_path / "csaf"
+    directory.mkdir()
+    (directory / "a.json").write_text(json.dumps(ADVISORY))
+    path = tmp_path / ("a-deliberately-long-directory-name-" * 3) / "t.db"
+    path.parent.mkdir()
+    index.build(str(path), str(directory))
+    # Whole, on a line of its own, never cut across two.
+    assert any(line.strip() == str(path)
+               for line in console.overview(str(path)).splitlines())
+
+
 def test_overview_counts_product_entries_rather_than_claiming_distinct_products(tmp_path):
     """The same product under three advisories is three rows, not three products.
 

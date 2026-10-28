@@ -86,11 +86,11 @@ def terminal_width():
     return max(24, min(100, shutil.get_terminal_size((80, 24)).columns - 2))
 
 
-def prose(text, indent="  ", style=None):
+def prose(text, indent="  ", style=None, break_long_words=True):
     """Wrap before painting, so ANSI escapes never affect the layout."""
     wrapped = textwrap.fill(str(text), width=terminal_width(),
                             initial_indent=indent, subsequent_indent=indent,
-                            break_long_words=True, break_on_hyphens=False)
+                            break_long_words=break_long_words, break_on_hyphens=False)
     return paint(wrapped, style) if style else wrapped
 
 
@@ -119,7 +119,10 @@ def welcome(tag="OT procurement intelligence", rows=()):
              paint("  Evidence before commitment.", "label"),
              paint("  " + "─" * (terminal_width() - 2), "rule")]
     for name, reading in rows:
-        lines.append(prose(f"{name.upper() + '  ' if name else ''}{reading}"))
+        # Never split a token: a --db path cut in two cannot be copied back.
+        # One longer than the terminal keeps a line of its own instead.
+        lines.append(prose(f"{name.upper() + '  ' if name else ''}{reading}",
+                           break_long_words=False))
     return "\n".join(lines)
 
 

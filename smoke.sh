@@ -51,8 +51,11 @@ echo "== the index =="
 check 0 "bare retrust greets"                     -- $RETRUST
 check 0 "stats"                                   -- $RETRUST stats
 # Counted straight from the index, so a corpus refresh does not fail the check.
-entries=$($PY -c "import sqlite3; print(f'{sqlite3.connect(\"data/retrust.db\").execute(\"SELECT count(*) FROM product\").fetchone()[0]:,}')")
-contains "$entries" "stats counts the whole corpus" -- $RETRUST stats
+# Read-only: a plain connect would create an empty data/retrust.db when there
+# is none, and every later command would then read it as a real, empty index.
+entries=$($PY -c "import sqlite3; print(f'{sqlite3.connect(\"file:data/retrust.db?mode=ro\", uri=True).execute(\"SELECT count(*) FROM product\").fetchone()[0]:,}')" 2>/dev/null)
+# An empty pattern matches anything, so a missing count must not reach contains.
+contains "${entries:-no index at data/retrust.db}" "stats counts the whole corpus" -- $RETRUST stats
 
 echo
 echo "== interactive shell =="

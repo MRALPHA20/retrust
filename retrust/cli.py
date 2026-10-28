@@ -31,6 +31,7 @@ reproducible and a demo never depends on the network.
 import argparse
 import dataclasses
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -2058,10 +2059,14 @@ def _utf8_output():
     UnicodeEncodeError after doing all the work. A console, and every other
     platform, already gets UTF-8.
     """
+    if os.environ.get("PYTHONIOENCODING"):
+        return                      # an explicit choice outranks this default
     for stream in (sys.stdout, sys.stderr):
         encoding = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
         if encoding != "utf8" and hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+            # Keep the error handler: stderr's backslashreplace is what lets a
+            # surrogate-escaped path in an error message print at all.
+            stream.reconfigure(encoding="utf-8", errors=stream.errors)
 
 
 def main(argv=None):

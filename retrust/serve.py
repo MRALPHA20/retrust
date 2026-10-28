@@ -22,7 +22,6 @@ import http.server
 import json
 from pathlib import Path
 import os
-import select
 import socket
 import threading
 import time
@@ -1291,6 +1290,9 @@ def build_concurrent_handler(database, assessor, context, dossier, stats, proven
 
 
 LINGER_SECONDS = .1
+# Refused sockets drained at once. Beyond this, a flood of refusals is closed
+# straight away as it was before: losing some 503s beats stalling the accepts.
+LINGERING = 16
 
 
 def _linger(request):
@@ -1298,18 +1300,19 @@ def _linger(request):
 
     Closing with unread request bytes makes TCP answer with a reset, and the
     client then reports "connection aborted" instead of reading the 503 and
-    its Retry-After (Windows did so on most overloaded requests). This runs on
-    the accepting thread, so the wait is capped: a client that closes promptly
-    costs nothing, a silent one at most LINGER_SECONDS.
+    its Retry-After (Windows did so on most overloaded requests). A client
+    that closes promptly costs nothing, a silent one at most LINGER_SECONDS.
+    Socket timeouts rather than select(), which refuses descriptors >= 1024.
     """
     request.shutdown(socket.SHUT_WR)
     deadline = time.monotonic() + LINGER_SECONDS
     drained = 0
     while drained < 65536:
         remaining = deadline - time.monotonic()
-        if remaining <= 0 or not select.select([request], [], [], remaining)[0]:
+        if remaining <= 0:
             return
-        chunk = request.recv(4096)
+        request.settimeout(remaining)
+        chunk = request.recv(4096)          # socket.timeout is an OSError
         if not chunk:
             return
         drained += len(chunk)
@@ -1330,6 +1333,7 @@ class ConcurrentHTTPServer(http.server.HTTPServer):
         self._pool = ThreadPoolExecutor(max_workers=workers + 2, thread_name_prefix='retrust-web')
         self._calculations = threading.BoundedSemaphore(workers)
         self._slots = threading.BoundedSemaphore(workers * 2)
+        self._lingering = threading.BoundedSemaphore(LINGERING)
 
     def process_request(self, request, address):
         if not self._slots.acquire(blocking=False):
@@ -1345,10 +1349,15 @@ class ConcurrentHTTPServer(http.server.HTTPServer):
             try:
                 request.settimeout(1)
                 request.sendall(headers + body)
-                _linger(request)
             except OSError:
-                pass
-            finally:
+                self.shutdown_request(request)
+                return
+            # Drained off the accepting thread, which must never wait on a
+            # client: 40 silent refusals held a health probe for 4.3 s.
+            if self._lingering.acquire(blocking=False):
+                threading.Thread(target=self._linger_and_close, args=(request,),
+                                 name='retrust-linger', daemon=True).start()
+            else:
                 self.shutdown_request(request)
             return
         try:
@@ -1357,6 +1366,15 @@ class ConcurrentHTTPServer(http.server.HTTPServer):
             self._slots.release()
             self.shutdown_request(request)
             raise
+
+    def _linger_and_close(self, request):
+        try:
+            _linger(request)
+        except OSError:
+            pass
+        finally:
+            self.shutdown_request(request)
+            self._lingering.release()
 
     def _run_request(self, request, address):
         try:

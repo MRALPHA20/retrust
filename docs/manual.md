@@ -165,7 +165,7 @@ somewhere specific, or if you are scripting a build:
 
 ```bash
 # 1. CISA's OT advisories in CSAF format (~148 MB, 3,937 advisories)
-git clone --depth 1 --filter=blob:none --no-checkout \
+git clone -c core.autocrlf=false --depth 1 --filter=blob:none --no-checkout \
   https://github.com/cisagov/CSAF.git data/CSAF
 cd data/CSAF && git sparse-checkout set --cone csaf_files/OT && git checkout && cd ../..
 
