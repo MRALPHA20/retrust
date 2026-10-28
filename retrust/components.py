@@ -798,6 +798,7 @@ CSS = """
 .rt-card{box-sizing:border-box;padding:var(--s20);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-card)}
 
 .rt-tabs{display:flex;flex-wrap:wrap;gap:var(--s20);border-bottom:1px solid var(--rule)}
+@media(max-width:639px){.rt-tabs{flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:thin}.rt-tabs__tab{flex:0 0 auto}}
 .rt-tabs__tab{display:inline-flex;align-items:center;box-sizing:border-box;height:40px;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:var(--font-mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-decoration:none;transition:color var(--t-fast) ease-out}
 .rt-tabs__tab:hover{color:var(--text)}
 .rt-tabs__tab[aria-current]{color:var(--text);border-bottom-color:var(--action)}
