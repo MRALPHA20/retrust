@@ -1,21 +1,16 @@
 """WP0 contract layer: names exist, report CSS is unchanged, stubs are stubs."""
 
-import hashlib
 import inspect
 
 import pytest
 
 from retrust import components, design, evidenceview, report
 
-# Captured from git HEAD before the THEME/RESULT_CSS split.
-REPORT_CSS_SHA256 = (
-    "0e80c7d1e78a60d7a29f3565121a82d9ab16219d305bb232fbf7a7dd4fcb15f9")
-
-
-def test_report_css_is_byte_identical_after_the_split():
-    assert report.CSS == report.THEME + report.RESULT_CSS
-    assert len(report.CSS) == 6277
-    assert hashlib.sha256(report.CSS.encode()).hexdigest() == REPORT_CSS_SHA256
+def test_report_css_keeps_its_public_names():
+    # WP5a redefined CSS as the web-facing result stylesheet; the split names
+    # other modules import must still exist and be assembled from the parts.
+    assert report.THEME and report.RESULT_CSS and report.EXPORT_CSS
+    assert report.RESULT_CSS in report.CSS and report.THEME not in report.CSS
 
 
 def test_dark_theme_css_contains_every_spec_hex():

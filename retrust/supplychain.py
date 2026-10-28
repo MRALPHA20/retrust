@@ -379,13 +379,22 @@ def notes_for(index, vendor):
     ]
 
 
+# The two gate labels are a contract with the renderers: report.py tags a gate
+# with these labels RESTRICTION (a supplier restriction) rather than BLOCKER (a
+# fact about the product), and matching on the label is the only link between
+# them. One definition, so a reworded label cannot silently demote a sanctions
+# hit to an ordinary blocker on the page.
+COVERED_LIST_GATE = "Named on a covered list"
+SANCTIONS_GATE = "Sanctioned or export-restricted entity"
+
+
 def gates_for(index, vendor):
     """Hard gates raised by screening, in the shape score.check_gates expects."""
     blocking, _ = screen(index, vendor)
     gates = []
     for hit in blocking:
-        label = ("Named on a covered list" if hit["kind"] == "covered_list"
-                 else "Sanctioned or export-restricted entity")
+        label = (COVERED_LIST_GATE if hit["kind"] == "covered_list"
+                 else SANCTIONS_GATE)
         gates.append({
             "gate": label,
             "detail": f"{vendor} matches {hit['name']!r} on {hit['source']}"

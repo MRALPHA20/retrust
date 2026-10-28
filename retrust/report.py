@@ -4,144 +4,212 @@ The report is the deliverable a buyer attaches to a purchase decision, so every
 number shows the evidence behind it and every abstention is stated plainly. No
 external assets, so it can be emailed or opened offline.
 
-The look follows ISA-101, the control-room HMI standard the scoring rules
-already cite: the field stays low-chroma grey and saturated colour is spent only
-on a verdict, a gate or a meter fill, because a panel where everything is
-coloured is a panel where nothing stands out. Identifiers are set in monospace
-throughout -- they are part numbers, and should read like the plate they are
-stamped on.
+The look is the "Control Room" language (Design-spec-document.md): a low-chroma
+field, saturated colour spent only on a verdict, a gate or a gap, and every
+status carried by a glyph and a word as well as a hue. Identifiers are set in
+monospace throughout -- they are part numbers, and should read like the plate
+they are stamped on.
+
+One renderer serves two surfaces. With ``web=None`` it produces the static
+export (light theme, no controls, no links out); with a ``WebView`` it also
+emits the action bar, section nav, edit form, supplier questions and evidence
+drawers the server supplies. Nothing here needs JavaScript.
 """
 
 import html
+import inspect
 import re
 from dataclasses import dataclass, field as dc_field
 from datetime import date
+from urllib.parse import quote, quote_plus
 
-from . import identity, score
+from . import assets, components, design, evidenceview, identity, score, supplychain
 from .evidenceview import EvidenceView
 
-# One palette, written once and emitted three times. The bare :root is the
-# light default; the two dark selectors let the reader's OS preference and an
-# explicit data-theme each win, the latter being what the screenshot tool
-# stamps to shoot both themes deterministically.
-LIGHT = ("--field:#e6e9eb;--panel:#f2f4f5;--sunk:#d8dcdf;--rule:#b5bcc2;"
-         "--ink:#1a2026;--soft:#58626c;--faint:#56616b;"
-         "--prefer:#1c7a4a;--cond:#a86e00;--avoid:#b02a20")
-DARK = ("--field:#191e23;--panel:#222930;--sunk:#13171b;--rule:#38414a;"
-        "--ink:#e2e6ea;--soft:#9aa4ae;--faint:#a0aab4;"
-        "--prefer:#45b07a;--cond:#d79a26;--avoid:#e06054")
+# Export themes. The bare :root is the light default; the dark selector exists
+# only because retrust/screenshot.py stamps data-theme to shoot both themes
+# deterministically. There is deliberately no prefers-color-scheme rule: a
+# report is printed and emailed, and a reader's OS setting must not turn the
+# document they attach to a purchase order dark (spec 5.5).
+THEME = (design.theme_css(design.LIGHT, ":root")
+         + design.theme_css(design.DARK, ":root[data-theme=dark]"))
 
-# System faces only. A webfont would be a network fetch, and this file has to
-# render from a mail attachment on a machine that cannot reach the internet.
-FACES = ("--sans:ui-sans-serif,system-ui,sans-serif;"
-         "--mono:ui-monospace,SFMono-Regular,Menlo,monospace")
-
-# Sizing hangs off the root, not off body, so one number moves the whole scale.
-THEME = (f":root{{font-size:17px;{FACES};{LIGHT}}}\n"
-         f"@media(prefers-color-scheme:dark){{:root:not([data-theme=light]){{{DARK}}}}}\n"
-         f":root[data-theme=dark]{{{DARK}}}\n")
+# The names the pre-redesign stylesheet used. The web shell still carries rules
+# written against them until it is rebuilt on the new tokens, and a rule that
+# reads an undefined variable silently loses its colour.
+_LEGACY_ALIASES = (":root{--field:var(--ground);--panel:var(--surface);--sunk:var(--bar);"
+                   "--ink:var(--text);--soft:var(--text-2);--faint:var(--muted);"
+                   "--cond:var(--conditional)}\n")
 
 RESULT_CSS = """
-*{box-sizing:border-box}
-body{margin:0;background:var(--field);color:var(--ink);font:1rem/1.6 var(--sans)}
-.wrap{max-width:58rem;margin:0 auto;padding:2.5rem 1.4rem 4rem}
-h1{font-size:1.75rem;font-weight:700;letter-spacing:-.015em;
- margin:0 0 1.4rem;padding-bottom:.5rem;border-bottom:2px solid var(--rule)}
-h2{font-size:1.2rem;font-weight:700;letter-spacing:-.01em;
- margin:0 0 .8rem;padding-bottom:.4rem;border-bottom:1px solid var(--rule)}
-/* Engraved legends, as on the front of control gear. */
-.meta,th,td.na,.sources h2{font-family:var(--mono);font-size:.8125rem;font-weight:600;
- letter-spacing:.08em;text-transform:uppercase}
-.meta{color:var(--faint)}
-/* Identifiers: CVE and advisory ids, order numbers, version ranges. They do
-   not wrap -- half a part number at the end of a line is not a part number. */
-code,.id{font-family:var(--mono);font-size:.92em;font-variant-numeric:tabular-nums}
+.block{margin:var(--s32) 0 0}
+.rt-result{display:flex;flex-direction:column;gap:var(--s20)}
+.rt-result>*{margin:0}
+.rt-identity{display:flex;flex-direction:column;gap:var(--s8)}
+.rt-identity__eyebrow{margin:0;font-family:var(--font-mono);font-size:.75rem;line-height:1.3;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.rt-identity__title{margin:0;padding:0;border:0;font-family:var(--font-sans);font-weight:600;font-size:1.625rem;line-height:1.25;color:var(--text);overflow-wrap:anywhere}
+.rt-identity__meta{display:flex;flex-wrap:wrap;gap:var(--s8);margin:0;padding:0;list-style:none}
+.rt-supplier-review{margin:0;font-weight:600;color:var(--conditional)}
+.rt-alerts{display:flex;flex-direction:column;gap:var(--s12)}
+.rt-alert__src{display:block;margin-top:var(--s4);font-size:.75rem;color:var(--muted)}
+.rt-alert__actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s8);margin-top:var(--s12)}
+.rt-alert__detail summary{cursor:pointer;color:var(--action)}
+.rt-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--s20);align-items:start}
+@media (min-width:1100px){.rt-grid{grid-template-columns:minmax(380px,1fr) minmax(0,2fr)}}
+.rt-col{display:flex;flex-direction:column;gap:var(--s12);min-width:0}
+.rt-col>*{margin:0}
+.rt-score{display:flex;flex-direction:column;gap:18px;min-width:0}
+.rt-score__top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s12)}
+.rt-score__top .rt-panel-label{margin:0}
+.rt-score__hero{display:flex;align-items:baseline;gap:var(--s8);margin:0}
+.rt-score__num{font-family:var(--font-mono);font-weight:500;font-size:4.5rem;line-height:1;color:var(--text);font-variant-numeric:tabular-nums}
+@media (max-width:480px){.rt-score__num{font-size:3.5rem}}
+.rt-score__num--struck{text-decoration:line-through;text-decoration-thickness:1px;text-decoration-color:var(--muted)}
+.rt-score__of{font-family:var(--font-mono);font-size:.875rem;color:var(--muted)}
+.rt-score__lines{display:flex;flex-direction:column;gap:var(--s4);margin:0;padding:0;list-style:none}
+.rt-score__line{margin:0;font-family:var(--font-mono);font-size:.8125rem;line-height:1.4;color:var(--text-2)}
+.rt-score__line--verify{color:var(--verify)}
+.rt-score__line--muted{color:var(--muted)}
+.rt-score__help{margin:0;max-width:75ch;color:var(--text-2)}
+.rt-score__note{margin:0;font-size:.75rem;line-height:1.4;color:var(--muted)}
+.rt-band{display:flex;flex-direction:column;gap:var(--s6)}
+.rt-band__bar{position:relative;height:10px}
+.rt-band__segs{display:flex;height:100%;overflow:hidden;border-radius:var(--r-sm)}
+.rt-band__seg{display:block;height:100%;background:var(--raised)}
+.rt-band__seg--avoid{background:var(--avoid-track)}
+.rt-band__seg--conditional{background:var(--conditional-track)}
+.rt-band__seg--prefer{background:var(--prefer-track)}
+.rt-band__marker{position:absolute;top:-6px;width:2px;height:22px;margin-left:-1px;background:var(--text);transition:left var(--t-load) ease-out;animation:rt-band-slide var(--t-load) ease-out}
+.rt-band__marker--overridden{opacity:.45}
+.rt-band__range{position:absolute;top:0;height:10px;min-width:2px;box-sizing:border-box;border:1px solid var(--verify);background:repeating-linear-gradient(135deg,var(--verify) 0 2px,transparent 2px 5px);transition:left var(--t-load) ease-out,width var(--t-load) ease-out;animation:rt-band-grow var(--t-load) ease-out}
+@keyframes rt-band-slide{from{left:0}}
+@keyframes rt-band-grow{from{width:0}}
+.rt-band__axis{position:relative;height:1.3em;margin-top:var(--s4);font-family:var(--font-mono);font-size:.75rem;line-height:1.3;color:var(--muted)}
+.rt-band__tick{position:absolute;top:0;transform:translateX(-50%)}
+.rt-band__tick--first{transform:none}
+.rt-band__tick--last{transform:translateX(-100%)}
+.rt-band__legend{display:flex;flex-wrap:wrap;gap:var(--s4) var(--s16);margin:0;padding:0;list-style:none;font-family:var(--font-mono);font-size:.75rem;color:var(--muted)}
+.rt-strip{margin:0;padding:var(--s10) var(--s12);background:var(--bar);border:1px solid var(--rule);border-radius:var(--r-lg);color:var(--text)}
+.rt-strip__tick{font-family:var(--font-mono);font-weight:600;color:var(--prefer)}
+.rt-pillars{display:flex;flex-direction:column;gap:var(--s12);margin:0;padding:0;list-style:none}
+.rt-pillar{display:grid;grid-template-columns:28px minmax(0,1fr) auto;column-gap:var(--s10);align-items:start}
+.rt-pillar__key{font-family:var(--font-mono);font-weight:600;font-size:.875rem;line-height:1.3;color:var(--action)}
+.rt-pillar__main{min-width:0}
+.rt-pillar__head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:var(--s2) var(--s8);font-size:.8125rem;line-height:1.4}
+.rt-pillar__name{color:var(--text)}
+.rt-pillar__miss{color:var(--verify)}
+.rt-pillar__w{font-family:var(--font-mono);font-size:.75rem;color:var(--muted)}
+.rt-pillar__track{position:relative;display:block;height:6px;margin-top:var(--s6);background:var(--raised);border-radius:1px;overflow:hidden}
+.rt-pillar__fill{position:absolute;top:0;bottom:0;left:0;transition:width var(--t-load) ease-out;animation:rt-pillar-grow var(--t-load) ease-out}
+@keyframes rt-pillar-grow{from{width:0}}
+.rt-pillar__fill--prefer{background:var(--prefer)}
+.rt-pillar__fill--conditional{background:var(--conditional)}
+.rt-pillar__fill--avoid{background:var(--avoid)}
+.rt-pillar__fill--action{background:var(--action)}
+.rt-pillar__fill--neutral,.rt-pillar__fill--hatch{background:repeating-linear-gradient(90deg,var(--verify) 0 4px,transparent 4px 8px)}
+.rt-pillar__val{min-width:56px;font-family:var(--font-mono);font-size:.875rem;line-height:1.3;text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
+.rt-pillar--neutral .rt-pillar__val{color:var(--verify)}
+.rt-pillar__val--range{font-size:.75rem}
+.rt-pillar .evidence-details{margin-top:var(--s4)}
+.rt-pillar .ev{margin:var(--s4) 0 0}
+.rt-pillars__note{margin:0;font-family:var(--font-mono);font-size:.75rem;color:var(--verify)}
+.rt-gaps{display:flex;flex-direction:column;gap:var(--s12)}
+.rt-gaps h3,.rt-technical h3{margin:0;font-size:1.125rem;font-weight:600;line-height:1.3}
+.rt-gaps__lead{margin:0;max-width:75ch;color:var(--text-2)}
+.rt-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--s12);align-items:start}
+.rt-gap__action{margin:var(--s4) 0 0}
+.rt-context__body p{margin:0}
+.rt-context__body p+p,.rt-context__body ul+p,.rt-context__body p+ul{margin-top:var(--s8)}
+.rt-context__body ul{margin:0;padding-left:var(--s20);list-style:disc}
+.rt-context__body li+li{margin-top:var(--s4)}
+.rt-context .stability.fragile{color:var(--text)}
+.rt-static__title{margin:var(--s8) 0 var(--s4);font-weight:600}
+.assessment-more-info{border:1px solid var(--rule);border-radius:var(--r-card);background:var(--surface);padding:0 var(--s20)}
+.assessment-more-info>summary{cursor:pointer;font-weight:600}
+.assessment-more-info[open]>summary{margin-bottom:var(--s8)}
+.rt-technical{display:flex;flex-direction:column;gap:var(--s16);padding-bottom:var(--s20)}
+.block summary{min-height:44px;padding:var(--s10) 0;line-height:1.6}
+.block summary:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+.meta{font-family:var(--font-mono);font-size:.75rem;line-height:1.4;color:var(--muted)}
+code,.id{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 code{white-space:nowrap}
 .vector code{white-space:normal;overflow-wrap:anywhere}
 .evidence-details{border:0;padding:0;margin:0;background:transparent}
-.evidence-details summary{font-size:.875rem;color:var(--soft);cursor:pointer}
-summary{min-height:44px;padding:10px 0;line-height:1.6}
-summary:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-.evidence-details[open]>summary{margin-bottom:.5rem}
-/* The state stripe. This is the panel indicator lamp, and it is how a reader
-   skims a comparison of six candidates. --vc is set once per block, so the
-   verdict word and every meter fill below it inherit the same state colour. */
-.block{border-left:4px solid var(--vc);padding-left:1.3rem;margin:2.8rem 0 0}
-.verdict{display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;
- border:1px solid var(--rule);background:var(--panel);padding:1rem 1.2rem;margin:0 0 1rem}
-.verdict .v{font:700 1.55rem/1 var(--sans);color:var(--vc)}
-.verdict .s{font:600 1.2rem/1 var(--mono);font-variant-numeric:tabular-nums}
-.verdict .n{color:var(--soft);font-size:.9375rem}
-.verdict .review-required{flex-basis:100%;font:600 .95rem/1.5 var(--sans);color:var(--cond)}
-.score-scope{max-width:75ch;margin:.8rem 0 1.2rem}
-.assessment-more-info{margin:1rem 0}
-.assessment-more-info>summary{cursor:pointer;font-weight:600}
-.coverage{margin:1rem 0}.coverage summary{cursor:pointer;font-weight:600}
-.coverage p{max-width:75ch}
-.gate{border:1px solid var(--rule);border-left:3px solid var(--avoid);
- background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
-.gate b{color:var(--avoid)}
-.gate .src{display:block;margin-top:.3rem;font-size:.875rem;color:var(--faint)}
-.caution{border:1px solid var(--rule);border-left:3px solid var(--cond);
- background:var(--panel);padding:.8rem 1rem;margin:.6rem 0}
-.caution b{color:var(--cond)}
-.caution .src{display:block;margin-top:.3rem;font-size:.875rem;color:var(--faint)}
-.tw{overflow-x:auto;margin:1rem 0}
-.tw:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.evidence-details summary{min-height:0;padding:var(--s2) 0;font-size:.75rem;color:var(--action);cursor:pointer}
+.evidence-details[open]>summary{margin-bottom:var(--s4)}
+.ev{margin:var(--s4) 0 0;padding-left:var(--s16);list-style:disc;color:var(--text-2);font-size:.8125rem}
+.tw{overflow-x:auto;margin:var(--s12) 0}
 .table-scroll-hint{display:none}
-@media(max-width:700px){.tw table{min-width:760px}.table-scroll-hint{display:block;font-size:.875rem;color:var(--faint);padding:8px 12px;margin:0}}
-table{border-collapse:collapse;width:100%;font-size:.9375rem;background:var(--panel);
- border:1px solid var(--rule);font-variant-numeric:tabular-nums}
-th,td{text-align:left;padding:.55rem .75rem;border-bottom:1px solid var(--rule);vertical-align:top}
-th{line-height:1.4;white-space:nowrap;color:var(--soft);background:var(--sunk)}
-tbody tr:last-child td{border-bottom:none}
-th.n,td.n{text-align:right;font-family:var(--mono);white-space:nowrap}
-td.na{color:var(--faint)}
-td.rng{max-width:15rem;overflow-wrap:anywhere;color:var(--soft)}
+@media (max-width:700px){.tw table{min-width:760px}.table-scroll-hint{display:block;font-size:.75rem;color:var(--muted);padding:var(--s8) var(--s12);margin:0}}
+.block table,.tw table{width:100%;font-size:.8125rem;background:var(--surface);border:1px solid var(--rule);font-variant-numeric:tabular-nums}
+.block th,.block td,.tw th,.tw td{text-align:left;padding:var(--s8) var(--s12);border-bottom:1px solid var(--rule-row);vertical-align:top}
+.block th,.tw th{font-family:var(--font-mono);font-size:.75rem;font-weight:500;line-height:1.4;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;color:var(--muted);background:var(--bar)}
+.block tbody tr:last-child td,.tw tbody tr:last-child td{border-bottom:none}
+.block th.n,.block td.n,.tw th.n,.tw td.n{text-align:right}
+td.na{color:var(--muted)}
+td.rng{max-width:15rem;overflow-wrap:anywhere;color:var(--text-2)}
 tr.cand td:first-child{border-left:4px solid var(--vc)}
 td.v{color:var(--vc);font-weight:700}
-/* Meters read as one state per block rather than as a decorative accent. */
-.bar{display:block;position:relative;height:9px;min-width:5rem;overflow:hidden;
- background:var(--sunk);border:1px solid var(--rule)}
-.bar i{position:absolute;inset:0 auto 0 0;background:var(--vc,var(--faint))}
-/* Evidence quality is reported but not scored, so its meter stays inert grey. */
-tr.unscored{background:var(--sunk)}
-tr.unscored .bar{background:var(--panel)}
-tr.unscored .bar i{background:var(--faint)}
-.ev{margin:.2rem 0 0;padding-left:1.1rem;color:var(--soft);font-size:.9375rem}
-/* Secondary panels separate on a hairline and a recessed ground, the way a
-   mimic diagram does. It also survives the thing that happens to this file:
-   printed in grey scale and stapled to a purchase order. */
-.note{border:1px solid var(--rule);border-left:3px solid var(--cond);background:var(--panel);
- padding:.75rem 1rem;margin:.6rem 0;font-size:.9375rem;color:var(--soft)}
-.stability{border:1px solid var(--rule);border-left:3px solid var(--rule);background:var(--panel);
- padding:.7rem 1rem;margin:0 0 1rem;font-size:.9375rem;color:var(--soft)}
-/* Only the fragile case is coloured. A robust result is the normal condition,
-   and a green stripe on an AVOID block would read as a second, contradicting
-   verdict rather than as the weight note it is. */
-.stability.fragile{border-left-color:var(--cond)}
-.tnote{font-size:.875rem;color:var(--faint);margin:0 0 1rem}
-.sources{margin-top:3rem;font-size:.9375rem;color:var(--soft)}
-.sources h2{font-size:.875rem;color:var(--faint)}
-.sources dl{display:grid;grid-template-columns:auto 1fr;gap:.3rem 1.2rem;margin:.8rem 0}
-.sources dt{font-family:var(--mono);font-size:.875rem;color:var(--faint);
- font-variant-numeric:tabular-nums}
-.sources dd{margin:0}
-footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--rule);
- font-size:.875rem;color:var(--faint)}
+.bar{display:block;position:relative;height:6px;min-width:5rem;overflow:hidden;background:var(--raised)}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--vc,var(--muted))}
+tr.unscored{background:var(--bar)}
+tr.unscored .bar i{background:var(--muted)}
+.note{border:1px solid var(--rule);border-left:3px solid var(--conditional);background:var(--surface);border-radius:var(--r-lg);padding:var(--s12) var(--s16);margin:var(--s8) 0;color:var(--text-2)}
+.tnote{font-size:.8125rem;color:var(--muted);margin:0 0 var(--s12)}
 """
 
-# Assembled here so existing callers are unchanged. The split exists so the
-# redesign can put design/components CSS between the two (Redesign-plan A2).
-CSS = THEME + RESULT_CSS
+# Everything that exists only because the export is a document: the page frame,
+# the glossary that replaces tooltips, and print behaviour.
+EXPORT_CSS = """
+.wrap{padding-top:var(--s32);padding-bottom:var(--s48)}
+.rt-export-title{margin:var(--s8) 0 0;padding:0;border:0;font-family:var(--font-sans);font-weight:600;font-size:1.625rem;line-height:1.25;color:var(--text)}
+.sources{margin-top:var(--s48);color:var(--text-2)}
+.sources h2,.rt-glossary h2{margin:0 0 var(--s12);font-family:var(--font-mono);font-weight:500;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.sources dl{display:grid;grid-template-columns:auto 1fr;gap:var(--s4) var(--s20);margin:var(--s12) 0}
+.sources dt{font-family:var(--font-mono);font-size:.8125rem;color:var(--muted)}
+.sources dd{margin:0}
+.rt-glossary{margin-top:var(--s32);color:var(--text-2)}
+.rt-glossary dl{display:grid;grid-template-columns:minmax(8rem,max-content) 1fr;gap:var(--s6) var(--s20);margin:0}
+.rt-glossary dt{font-family:var(--font-mono);font-size:.8125rem;font-weight:600;color:var(--text)}
+.rt-glossary dd{margin:0}
+footer{margin-top:var(--s32);padding-top:var(--s16);border-top:1px solid var(--rule);font-size:.75rem;color:var(--muted)}
+@media print{
+.wrap{max-width:none;padding:0}
+.rt-grid{display:block}
+.rt-grid>*+*{margin-top:var(--s20)}
+.rt-card,.rt-alert,.rt-gap,.rt-context{break-inside:avoid}
+.block{break-inside:auto}
+.assessment-more-info::details-content{content-visibility:visible;display:block}
+.tw{overflow:visible}
+}
+"""
+
+# The legacy stylesheet name, now the web-facing result CSS: tokens (dark, as
+# the web shell is), faces, base, components and the result rules. The web
+# page assembles its own stack in webui.py; this exists so importers and the
+# interim shell keep working.
+CSS = (design.theme_css(design.DARK, ":root") + _LEGACY_ALIASES
+       + assets.font_face_css(served=True) + design.BASE_CSS
+       + components.CSS + evidenceview.CSS + RESULT_CSS)
+
+
+def export_css():
+    """The stylesheet of the self-contained export, in the order spec 5.5 needs.
+
+    Order is load-bearing: tokens before anything that reads them, base before
+    components, and EXPORT_CSS last so its print rules win.
+    """
+    return (THEME + assets.font_face_css(served=False) + design.BASE_CSS
+            + components.CSS + evidenceview.CSS + RESULT_CSS + EXPORT_CSS)
 
 
 @dataclass
 class WebView:
     """Web-only context for the result renderer; None means export/static mode.
 
-    Not used yet: later work packages thread it through the composites so one
-    renderer serves both the page and the download.
+    The server builds one per result page and the composites read it. Every
+    field is optional: an empty WebView renders the web variant with nothing
+    extra in it.
     """
 
     actions_html: str = ""      # export menu / action buttons (components output)
@@ -151,7 +219,8 @@ class WebView:
     evidence: EvidenceView = dc_field(default_factory=EvidenceView)
     # advisory id -> (title, released date string)
     advisories: dict = dc_field(default_factory=dict)
-    # e.g. {"kev_loaded": bool, "screening_loaded": bool}
+    # {"kev_loaded": bool, "screening_loaded": bool}: which lists actually ran.
+    # A missing key means "not known", which is not the same as "not loaded".
     checks: dict = dc_field(default_factory=dict)
     order_number: str = ""
     version: str = ""
@@ -162,6 +231,8 @@ class WebView:
 # and they should read as part numbers there as well. Substituted after
 # escaping, and matching bare id shapes only, so it cannot introduce markup.
 IDENTIFIER = re.compile(r"\b((?:CVE|ICSA|ICSMA|SSA|VDE)-[0-9][0-9A-Z-]*[0-9A-Z])")
+_CVE_ID = re.compile(r"\bCVE-[0-9]{4}-[0-9]{4,}\b")
+_URL_SCHEME = re.compile(r"https?://", re.I)
 
 # Derived from the one network registry, so a new choice cannot appear here
 # under a name the model does not score.
@@ -177,17 +248,29 @@ NETWORK_TOKEN = re.compile(r"(?<=Network context: )[a-z_]+")
 # without anyone remembering to update a second list.
 PILLAR_KEYS = {spec.name: spec.key for spec in score.PILLARS}
 
+# The single letters the spec uses on the meters. Falls back to the first
+# letter of the config key for a pillar added later.
+PILLAR_LETTERS = {"exposure": "E", "patchability": "P", "vendor_practice": "V",
+                  "certification": "C"}
+
 
 def _weight_share(pillar_name, weights, active_pillars=None):
-    """The share this pillar carries, or None when it is not scored at all."""
+    """The exponent this pillar carries in the composite, or None if unknown.
+
+    score._composite raises every pillar to weight / (sum of ALL the pillar
+    weights): a pillar with no evidence is not dropped, it enters at
+    MISSING_PILLAR with its full weight. So the share is normalised over the
+    whole set. The old code renormalised over the pillars that happened to be
+    scored, which showed a larger share than the model applies the moment one
+    pillar was missing. `active_pillars` is accepted and ignored so existing
+    callers keep working; it must not change the answer.
+    """
     key = PILLAR_KEYS.get(pillar_name)
     if key is None or not weights:
         return None
-    total = (sum(weights.values()) if active_pillars is None else
-             sum(weights.get(PILLAR_KEYS[p.name], 0)
-                 for p in active_pillars if p.name in PILLAR_KEYS and p.scored))
-    total = total or 1.0
+    total = sum(weights.get(spec.key, 0) for spec in score.PILLARS) or 1.0
     return weights.get(key, 0.0) / total
+
 
 def _footer_sources(provenance, weights, config_source):
     """Provenance and weights, so a reader can reproduce or dispute the result."""
@@ -205,15 +288,17 @@ def _footer_sources(provenance, weights, config_source):
         shown = ", ".join(f"{k} {v / total:.1%}" for k, v in weights.items())
         parts.append(f'<p>Weights ({_esc(config_source)}): {_esc(shown)}. '
                      'Change them in the config file and re-run; the sensitivity '
-                     'figures above show how much that would matter. Parts without '
-                     'measurable evidence are excluded and the remaining weights are '
-                     'adjusted.</p>')
+                     'figures above show how much that would matter. A part with no '
+                     'measurable evidence is not dropped: it enters the formula as a neutral '
+                     f'{score.MISSING_PILLAR:.0f} at its full weight, and the other weights '
+                     'are not adjusted.</p>')
     parts.append("</section>")
     return "".join(parts)
 
 
-VERDICT_COLOR = {"VERIFY": "var(--cond)", "PREFER": "var(--prefer)", "CONDITIONAL": "var(--cond)",
-                 "AVOID": "var(--avoid)", "NOT ASSESSED": "var(--faint)"}
+VERDICT_COLOR = {"VERIFY": "var(--verify)", "PREFER": "var(--prefer)",
+                 "CONDITIONAL": "var(--conditional)", "AVOID": "var(--avoid)",
+                 "NOT ASSESSED": "var(--muted)"}
 VERDICT_HELP = {
     "VERIFY": "More checks are needed before deciding. Ask your technical team to confirm the network access, operational consequences and firmware status listed below. The range shows how the score could change.",
     "PREFER": "A candidate for your shortlist. Complete the checks below before approving the purchase.",
@@ -246,9 +331,49 @@ CAUTION_HELP = {
         "Ask the supplier whether this product is affected and what protection is possible."),
 }
 # A verdict this table does not know is an unknown state, and an unknown state
-# is inert -- not --soft, which is secondary text everywhere else in the sheet
-# and would light a stripe in a colour that means nothing.
+# is inert -- not a verdict hue, which would light a stripe in a colour that
+# means something else.
 INERT = VERDICT_COLOR["NOT ASSESSED"]
+
+# Which gate labels are supplier restrictions rather than facts about the
+# product. The labels belong to supplychain.gates_for; equality on the shared
+# constants is the whole link between the two files.
+RESTRICTION_GATES = frozenset({supplychain.COVERED_LIST_GATE, supplychain.SANCTIONS_GATE})
+
+# Phrases in an assessment's verification list, and the form field that closes
+# each. The checklist words some questions differently from the form. Moved
+# here from serve.py (where it is OPEN_QUESTIONS) so the page that draws the
+# gap cards and the code that decides which form fields are still open read
+# one table. Same shape and order as the original, so serve can alias it.
+GAP_RULES = (
+    ('"Network exposure"', 'network_exposure'),
+    ('"Attack reachability (A)"', 'interface'),
+    ('"Exploitation prerequisites"', 'prerequisites'),
+    ('"Credible operational impact (H)"', 'consequence'),
+    ('"Is the firmware you are getting already fixed?"', 'remediation'),
+    ('exact firmware version', 'version'),
+    ('Re-check the version', 'version'),
+    ('Resolve the conflict', 'version'),
+)
+# Checklist items no form field can close: the evidence itself is missing.
+# Same phrases as serve.DATA_GAPS.
+DATA_GAP_RULES = (
+    ('Exploitation data is missing', 'T', 'Exploitation data missing'),
+    ('CVSS base score is missing', 'I', 'CVSS score missing'),
+    ('Review the attack requirements', 'A', 'Attack requirements unsettled'),
+)
+# Tag and title per form field. The tag is the model term the answer feeds, so
+# the card says which factor of Z stays a range until it is closed.
+GAP_TAGS = {'network_exposure': 'ZONE', 'interface': 'A', 'prerequisites': 'A',
+            'consequence': 'H', 'remediation': 'U', 'version': 'FW'}
+GAP_TITLES = {
+    'network_exposure': 'Network exposure not given',
+    'interface': 'Attack reachability not verified',
+    'prerequisites': 'Exploitation prerequisites not verified',
+    'consequence': 'Operational impact not given',
+    'remediation': 'Firmware fix status not given',
+    'version': 'Firmware version needs checking',
+}
 
 
 def _esc(text):
@@ -277,6 +402,17 @@ def _labels(escaped):
     """Read a stored enum back as the label the form offered for it."""
     return NETWORK_TOKEN.sub(
         lambda found: _esc(NETWORK_LABELS.get(found.group(), found.group())), escaped)
+
+
+def _plain(text, static):
+    """Source text as shown: the export carries identifiers, not URLs.
+
+    A downloaded report is self-contained and is checked for any scheme
+    prefix, so a gate source that is a web address loses only its "https://".
+    The host and path -- what a reader would type -- stay.
+    """
+    text = str(text)
+    return _URL_SCHEME.sub("", text) if static else text
 
 
 def plural(count, singular, many=None):
@@ -398,52 +534,209 @@ def _calculation_summary(assessment):
     return ''.join(parts)
 
 
-def _assessment_block(assessment, resolution=None, findings=(), stability=None,
-                      weights=None, tools='', hint=True):
-    colour = VERDICT_COLOR.get(assessment.verdict, INERT)
-    # Declared once on the block. The stripe, the verdict word and every meter
-    # fill below all read --vc, so a product cannot end up half one state and
-    # half another the way six separate inline colours eventually would.
-    parts = [f'<section class="block" style="--vc:{colour}">'
-             f'<h2>{_esc(assessment.product)}</h2>']
+# ---------------------------------------------------------------------------
+# Result composites
+# ---------------------------------------------------------------------------
 
+def _score_text(value):
+    return components.fmt_score(value)
+
+
+def _range_text(low, high):
+    """A score range at one decimal on both ends: "41.3–78.2".
+
+    components.fmt_range prints whole numbers bare ("41–78"), which suits a
+    badge; beside a headline numeral the two ends must read at the same
+    precision as the numeral itself.
+    """
+    return f"{_score_text(low)}{RANGE_DASH}{_score_text(high)}"
+
+
+def _bounds(assessment):
+    """(low, high) of the score; both None when there is no score."""
     if assessment.score is None:
+        return None, None
+    low = assessment.score_min if assessment.score_min is not None else assessment.score
+    high = assessment.score_max if assessment.score_max is not None else low
+    return low, high
+
+
+def _is_unidentified(assessment, resolution):
+    return (resolution is not None and not resolution.resolved) or not assessment.resolved
+
+
+def _firmware(assessment, web):
+    """The firmware version this result was scored for, or "".
+
+    The web page passes it; the export recovers it from the assessment's own
+    vector (FW:<version> | FW:unset), the record of what was actually scored.
+    """
+    if web is not None and web.version:
+        return web.version
+    found = re.search(r"/FW:([^/]+)", assessment.vector or "")
+    return "" if not found or found.group(1) == "unset" else found.group(1)
+
+
+def _vendor(resolution):
+    """The vendor of the matched product when every match agrees, else ""."""
+    if resolution is None or not resolution.resolved:
+        return ""
+    vendors = {m.vendor for m in resolution.matches if getattr(m, "vendor", "")}
+    return next(iter(vendors)) if len(vendors) == 1 else ""
+
+
+def _identity(assessment, resolution, findings, web):
+    """Eyebrow, title and meta chips.
+
+    Category ("CONTROLLER") and service life are in the spec but not in the
+    data, so they are omitted rather than invented. A chip is dashed when the
+    value behind it is not confirmed: a firmware whose ranges could not be
+    decided, a firmware not given, a zone not given.
+    """
+    vendor = _vendor(resolution)
+    eyebrow = "Assessment" + (" · " + vendor if vendor else "")
+    chips = []
+    order = web.order_number if web is not None else ""
+    if order:
+        chips.append(components.meta_chip(
+            "Order no. " + order,
+            unverified=_is_unidentified(assessment, resolution)))
+    version = _firmware(assessment, web)
+    if version:
+        undecided = any(not f.decided for f in findings)
+        chips.append(components.meta_chip("FW " + version, unverified=undecided))
+    else:
+        chips.append(components.meta_chip("FW not given", unverified=True))
+    zone = NETWORK_LABELS.get(assessment.network_exposure)
+    if zone:
+        chips.append(components.meta_chip("Zone: " + zone))
+    else:
+        chips.append(components.meta_chip("Zone: not given", unverified=True))
+    parts = ['<header class="rt-identity">',
+             f'<p class="rt-identity__eyebrow">{_esc(eyebrow)}</p>',
+             f'<h2 class="rt-identity__title">{_esc(assessment.product)}</h2>',
+             '<ul class="rt-identity__meta">'
+             + "".join(f"<li>{chip}</li>" for chip in chips) + "</ul>"]
+    # In the header, not the score card: it is the first thing said about the
+    # product, and a reader who stops after the title must still see it.
+    if assessment.cautions or assessment.third_party_count:
+        parts.append('<p class="rt-supplier-review"><span aria-hidden="true">'
+                     f'{components.GLYPH[components.CONDITIONAL]}</span> '
+                     'Supplier verification required before purchase</p>')
+    parts.append("</header>")
+    return "".join(parts)
+
+
+def _segments(bands):
+    """[(start, end, verdict)] from the configured thresholds, lowest first."""
+    ordered = sorted(((float(t), str(v)) for t, v in (bands or score.BANDS)),
+                     key=lambda band: band[0])
+    segments = []
+    for index, (threshold, verdict) in enumerate(ordered):
+        end = ordered[index + 1][0] if index + 1 < len(ordered) else 100.0
+        segments.append((0.0 if index == 0 else threshold, end, verdict))
+    return segments
+
+
+def _verdict_of(value, bands):
+    """The band a displayed (one-decimal) value falls in, as score.assess bands it."""
+    for threshold, verdict in sorted(bands or score.BANDS, key=lambda band: -band[0]):
+        if round(value, 1) >= threshold:
+            return verdict
+    return "AVOID"
+
+
+def _tone(verdict):
+    key = str(verdict).lower()
+    return key if key in ("prefer", "conditional", "avoid") else "other"
+
+
+def _pct(value):
+    return f"{max(0.0, min(100.0, float(value))):.2f}".rstrip("0").rstrip(".")
+
+
+def _band_bar(assessment, bands):
+    """The three-band track with a marker, or a hatched range when provisional."""
+    segments = _segments(bands)
+    low, high = _bounds(assessment)
+    spans = "".join(
+        f'<span class="rt-band__seg rt-band__seg--{_tone(verdict)}" '
+        f'style="width:{_pct(end - start)}%"></span>'
+        for start, end, verdict in segments)
+    names = ", ".join(f"{verdict} {start:g} to {end:g}" for start, end, verdict in segments)
+    marker = ""
+    if low is None:
+        state = "No numeric score."
+    elif assessment.provisional:
+        marker = (f'<span class="rt-band__range" style="left:{_pct(low)}%;'
+                  f'width:{_pct(high - low)}%"></span>')
+        state = f"Provisional range {low:.1f} to {high:.1f}."
+    else:
+        overridden = " rt-band__marker--overridden" if assessment.gates else ""
+        marker = (f'<span class="rt-band__marker{overridden}" '
+                  f'style="left:{_pct(low)}%"></span>')
+        state = (f"Score {low:.1f}, overridden by a purchase blocker."
+                 if assessment.gates else f"Score {low:.1f}.")
+    label = f"Score bands: {names}. {state}"
+    ticks = [f'<span class="rt-band__tick rt-band__tick--first">{segments[0][0]:g}</span>']
+    for start, _end, _verdict in segments[1:]:
+        ticks.append(f'<span class="rt-band__tick" style="left:{_pct(start)}%">{start:g}</span>')
+    ticks.append(f'<span class="rt-band__tick rt-band__tick--last" style="left:100%">'
+                 f'{segments[-1][1]:g}</span>')
+    legend = "".join(
+        f'<li>{_esc(components.GLYPH.get(str(verdict).upper(), "–"))} {_esc(verdict)} '
+        f'{start:g}{RANGE_DASH}{end:g}</li>'
+        for start, end, verdict in segments)
+    return ('<div class="rt-band"><div class="rt-band__bar" role="img" '
+            f'aria-label="{_esc(label)}"><span class="rt-band__segs">{spans}</span>{marker}</div>'
+            f'<div class="rt-band__axis" aria-hidden="true">{"".join(ticks)}</div>'
+            f'<ul class="rt-band__legend">{legend}</ul></div>')
+
+
+def _hero(assessment, resolution):
+    """The numeral and the lines beneath it, per state."""
+    low, high = _bounds(assessment)
+    lines = []
+    if low is None:
         # Two very different states share "no score": a product we could not
         # assess, and one a gate disqualified outright. Saying "not enough data"
         # for the second is wrong -- the tool decided, and the reason is the
-        # gate shown below.
+        # gate shown above.
         reason = ("disqualified below" if assessment.gates
                   else "product not identified" if resolution is not None and not resolution.resolved
                   else "no applicable risk evidence" if resolution is not None and resolution.resolved
                   else "not enough data to assess")
-        summary = f'<span class="s">no score</span><span class="n">{reason}</span>'
+        hero = ('<p class="rt-score__hero"><span class="rt-score__num" '
+                'aria-label="No numeric score">&mdash;</span></p>')
+        lines.append(("", reason))
+        return hero, lines
+    struck = " rt-score__num--struck" if assessment.gates else ""
+    hero = ('<p class="rt-score__hero">'
+            f'<span class="rt-score__num{struck}">{_esc(_score_text(low))}</span>'
+            '<span class="rt-score__of">/ 100</span></p>')
+    if assessment.gates:
+        lines.append(("muted", "numeric score, overridden"))
+    if assessment.provisional:
+        lines.append(("verify", "Provisional range " + _range_text(low, high)))
+    if getattr(assessment, "evidence_free", False):
+        detail = ("product not identified" if not assessment.resolved
+                  else "no applicable vulnerability recorded")
+    elif getattr(assessment, "cleared_count", 0):
+        detail = ("firmware outside the affected range of all "
+                  f"{assessment.cleared_count} recorded CVE(s)")
     else:
         noun = 'vulnerability' if assessment.findings_count == 1 else 'vulnerabilities'
         detail = f'{assessment.findings_count} known {noun} included'
         if assessment.undecided_count:
-            detail += f' &middot; {assessment.undecided_count} need review'
-        # The range only; "Provisional range" is said in the detail line below,
-        # so repeating the note beside the number would say it twice.
-        shown_score = score_label(assessment, note='')
-        if getattr(assessment, "evidence_free", False):
-            detail = ("product not identified" if not assessment.resolved
-                      else "no applicable vulnerability recorded")
-        elif getattr(assessment, "cleared_count", 0):
-            detail = (f'firmware outside the affected range of all'
-                      f' {assessment.cleared_count} recorded CVE(s)')
-        if assessment.provisional:
-            detail = "Provisional range · " + detail
-        summary = (f'<span class="s">{shown_score}/100</span>'
-                   f'<span class="n">{detail}</span>')
+            detail += f' · {assessment.undecided_count} need review'
+    lines.append(("muted", detail))
+    return hero, lines
 
-    supplier_review = bool(assessment.cautions or assessment.third_party_count)
-    if supplier_review:
-        summary += '<span class="review-required">Supplier verification required before purchase</span>'
-    parts.append(f'<div class="verdict"><span class="v">'
-                 f'{_esc(assessment.verdict)}</span>{summary}</div>')
-    explanation = VERDICT_HELP.get(assessment.verdict, "Review the evidence below.")
+
+def _explanation(assessment, resolution):
+    text = VERDICT_HELP.get(assessment.verdict, "Review the evidence below.")
     if getattr(assessment, "evidence_free", False) and resolution is not None:
-        explanation = (
+        text = (
             "The product was identified, but no advisory records an affected vulnerability "
             "for it, so the range spans everything the missing evidence allows and its low "
             "end is the headline. Your answers are recorded. This is often the vendor's "
@@ -457,140 +750,619 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             "data, so nothing about it is measured and the range spans everything that allows. "
             "Check the manufacturer order number, vendor and model against the equipment "
             "nameplate, then assess it again.")
-    parts.append(f'<p class="result-help">{_esc(explanation)}</p>')
+    return text
+
+
+def _pillar_fill_class(pillar_key, value, bands):
+    if pillar_key == "exposure":
+        return _tone(_verdict_of(value, bands))
+    # Spec 4.9 gives P and V the action hue for ordinary values; certification
+    # is not mentioned and is drawn the same so the three read as one family.
+    return "action"
+
+
+def _evidence_list(pillar, static):
+    items = "".join(f"<li>{_labels(_esc(e))}</li>" for e in pillar.evidence)
+    if not items:
+        return ""
+    if static:
+        return f'<ul class="ev">{items}</ul>'
+    return ('<details class="evidence-details"><summary>Show supporting evidence'
+            f'</summary><ul class="ev">{items}</ul></details>')
+
+
+def _neutral_pillars(assessment):
+    """Main pillars that entered the composite as the neutral placeholder.
+
+    Only when a composite exists: a gated product with no score never ran the
+    formula, so claiming "neutral 50 applied" there would describe a
+    calculation that did not happen.
+    """
+    if assessment.score is None:
+        return []
+    by_name = {p.name: p for p in assessment.pillars}
+    neutral = []
+    for spec in score.PILLARS:
+        pillar = by_name.get(spec.name)
+        if pillar is None or pillar.scored:
+            continue
+        if (spec.key == "exposure" and assessment.provisional
+                and assessment.exposure_min is not None):
+            continue            # drawn as a range, not as the placeholder
+        neutral.append(spec)
+    return neutral
+
+
+def _letter(spec):
+    return PILLAR_LETTERS.get(spec.key, spec.key[:1].upper())
+
+
+def _weight_text(spec, weights):
+    share = _weight_share(spec.name, weights)
+    return None if share is None else components.fmt_weight(share)
+
+
+def _pillar_meters(assessment, weights, bands, static):
+    """Four rows, E P V C: name, weight, track and fill, value.
+
+    The weight is the exponent score._composite applies (weight over the sum of
+    all four), including for a pillar that had no evidence: that pillar enters
+    at the neutral placeholder with its full weight, and is drawn as exactly
+    that -- a dashed violet half-bar and "50*" -- never as an absence.
+    """
+    if not assessment.pillars:
+        return ""
+    by_name = {p.name: p for p in assessment.pillars}
+    neutral = {spec.key for spec in _neutral_pillars(assessment)}
+    rows, notes = [], []
+    for spec in score.PILLARS:
+        pillar = by_name.get(spec.name)
+        if pillar is None:
+            continue
+        label = PILLAR_LABELS.get(spec.name, spec.name)
+        weight = _weight_text(spec, weights)
+        weight_html = f'<span class="rt-pillar__w">w {weight}</span>' if weight else ""
+        suffix = ""
+        modifier = ""
+        value_class = "rt-pillar__val"
+        if (spec.key == "exposure" and assessment.provisional
+                and assessment.exposure_min is not None
+                and assessment.exposure_max is not None):
+            low, high = assessment.exposure_min, assessment.exposure_max
+            tone = _pillar_fill_class(spec.key, low, bands)
+            fill = (f'<span class="rt-pillar__fill rt-pillar__fill--{tone}" '
+                    f'style="width:{_pct(low)}%"></span>'
+                    '<span class="rt-pillar__fill rt-pillar__fill--hatch" '
+                    f'style="left:{_pct(low)}%;width:{_pct(high - low)}%"></span>')
+            value = _range_text(low, high)
+            value_class += " rt-pillar__val--range"
+        elif spec.key in neutral:
+            modifier = " rt-pillar--neutral"
+            fill = ('<span class="rt-pillar__fill rt-pillar__fill--neutral" '
+                    'style="width:50%"></span>')
+            value = f"{score.MISSING_PILLAR:.0f}*"
+            suffix = '<span class="rt-pillar__miss"> · missing → neutral</span>'
+            notes.append((_letter(spec), weight))
+        elif not pillar.scored:
+            modifier = " rt-pillar--unmeasured"
+            fill = ""
+            value = "&mdash;"
+            suffix = '<span class="rt-pillar__miss"> · not measured</span>'
+        else:
+            tone = _pillar_fill_class(spec.key, pillar.score, bands)
+            fill = (f'<span class="rt-pillar__fill rt-pillar__fill--{tone}" '
+                    f'style="width:{_pct(pillar.score)}%"></span>')
+            value = _esc(_score_text(pillar.score))
+        rows.append(
+            f'<li class="rt-pillar{modifier}">'
+            f'<span class="rt-pillar__key">{_esc(_letter(spec))}</span>'
+            '<div class="rt-pillar__main"><p class="rt-pillar__head">'
+            f'<span class="rt-pillar__name">{_esc(label)}{suffix}</span>{weight_html}</p>'
+            f'<span class="rt-pillar__track" aria-hidden="true">{fill}</span>'
+            f'{_evidence_list(pillar, static)}</div>'
+            f'<span class="{value_class}">{value}</span></li>')
+    if not rows:
+        return ""
+    foot = ""
+    if notes:
+        known = [(letter, w) for letter, w in notes if w]
+        if len(notes) == 1 and known:
+            said = f"*neutral {score.MISSING_PILLAR:.0f} applied at weight {known[0][1]}"
+        elif known and len(known) == len(notes):
+            listed = ", ".join(f"{w} ({letter})" for letter, w in known)
+            said = f"*neutral {score.MISSING_PILLAR:.0f} applied at weight {listed}"
+        else:
+            said = f"*neutral {score.MISSING_PILLAR:.0f} applied at the pillar's full weight"
+        foot = f'<p class="rt-pillars__note">{_esc(said)}</p>'
+    return f'<ul class="rt-pillars">{"".join(rows)}</ul>{foot}'
+
+
+def _list_card(title, body_html):
+    return components.context_card(title, body_html)
+
+
+def _checks_for(web, checks):
+    if web is not None:
+        return web.checks or {}
+    return checks or {}
+
+
+def _blocker_free(assessment, checks):
+    """The "no blockers" strip, or the cards that say a check did not run.
+
+    Honesty rule: a tick claims only what ran. KEV status needs the KEV list
+    loaded (without it nothing can be marked known-exploited, so "no KEV
+    blocker" would be vacuously true), and a supplier restriction needs the
+    screening list. A list reported as not loaded produces a context card
+    instead of a tick; a list whose state is unknown (key absent) produces
+    neither a claim nor a card.
+    """
+    if assessment.gates or assessment.score is None or assessment.evidence_free:
+        return ""
+    kev, screening = checks.get("kev_loaded"), checks.get("screening_loaded")
+    claims = []
+    if kev is True:
+        claims.append("No applicable KEV.")
+    if screening is True:
+        claims.append("No supplier restriction configured.")
+    cards = []
+    if kev is False:
+        cards.append(components.context_card(
+            "KEV list not loaded",
+            "<p>Known-exploited status was not checked. No CVE could be marked as "
+            "known exploited, so the absence of a KEV blocker here proves nothing. "
+            "Load the CISA KEV snapshot and assess again.</p>"))
+    if screening is False:
+        cards.append(components.context_card(
+            "Supplier screening list not loaded",
+            "<p>Covered-list and sanctions screening did not run, so the absence of "
+            "a supplier restriction here proves nothing. Load the screening lists "
+            "and assess again.</p>"))
+    strip = ""
+    if claims:
+        lead = ("No mandatory blockers." if not cards
+                else "No mandatory blockers in the checks that ran.")
+        strip = ('<p class="rt-strip"><span class="rt-strip__tick" aria-hidden="true">'
+                 f'{components.GLYPH[components.OK]}</span> '
+                 f'<span>{_esc(lead)} {_esc(" ".join(claims))}</span></p>')
+    return strip + "".join(cards)
+
+
+def _no_evidence_card(assessment, resolution, static):
+    """The way forward when nothing about the product could be weighed."""
+    gated = bool(assessment.gates)
+    if gated or not (getattr(assessment, "evidence_free", False)
+                     or _is_unidentified(assessment, resolution)):
+        return ""
+    unidentified = _is_unidentified(assessment, resolution)
+    lead = ""
+    if unidentified and resolution is not None and resolution.reason:
+        lead = (f'<p><b>Not identified.</b> '
+                f'{_esc(_plain(resolution.reason, static))}</p>')
+    elif unidentified:
+        lead = "<p><b>Not identified.</b></p>"
+    if unidentified:
+        ways = ("<li>Enter the manufacturer order number from the nameplate.</li>"
+                "<li>Enter the vendor and the exact model name.</li>")
+    else:
+        ways = ("<li>Confirm that the delivered firmware is the vendor's fixed release.</li>"
+                "<li>Ask the supplier for the advisory history of this product.</li>")
+    return components.context_card("No usable evidence for this product",
+                                   f"{lead}<p>Ways forward:</p><ul>{ways}</ul>")
+
+
+def _score_card(assessment, resolution, weights, bands, checks, static):
+    hero, lines = _hero(assessment, resolution)
+    low, high = _bounds(assessment)
+    badge = components.verdict_badge(
+        assessment.verdict, "l",
+        low if assessment.provisional else None,
+        high if assessment.provisional else None)
+    line_html = "".join(
+        f'<li class="rt-score__line{" rt-score__line--" + tone if tone else ""}">'
+        f'{_esc(text)}</li>' for tone, text in lines)
+    parts = ['<section class="rt-card rt-score" aria-label="Procurement score">',
+             '<div class="rt-score__top">',
+             components.panel_label("Procurement score · S"), badge, "</div>",
+             hero, f'<ul class="rt-score__lines">{line_html}</ul>',
+             _band_bar(assessment, bands),
+             f'<p class="rt-score__help result-help">{_esc(_explanation(assessment, resolution))}</p>']
     if assessment.score is not None:
-        parts.append('<p class="tnote">Higher scores are more favourable under the chosen settings. '
-                     'The score is not a percentage chance that the equipment is secure.</p>')
+        parts.append('<p class="rt-score__note">Higher scores are more favourable under the '
+                     'chosen settings. The score supports a procurement review; it is not '
+                     'a probability of compromise or a certification.</p>')
+    parts.append(_no_evidence_card(assessment, resolution, static))
+    parts.append(_blocker_free(assessment, checks))
+    parts.append(_pillar_meters(assessment, weights, bands, static))
+    parts.append("</section>")
+    return "".join(parts)
 
-    parts.append(_calculation_summary(assessment))
 
-    if assessment.first_party_count and assessment.third_party_count:
-        noun = 'vulnerability' if assessment.first_party_count == 1 else 'vulnerabilities'
-        parts.append(f'<p class="score-scope"><b>What this score covers:</b> '
-                     f'{assessment.first_party_count} {noun} from device-vendor advisories. '
-                     f'<b>{assessment.third_party_count} additional vulnerabilities in bundled software '
-                     'need separate supplier review.</b> Their reachability on this equipment '
-                     'has not been confirmed.</p>')
+def _drawer_id(cve):
+    """The id the evidence drawer for `cve` carries.
 
-    if assessment.verification:
-        parts.append('<section class="verification"><h3>What to check next</h3>'
-                     '<p>A network or operations owner can help with these checks. '
-                     'Unknown answers stay unresolved; ReTrust does not test your network.</p><ul>'
-                     + ''.join(f'<li>{_esc(item)}</li>' for item in assessment.verification)
-                     + '</ul></section>')
+    evidenceview owns the drawers; if it publishes drawer_id() this follows it,
+    otherwise it assumes the same slug rule components uses for ids.
+    """
+    named = getattr(evidenceview, "drawer_id", None)
+    if callable(named):
+        return named(cve)
+    return "ev-d-" + (re.sub(r"[^A-Za-z0-9_-]+", "-", str(cve)).strip("-") or "x")
 
-    # Keep the verdict and its limits ahead of editing and download controls.
-    parts.append(tools)
 
-    if assessment.vector:
-        parts.append('<details class="vector"><summary>Technical assessment settings</summary>'
-                     f'<p><code>{_esc(assessment.vector)}</code></p>'
-                     '<p class="tnote">Includes the scoring version, supplied firmware and '
-                     'operator choices. The data token identifies '
-                     'the recorded data inputs. Current CLI and web assessments fingerprint the database and supplementary lists; older results may identify provenance metadata only.</p>'
-                     '</details>')
+def _gate_alert(assessment, gate, web, drawers_html):
+    kind = "restriction" if gate.get("gate") in RESTRICTION_GATES else "blocker"
+    static = web is None
+    low, high = _bounds(assessment)
+    if low is None:
+        shown = "none computed"
+    elif assessment.provisional:
+        shown = _range_text(low, high)
+    else:
+        shown = _score_text(low)
+    detail = _ids(_esc(_plain(gate.get("detail", ""), static)))
+    body = (f'<p class="rt-alert__text">Verdict forced to AVOID regardless of numeric '
+            f'score ({_esc(shown)}).</p>'
+            f'<p class="rt-alert__text">{detail}</p>'
+            f'<span class="rt-alert__src">Source: '
+            f'{_esc(_plain(gate.get("source", ""), static))}</span>')
+    if web is not None and kind == "blocker":
+        actions = []
+        first = _CVE_ID.search(str(gate.get("detail", "")))
+        if first:
+            target = _drawer_id(first.group())
+            if f'id="{target}"' in drawers_html:
+                actions.append(components.button(
+                    "View advisory", kind="ghost", attrs={"popovertarget": target}))
+            else:
+                actions.append(components.link_button(
+                    "View advisory", "#evidence", kind="ghost"))
+        version_id = (web.field_ids or {}).get("version", "field-version")
+        actions.append(components.link_button(
+            "Re-assess with another version",
+            "#" + quote(str(version_id), safe="-_:."), kind="secondary"))
+        body += f'<div class="rt-alert__actions">{"".join(actions)}</div>'
+    return components.alert(kind, "Purchase blocker — " + str(gate.get("gate", "")),
+                            body_html=body)
 
-    if assessment.paths:
-        rows = []
-        for path in assessment.paths:
-            for entry in path['inputs']:
-                cells = ''.join(
-                    '<td>' + _esc(f"{bounds[0]:.3g}" if bounds[0] == bounds[1]
-                                  else f"{bounds[0]:.3g}–{bounds[1]:.3g}") + '</td>'
-                    for bounds in entry['factors'].values())
-                rows.append('<tr><td>' + _esc(entry['cve']) + '</td>' + cells
-                            + '<td>' + _esc(entry['advisory']) + '</td></tr>')
-        parts.append('<details><summary>How each vulnerability contributes</summary>'
-                     '<p>T = threat evidence, floored for service life; I = CVSS severity; '
-                     'A = attack access; H = operational harm; '
-                     'U = affected and unfixed. A range means evidence is missing. '
-                     'Repeated advisories for the same CVE count once. Separate CVEs '
-                     'are review units; independent attack paths have not been established.</p>'
-                     # .table-scroll had no rule in either stylesheet, so this
-                     # one table computed overflow-x:visible and clipped its U
-                     # and Advisory columns off the right of a phone with no way
-                     # to reach them. .tw is the class that scrolls.
-                     '<div class="tw" tabindex="0" role="region" aria-label="Factor contributions per vulnerability, scroll horizontally for more columns">'
-                     + _scroll_hint('Scroll sideways to see every factor →', hint)
-                     + '<table><thead><tr><th>Vulnerability</th>'
-                     '<th>T</th><th>I</th><th>A</th><th>H</th><th>U</th><th>Advisory</th></tr></thead><tbody>'
-                     + ''.join(rows) + '</tbody></table></div></details>')
 
-    if stability is not None:
-        klass = "robust" if (stability.gated or stability.robust) else "fragile"
-        parts.append(
-            f'<p class="stability {klass}"><b>Verdict stability.</b> '
-            + ('A purchase blocker sets this verdict regardless of score weights.' if stability.gated else
-               'This check was not run for this result. Resolve missing evidence before testing weight sensitivity.' if not stability.samples else
-               f'{_esc(stability.dominant)} was the most common verdict, appearing in {stability.agreement:.0%} of '
-               f'{stability.samples} tested weight settings. Scores ranged '
-               f'{stability.score_min}&ndash;{stability.score_max}. '
-               'This tests the effect of changing weights, not the accuracy of the evidence.')
-            + '</p>')
+def _gap_for(item):
+    """(field, tag, title) for one checklist item."""
+    for phrase, field in GAP_RULES:
+        if phrase in item:
+            return field, GAP_TAGS.get(field, ""), GAP_TITLES.get(field, "Open check")
+    for phrase, tag, title in DATA_GAP_RULES:
+        if phrase in item:
+            return "", tag, title
+    if item.startswith("Identify the product"):
+        return "", "ID", "Product not identified"
+    return "", "", "Open check"
 
-    if resolution is not None:
-        if resolution.resolved:
-            parts.append(
-                f'<p class="meta">Matched using {_esc(resolution.method.replace("_", " "))} '
-                f'&middot; {plural(resolution.product_count, "product")} across '
-                f'{plural(resolution.advisory_count, "advisory", "advisories")}'
-                ' (security notices)</p>')
-        elif not assessment.gates:
-            parts.append(f'<div class="note"><b>Not identified.</b> '
-                         f'{_esc(resolution.reason)}</div>')
 
-    for gate in assessment.gates:
-        parts.append(
-            f'<div class="gate"><b>Purchase blocker &mdash; {_esc(gate["gate"])}</b><br>'
-            f'{_ids(_esc(gate["detail"]))}'
-            f'<span class="src">Source: {_esc(gate["source"])}</span></div>')
+def _gap_link(card_html, href, label):
+    """Append a ghost link row to a gap card (spec 4.11's optional action row)."""
+    action = ('<p class="rt-gap__action">'
+              + components.link_button(label, href, kind="ghost") + "</p>")
+    return card_html[:-len("</div>")] + action + "</div>"
 
-    # A caution demands a human look without forcing the verdict: rendered in
-    # the warning colour, right where a gate would sit, so it cannot be missed
-    # on a page whose headline verdict reads well.
+
+def _gap_cards(assessment, resolution, findings, weights, web):
+    static = web is None
+    ids = {} if web is None else (web.field_ids or {})
+    cards, seen, fields = [], set(), set()
+    for item in assessment.verification:
+        field, tag, title = _gap_for(item)
+        if item in seen:
+            continue
+        seen.add(item)
+        if field:
+            fields.add(field)
+        link = ""
+        if field and not static:
+            link = ids.get(field) or "field-" + field.replace("_", "-")
+        cards.append(components.gap_card(title, _plain(item, static), link, tag))
+    vendor = _vendor(resolution)
+    for spec in _neutral_pillars(assessment):
+        label = PILLAR_LABELS.get(spec.name, spec.name)
+        weight = _weight_text(spec, weights)
+        applied = (f"Neutral {score.MISSING_PILLAR:.0f} applied at weight {weight}."
+                   if weight else
+                   f"Neutral {score.MISSING_PILLAR:.0f} applied at the pillar's full weight.")
+        card = components.gap_card(f"{label}: no usable evidence",
+                                   "Nothing was found to measure this part. " + applied,
+                                   "", _letter(spec))
+        if not static:
+            href = "/vendor" + ("?name=" + quote_plus(vendor) if vendor else "")
+            card = _gap_link(card, href, "Look up vendor evidence")
+        cards.append(card)
+    # A firmware that was never given is a material gap even when no checklist
+    # line happened to name it.
+    if (assessment.score is not None and not assessment.evidence_free
+            and assessment.resolved and "version" not in fields
+            and not _firmware(assessment, web)):
+        link = "" if static else (ids.get("version") or "field-version")
+        cards.append(components.gap_card(
+            "Firmware version not given",
+            "The published affected ranges were not checked against your unit, so "
+            "every recorded CVE stays in scope with applicability unresolved.",
+            link, "FW"))
+    return cards
+
+
+def _disclose(summary, inner_html, static):
+    """A collapsible on the web, plain visible rows in the export."""
+    if static:
+        return f'<p class="rt-static__title">{_esc(summary)}</p>{inner_html}'
+    return f'<details><summary>{_esc(summary)}</summary>{inner_html}</details>'
+
+
+def _caution_alerts(assessment, static):
+    # A caution demands a human look without forcing the verdict: a REVIEW
+    # alert, which is amber but not role=alert, because nothing here is an
+    # emergency and an assertive announcement would outrank the real blockers.
+    alerts = []
     for caution in getattr(assessment, "cautions", ()):
         title, explanation = CAUTION_HELP.get(
             _caution_key(caution['caution']), (caution['caution'], caution['detail']))
-        parts.append(
-            f'<div class="caution"><b>Supplier review needed &mdash; {_esc(title)}</b>'
-            f'<p>{_esc(explanation)}</p><details><summary>Which vulnerabilities and sources?</summary>'
-            f'<p>{_ids(_esc(caution["detail"]))}</p>'
-            f'<span class="src">Source: {_esc(caution["source"])}</span></details></div>')
+        inner = (f'<p>{_ids(_esc(_plain(caution["detail"], static)))}</p>'
+                 f'<span class="rt-alert__src">Source: '
+                 f'{_esc(_plain(caution["source"], static))}</span>')
+        body = ('<div class="rt-alert__detail">'
+                + _disclose("Which vulnerabilities and sources?", inner, static) + '</div>')
+        alerts.append(components.alert(
+            "review", "Supplier review needed — " + title,
+            body=_plain(explanation, static), body_html=body))
+    return alerts
 
+
+def _stability_text(stability):
+    if stability.gated:
+        return 'A purchase blocker sets this verdict regardless of score weights.'
+    if not stability.samples:
+        return ('This check was not run for this result. Resolve missing evidence '
+                'before testing weight sensitivity.')
+    return (f'{_esc(stability.dominant)} was the most common verdict, appearing in '
+            f'{stability.agreement:.0%} of {stability.samples} tested weight settings. '
+            f'Scores ranged {stability.score_min}&ndash;{stability.score_max}. '
+            'This tests the effect of changing weights, not the accuracy of the evidence.')
+
+
+def _context_cards(assessment, stability, static):
+    cards = []
+    if assessment.first_party_count and assessment.third_party_count:
+        noun = 'vulnerability' if assessment.first_party_count == 1 else 'vulnerabilities'
+        cards.append(components.context_card(
+            "What this score covers",
+            f'<p class="score-scope">{assessment.first_party_count} {noun} from '
+            'device-vendor advisories. '
+            f'<b>{assessment.third_party_count} additional vulnerabilities in bundled software '
+            'need separate supplier review.</b> Their reachability on this equipment '
+            'has not been confirmed.</p>'))
+    if assessment.notes:
+        items = "".join(f'<li class="note-item">{_ids(_esc(_plain(n, static)))}</li>'
+                        for n in assessment.notes)
+        cards.append(components.context_card("Assessment notes", f"<ul>{items}</ul>"))
+    if stability is not None:
+        klass = "robust" if (stability.gated or stability.robust) else "fragile"
+        cards.append(components.context_card(
+            "Weight sensitivity",
+            f'<p class="stability {klass}"><b>Verdict stability.</b> '
+            f'{_stability_text(stability)}</p>'))
     if assessment.score is not None:
         scope = (' This percentage covers the scored device-vendor findings; '
                  'it does not confirm the applicability or safety of bundled software.'
                  if assessment.first_party_count and assessment.third_party_count else '')
-        parts.append('<details class="coverage"><summary>What evidence was checked?</summary>'
-                     f'<p>Evidence completeness for scored findings: <b>{assessment.confidence:.0%}</b>. '
-                     'This describes available scoring inputs, not independent verification of every fact '
-                     'or a guarantee that the equipment is secure.' + scope + '</p></details>')
+        inner = (f'<p>Evidence completeness for scored findings: <b>{assessment.confidence:.0%}</b>. '
+                 'This describes available scoring inputs, not independent verification of every fact '
+                 'or a statement that the equipment has no unrecorded vulnerabilities.'
+                 + scope + '</p>')
+        cards.append(components.context_card(
+            "Evidence checked",
+            _disclose("What evidence was checked?", inner, static)
+            if not static else inner))
+    return cards
 
-    if assessment.pillars:
-        parts.append(_pillar_table(assessment, weights, hint, section="scored"))
-        parts.append('<details class="assessment-more-info"><summary>Show more info</summary>'
-                     + _pillar_table(assessment, weights, hint, section="additional")
-                     + '</details>')
 
-    for note in assessment.notes:
-        parts.append(f'<div class="note">{_ids(_esc(note))}</div>')
-
+def _legacy_evidence(findings, hint):
+    """The pre-redesign findings table, used only while evidenceview is a stub."""
     ranked = sorted(findings, key=lambda f: (-(f.epss or 0), -(f.cvss or 0)))
     top = ranked[:10]
-    if top:
-        if len(ranked) > len(top):
-            # A capped table must say so: "54 need review" above a silent
-            # 10-row table reads as the whole list. And the JSON export caps
-            # at the same 10 and records the remainder in
-            # `findings_truncated` -- claiming it "carries every finding" sent
-            # a buyer to an export described as exhaustive that is not.
-            parts.append(f'<p class="tnote">Showing the {len(top)} most'
-                         f' significant of {len(ranked)} findings, ranked by'
-                         ' exploitation probability and then severity. The'
-                         ' JSON export carries the same selection and records'
-                         ' how many were left out.</p>')
-        parts.append(_cve_table(top, hint))
+    if not top:
+        return ""
+    note = ""
+    if len(ranked) > len(top):
+        # A capped table must say so: "54 need review" above a silent
+        # 10-row table reads as the whole list. And the JSON export caps
+        # at the same 10 and records the remainder in
+        # `findings_truncated` -- claiming it "carries every finding" sent
+        # a buyer to an export described as exhaustive that is not.
+        note = (f'<p class="tnote">Showing the {len(top)} most'
+                f' significant of {len(ranked)} findings, ranked by'
+                ' exploitation probability and then severity. The'
+                ' JSON export carries the same selection and records'
+                ' how many were left out.</p>')
+    return note + _cve_table(top, hint)
 
+
+def _call_view(function, *args, **kwargs):
+    """Call an evidenceview function; None while it is not yet the contract.
+
+    Two shapes mean "not built yet": it raises NotImplementedError, or its
+    signature cannot take the contract's arguments (the original stubs took
+    different ones). Anything else -- including a TypeError raised from inside
+    a real implementation -- is a bug and propagates.
+    """
+    try:
+        inspect.signature(function).bind(*args, **kwargs)
+    except TypeError:
+        return None
+    try:
+        return function(*args, **kwargs)
+    except NotImplementedError:
+        return None
+
+
+def _evidence_views(assessment, findings, web, hint):
+    """The one place the result page calls evidenceview.
+
+    Returns (exposure_html, evidence_html, drawers_html). Each call is made
+    through the module so a replacement is picked up. While evidenceview is
+    still a stub the page degrades to the previous table rather than failing;
+    once it is complete the fallbacks are dead code and can go.
+    """
+    static = web is None
+    view = EvidenceView() if web is None else web.evidence
+    advisories = None if web is None else web.advisories
+    firmware = _firmware(assessment, web)
+    exposure = _call_view(evidenceview.exposure_card, assessment, static=static,
+                          findings=findings, view=view)
+    if exposure is None:
+        summary = _calculation_summary(assessment)
+        exposure = components.card(summary, "Exposure") if summary else ""
+    evidence = _call_view(evidenceview.evidence_card, findings, assessment, view,
+                          firmware=firmware, advisories=advisories, static=static)
+    if evidence is None:
+        evidence = _legacy_evidence(findings, hint)
+    drawers = ""
+    if not static:
+        drawers = _call_view(evidenceview.drawers, findings, assessment, view,
+                             advisories, firmware=firmware) or ""
+    # The evidence module cannot import this one (circular), so the applied
+    # inputs and the "why this answer did not move the score" notes sit next to
+    # its card from here. Skipped when the card already carries them.
+    summary = _calculation_summary(assessment)
+    if summary and "calculation-summary" not in exposure:
+        exposure += ('<details class="rt-calc"><summary>Applied scoring inputs</summary>'
+                     + summary + '</details>')
+    return exposure, evidence, drawers
+
+
+def _contributions(assessment, hint):
+    rows = []
+    for path in assessment.paths:
+        for entry in path['inputs']:
+            cells = ''.join(
+                '<td>' + _esc(f"{bounds[0]:.3g}" if bounds[0] == bounds[1]
+                              else f"{bounds[0]:.3g}–{bounds[1]:.3g}") + '</td>'
+                for bounds in entry['factors'].values())
+            rows.append('<tr><td>' + _esc(entry['cve']) + '</td>' + cells
+                        + '<td>' + _esc(entry['advisory']) + '</td></tr>')
+    if not rows:
+        return ""
+    return ('<section><h3>How each vulnerability contributes</h3>'
+            '<p>T = threat evidence, floored for service life; I = CVSS severity; '
+            'A = attack access; H = operational harm; '
+            'U = affected and unfixed. A range means evidence is missing. '
+            'Repeated advisories for the same CVE count once. Separate CVEs '
+            'are review units; independent attack paths have not been established.</p>'
+            # .table-scroll had no rule in either stylesheet, so this
+            # one table computed overflow-x:visible and clipped its U
+            # and Advisory columns off the right of a phone with no way
+            # to reach them. .tw is the class that scrolls.
+            '<div class="tw" tabindex="0" role="region" aria-label="Factor contributions per vulnerability, scroll horizontally for more columns">'
+            + _scroll_hint('Scroll sideways to see every factor →', hint)
+            + '<table><thead><tr><th scope="col">Vulnerability</th>'
+            '<th scope="col">T</th><th scope="col">I</th><th scope="col">A</th>'
+            '<th scope="col">H</th><th scope="col">U</th><th scope="col">Advisory</th>'
+            '</tr></thead><tbody>'
+            + ''.join(rows) + '</tbody></table></div></section>')
+
+
+def _technical(assessment, resolution, hint, static):
+    """Settings, contributions, diagnostic pillars and match metadata.
+
+    Collapsed on purpose: none of it changes a decision, all of it lets a
+    reviewer reproduce one.
+    """
+    inner = []
+    if assessment.vector:
+        inner.append('<section class="vector"><h3>Technical assessment settings</h3>'
+                     f'<p><code>{_esc(assessment.vector)}</code></p>'
+                     '<p class="tnote">Includes the scoring version, supplied firmware and '
+                     'operator choices. The data token identifies '
+                     'the recorded data inputs. Current CLI and web assessments fingerprint the database and supplementary lists; older results may identify provenance metadata only.</p>'
+                     '</section>')
+    inner.append(_contributions(assessment, hint))
+    if assessment.pillars:
+        inner.append(_pillar_table(assessment, None, hint, section="additional"))
+    if resolution is not None and resolution.resolved:
+        inner.append(
+            f'<p class="meta">Matched using {_esc(resolution.method.replace("_", " "))} '
+            f'&middot; {plural(resolution.product_count, "product")} across '
+            f'{plural(resolution.advisory_count, "advisory", "advisories")}'
+            ' (security notices)</p>')
+    inner = [piece for piece in inner if piece]
+    if not inner:
+        return ""
+    ident = "" if static else ' id="technical"'
+    return (f'<details class="assessment-more-info"{ident}>'
+            '<summary>Show more info</summary><div class="rt-technical">'
+            + "".join(inner) + '</div></details>')
+
+
+def _assessment_block(assessment, resolution=None, findings=(), stability=None,
+                      weights=None, tools='', hint=True, web=None, bands=None,
+                      checks=None):
+    """One product's result, top to bottom in reading order (spec 3).
+
+    identity -> actions and section nav (web) -> blockers -> [score | exposure]
+    -> gaps and context -> `tools` -> evidence -> questions and inputs (web)
+    -> technical -> drawers (web). `tools` stays after the score's scope note
+    because the verdict and its limits must come before any editing or
+    download control. Blockers sit directly above the grid at every width: a
+    hard disqualification is read before the number it overrides.
+    """
+    static = web is None
+    findings = list(findings)
+    colour = VERDICT_COLOR.get(assessment.verdict, INERT)
+    # Declared once on the block so the comparison table's rows and anything
+    # else keyed on the verdict read one value.
+    parts = [f'<section class="block rt-result" style="--vc:{colour}">',
+             _identity(assessment, resolution, findings, web)]
+    if web is not None:
+        parts.append(web.actions_html)
+        parts.append(web.tabs_html)
+
+    exposure_html, evidence_html, drawers_html = _evidence_views(
+        assessment, findings, web, hint)
+
+    if assessment.gates:
+        parts.append('<div class="rt-alerts">'
+                     + "".join(_gate_alert(assessment, g, web, drawers_html)
+                               for g in assessment.gates) + '</div>')
+
+    ident = "" if static else ' id="overview"'
+    parts.append(f'<div class="rt-grid"{ident}>'
+                 + _score_card(assessment, resolution, weights, bands,
+                               _checks_for(web, checks), static)
+                 + '<div class="rt-col">' + exposure_html + '</div></div>')
+
+    gap_cards = _gap_cards(assessment, resolution, findings, weights, web)
+    if gap_cards:
+        ident = "" if static else ' id="gaps"'
+        parts.append(f'<section class="verification rt-gaps"{ident}>'
+                     '<h3>What to check next</h3>'
+                     '<p class="rt-gaps__lead">A network or operations owner can help with '
+                     'these checks. Unknown answers stay unresolved; ReTrust does not test '
+                     'your network.</p>'
+                     f'<div class="rt-cards">{"".join(gap_cards)}</div></section>')
+
+    context = _caution_alerts(assessment, static)
+    cards = _context_cards(assessment, stability, static)
+    if context:
+        parts.append(f'<div class="rt-alerts">{"".join(context)}</div>')
+    if cards:
+        parts.append(f'<div class="rt-cards">{"".join(cards)}</div>')
+
+    # Keep the verdict and its limits ahead of editing and download controls.
+    parts.append(tools)
+    parts.append(evidence_html)
+    if web is not None:
+        parts.append(web.questions_html)
+        parts.append(web.inputs_html)
+    parts.append(_technical(assessment, resolution, hint, static))
+    if web is not None:
+        parts.append(drawers_html)
     parts.append('</section>')
     return "".join(parts)
 
@@ -607,13 +1379,14 @@ CONTEXT_ONLY = {"Network exposure"}
 
 
 def _pillar_table(assessment, weights, hint=True, section=None):
-    active_pillars = [p for p in assessment.pillars
-                      if p.name != "Evidence quality" and p.scored]
+    """The full pillar table: the diagnostic detail behind the meters."""
     parts = ['<div class="tw" tabindex="0" role="region" aria-label="Pillar evidence, scroll horizontally for more columns">'
              + _scroll_hint('Scroll sideways to see all evidence →', hint)
-             + '<table><thead><tr><th>Assessment part</th><th class="n">Score / 100</th>'
-             '<th style="width:18%">&nbsp;</th><th class="n">Influence</th><th class="n">Evidence available</th>'
-             '<th>Evidence</th></tr></thead><tbody>']
+             + '<table><thead><tr><th scope="col">Assessment part</th><th scope="col" class="n">Score / 100</th>'
+             '<th scope="col" style="width:18%"><span class="sr-only">Meter</span></th>'
+             '<th scope="col" class="n">Influence</th><th scope="col" class="n">Evidence available</th>'
+             '<th scope="col">Evidence</th></tr></thead><tbody>']
+    neutral = {spec.name for spec in _neutral_pillars(assessment)}
     for pillar in assessment.pillars:
         is_main = pillar.name in PILLAR_KEYS
         if section == "scored" and not is_main:
@@ -621,14 +1394,19 @@ def _pillar_table(assessment, weights, hint=True, section=None):
         if section == "additional" and is_main:
             continue
         evidence = "".join(f"<li>{_labels(_esc(e))}</li>" for e in pillar.evidence)
-        share = (_weight_share(pillar.name, weights, active_pillars)
-                 if pillar.scored else None)
+        # A pillar with no evidence is not excluded from the weights: it keeps
+        # its full exponent at the neutral placeholder (score._composite).
+        is_neutral = pillar.name in neutral
+        share = (_weight_share(pillar.name, weights)
+                 if pillar.scored or is_neutral else None)
         weight = None if share is None else f"{share:.1%}"
         # Evidence quality is reported but not scored, and must look different
         # from the pillars that move the number.
         unscored = weight is None
-        displayed_score = f"{pillar.score:.0f}" if pillar.scored else "not scored"
-        bar_width = max(0, min(100, pillar.score)) if pillar.scored else 0
+        displayed_score = (f"{score.MISSING_PILLAR:.0f} (neutral)" if is_neutral
+                           else f"{pillar.score:.0f}" if pillar.scored else "not scored")
+        bar_width = (score.MISSING_PILLAR if is_neutral
+                     else max(0, min(100, pillar.score)) if pillar.scored else 0)
         parts.append(
             f'<tr{" class=unscored" if unscored else ""}>'
             f'<td><b>{_esc(PILLAR_LABELS.get(pillar.name, pillar.name))}</b></td>'
@@ -674,10 +1452,10 @@ def _cve_table(findings, hint=True):
              'exploitation in the next 30 days. Neither shows that your equipment was attacked.</p>'
              '<div class="tw" tabindex="0" role="region" aria-label="CVE evidence, scroll horizontally for more columns">'
              + _scroll_hint('Scroll sideways to see all evidence →', hint)
-             + '<table><thead><tr><th>Vulnerability (CVE)</th>'
-             '<th class="n">Severity / 10 (CVSS)</th><th class="n">30-day estimate (EPSS)</th>'
-             '<th>Confirmed exploitation record</th><th>Security notice</th>'
-             '<th>Affected firmware range</th></tr></thead><tbody>']
+             + '<table><thead><tr><th scope="col">Vulnerability (CVE)</th>'
+             '<th scope="col" class="n">Severity / 10 (CVSS)</th><th scope="col" class="n">30-day estimate (EPSS)</th>'
+             '<th scope="col">Confirmed exploitation record</th><th scope="col">Security notice</th>'
+             '<th scope="col">Affected firmware range</th></tr></thead><tbody>']
     for f in findings:
         parts.append(
             f'<tr><td><code>{_esc(f.cve)}</code>'
@@ -715,8 +1493,9 @@ def _summary_table(blocks, stabilities, hint=True):
             f'<td>{_esc(note)}</td></tr>')
     return ('<div class="tw" tabindex="0" role="region" aria-label="Candidate comparison, scroll horizontally for more columns">'
             + _scroll_hint('Scroll sideways to see all candidates’ evidence →', hint)
-            + '<table><thead><tr><th>Candidate</th><th>Verdict</th>'
-            '<th class="n">Score</th><th class="n">Vulnerabilities</th><th class="n">Verdict stability</th><th>Main reason</th>'
+            + '<table><thead><tr><th scope="col">Candidate</th><th scope="col">Verdict</th>'
+            '<th scope="col" class="n">Score</th><th scope="col" class="n">Vulnerabilities</th>'
+            '<th scope="col" class="n">Verdict stability</th><th scope="col">Main reason</th>'
             '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>'
             '<p class="tnote">Verdict stability shows how often the most common verdict '
             'repeated when score weights were changed. Below 90%, the result depends more '
@@ -724,17 +1503,22 @@ def _summary_table(blocks, stabilities, hint=True):
             'the stability of the ranking. A dash means this check was not run.</p>')
 
 
-def body(blocks, stabilities=None, weights=None, tools=''):
+def body(blocks, stabilities=None, weights=None, tools='', web=None, bands=None,
+         checks=None):
     """The summary table and assessment blocks, without the page around them.
 
     Split out so the local web server can put the same markup inside its own
     page. One renderer for both surfaces means they cannot drift into showing
-    the same assessment differently.
+    the same assessment differently. `web` is the server's context (actions,
+    inputs, drawers); None is the static export. `bands` is the configured
+    [(threshold, verdict), ...] list and `checks` the {kev_loaded,
+    screening_loaded} facts for a caller with no WebView.
     """
     stabilities = stabilities or {}
     summary = _summary_table(blocks, stabilities) if len(blocks) > 1 else ""
     return summary + "".join(
-        _assessment_block(a, r, f, stabilities.get(id(a), stabilities.get(a.product)), weights, tools)
+        _assessment_block(a, r, f, stabilities.get(id(a), stabilities.get(a.product)),
+                          weights, tools, web=web, bands=bands, checks=checks)
         for a, r, f in blocks)
 
 
@@ -750,27 +1534,79 @@ def _query_table(queries):
             'Keep these identifiers when reassessing.</p>'
             + ('<p class="note">Some candidates have firmware specified and others do not. '
                'Add a version for each to compare on equal terms.</p>' if mixed else '')
-            + '<div class="tw"><table><thead><tr><th>Vendor</th><th>Product / model</th>'
-            '<th>Firmware</th><th>Order number</th></tr></thead><tbody>' + rows + '</tbody></table></div>')
+            + '<div class="tw"><table><thead><tr><th scope="col">Vendor</th><th scope="col">Product / model</th>'
+            '<th scope="col">Firmware</th><th scope="col">Order number</th></tr></thead><tbody>' + rows + '</tbody></table></div>')
+
+
+def _glossary(bands):
+    """Visible definitions for what the web page offers as tooltips.
+
+    A printed page has no hover, so each term the result uses is defined in
+    the document. Every line states what the model computes (exposure.py,
+    score._composite); none of them describes a probability.
+    """
+    segments = _segments(bands)
+    band_text = "; ".join(
+        f"{verdict} {start:g}{RANGE_DASH}{end:g}" for start, end, verdict in segments)
+    pillar_names = ", ".join(
+        f"{_letter(spec)} {PILLAR_LABELS.get(spec.name, spec.name).lower()}"
+        for spec in score.PILLARS)
+    terms = (
+        ("Score", "The weighted geometric mean of the four pillars, from 0 to 100. Higher is "
+                  "more favourable. It supports a procurement review; it is not a probability "
+                  "of compromise or a certification."),
+        ("Bands", band_text + ". The band is taken from the displayed one-decimal score."),
+        ("Pillars", pillar_names + "."),
+        ("w", "A pillar's weight divided by the sum of all four weights. It is the exponent "
+              "the pillar's value is raised to in the score."),
+        ("50*", f"No usable evidence for the pillar. A neutral {score.MISSING_PILLAR:.0f} enters "
+                "the score at the pillar's full weight. It is a placeholder, not a measurement."),
+        ("Provisional range", "Shown when material inputs are unknown. The low end assumes the "
+                              "conservative case for every unanswered input and is the headline; "
+                              "the hatched part of a bar is the span the open inputs allow."),
+        ("T I A H U", "Per-vulnerability factors. T threat evidence (strongest of KEV, LEV and "
+                      "EPSS, floored by how the flaw is reached), I CVSS severity, A attack "
+                      "access, H operational harm, U whether this firmware is affected and unfixed."),
+        ("Z", "T × I × A × H × U for one review unit (a CVE)."),
+        ("R and E", "R = min(1, Z1 + 0.20·Z2 + 0.10·Z3) over the three highest Z values; "
+                    "E = 100 × (1 − R)."),
+        ("KEV", "Listed in the CISA Known Exploited Vulnerabilities catalogue."),
+        ("EPSS", "FIRST's estimate of exploitation in the next 30 days. It does not show "
+                 "that your equipment was attacked."),
+    )
+    rows = "".join(f"<dt>{_esc(t)}</dt><dd>{_esc(d)}</dd>" for t, d in terms)
+    return ('<section class="rt-glossary"><h2>Terms used in this report</h2>'
+            f'<dl>{rows}</dl></section>')
 
 
 def render(blocks, title="ReTrust assessment", snapshot="", stabilities=None,
-           provenance=(), weights=None, config_source="", queries=()):
-    """Render one or more (assessment, resolution, findings) triples to HTML."""
-    inner = body(blocks, stabilities, weights)
+           provenance=(), weights=None, config_source="", queries=(), bands=None,
+           checks=None):
+    """Render one or more (assessment, resolution, findings) triples to HTML.
+
+    The self-contained export: light theme, no controls, no scripts, no
+    external references. `provenance` (rows from index.provenance) is also the
+    only evidence an export has of which lists were loaded, so a KEV row there
+    lets the blocker-free strip say "No applicable KEV"; a caller that passes
+    no provenance gets no claim about KEV at all.
+    """
+    if checks is None and provenance:
+        checks = {"kev_loaded": any(p.get("source") == "CISA KEV" for p in provenance)}
+    inner = body(blocks, stabilities, weights, bands=bands, checks=checks)
     return (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-        f"<title>{_esc(title)}</title><style>{CSS}</style></head><body><div class=\"wrap\">"
+        f"<title>{_esc(title)}</title><style>{export_css()}</style></head><body><div class=\"wrap\">"
         f"<p class=\"meta\">ReTrust &middot; generated {date.today().isoformat()}"
         + (f" &middot; data snapshot {_esc(snapshot)}" if snapshot else "")
-        + f"</p><h1>{_esc(title)}</h1>{inner}"
+        + f"</p><h1 class=\"rt-export-title\">{_esc(title)}</h1>{inner}"
         + _query_table(queries)
         + _footer_sources(provenance, weights, config_source)
+        + _glossary(bands)
         + f'<p class="tnote">Model {_esc(score.SCORING_VERSION)} · Tool build {_esc(identity.build_fingerprint())}. Keep this report with its data snapshot when reassessing.</p>'
         + "<footer>Scores are decision support, not a certification. Every figure above "
         "comes from public CISA, FIRST and vendor sources; weights are configurable and "
         "shown so you can disagree with them. Ranges this tool could not parse are "
-        "reported as needing review, never assumed safe.</footer>"
+        "reported as needing review, never treated as cleared.</footer>"
         "</div></body></html>"
     )
