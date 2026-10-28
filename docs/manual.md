@@ -24,23 +24,23 @@ $ retrust compare \
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   ABB AC 800M
-  VERIFY  ·  71.6–87.7/100 (provisional range)
+  VERIFY  ·  70.1–87.7/100 (provisional range)
   CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.25
 
   Schneider Electric Modicon M340
-  VERIFY  ·  51.0–79.9/100 (provisional range)
-  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 0.50
-
-  Moxa EDS-405A
-  VERIFY  ·  50.5–92.8/100 (provisional range)
-  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.49
+  VERIFY  ·  6.0–79.9/100 (provisional range)
+  CVEs 48  ·  ROBUST not sampled  ·  WORST FLAW 0.90
 
   Rockwell Automation ControlLogix
-  VERIFY  ·  34.6–92.8/100 (provisional range)
-  CVEs 35  ·  ROBUST not sampled  ·  WORST FLAW 0.66
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 35  ·  ROBUST not sampled  ·  WORST FLAW 0.98
+
+  Moxa EDS-405A
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 10  ·  ROBUST not sampled  ·  WORST FLAW 0.94
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  16.2–88.7/100 (provisional range)
+  AVOID  ·  5.6–88.7/100 (provisional range)
   CVEs 1227  ·  ROBUST gated  ·  WORST FLAW 0.78
   Known exploited vulnerability
 
@@ -761,31 +761,31 @@ Scoring 8 candidate(s) from examples/candidates.csv ...
   CANDIDATE COMPARISON ───────────────────────────────────────────────────────
 
   Siemens SIMATIC IPC477E Pro
-  VERIFY  ·  89.4–99.2/100 (provisional range)
+  VERIFY  ·  72.2–99.2/100 (provisional range)
   CVEs 14
 
-  Schneider Electric Modicon M340
-  VERIFY  ·  51.0–79.9/100 (provisional range)
-  CVEs 48
-
-  Moxa EDS-405A
-  VERIFY  ·  50.5–92.8/100 (provisional range)
-  CVEs 10
-
   Siemens SIMATIC S7-1500 CPU 1518-4 PN/DP MFP (6ES7518-4AX00-1AB0)
-  VERIFY  ·  47.0–94.7/100 (provisional range)
+  VERIFY  ·  18.3–94.7/100 (provisional range)
   CVEs 1121
 
+  Schneider Electric Modicon M340
+  VERIFY  ·  6.0–79.9/100 (provisional range)
+  CVEs 48
+
   Rockwell Automation ControlLogix
-  VERIFY  ·  34.6–92.8/100 (provisional range)
+  VERIFY  ·  5.9–92.8/100 (provisional range)
   CVEs 35
+
+  Moxa EDS-405A
+  VERIFY  ·  5.9–92.8/100 (provisional range)
+  CVEs 10
 
   Johnson Controls iSTAR Ultra G2
   VERIFY  ·  5.5–79.9/100 (provisional range)
   CVEs 8
 
   Siemens SIMATIC S7-1500 (firmware 3.1.6)
-  AVOID  ·  16.2–88.7/100 (provisional range)
+  AVOID  ·  5.6–88.7/100 (provisional range)
   CVEs 1227
   Known exploited vulnerability
 
@@ -1026,7 +1026,7 @@ they are not a NIST standard or a measured procurement accuracy guarantee.
 are assertions ReTrust cannot verify, so a PREFER, CONDITIONAL or AVOID that
 rests on them carries an "assertions" list and a note beside the verdict:
 "This PREFER rests on operator assertions ReTrust cannot verify: ... On the
-published evidence alone this product is VERIFY, 71.6-87.7/100." The
+published evidence alone this product is VERIFY, 70.1-87.7/100." The
 evidence-only range is computed with every assertion withdrawn, so the reader
 sees exactly what the answers bought. JSON and CSV exports carry the same
 `assertions` field, so a stored decision record keeps the attribution.

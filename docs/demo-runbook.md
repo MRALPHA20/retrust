@@ -92,7 +92,7 @@ python3 -m retrust.cli score --vendor ABB --product 'AC 800M' \
 
 ```
   ABB AC 800M
-  CONDITIONAL  ·  75.0/100
+  CONDITIONAL  ·  73.9/100
 ```
 
 with this note attached:
@@ -102,7 +102,7 @@ with this note attached:
   attack reachability: Reachable; exploitation prerequisites: Satisfied or not
   required; operational consequence: Major loss of process control; firmware
   remediation: Confirmed affected — not remediated. On the published evidence
-  alone this product is VERIFY, 71.6-87.7/100. Retain supporting evidence for
+  alone this product is VERIFY, 70.1-87.7/100. Retain supporting evidence for
   each answer before procurement.
 ```
 
