@@ -513,8 +513,12 @@ def test_the_default_host_is_loopback():
 # --- one renderer, two surfaces --------------------------------------------
 
 def test_the_page_uses_the_report_stylesheet(handler):
+    # Property kept: the web page ships the shared component and result
+    # stylesheets (the legacy report.THEME is replaced by design tokens).
+    from retrust import components
     _, _, body = _get(handler, "/")
-    assert report.CSS[:80] in body
+    assert components.CSS[:80] in body
+    assert report.RESULT_CSS[:80] in body
 
 
 def test_report_body_is_what_render_puts_in_its_page(db):
@@ -735,7 +739,9 @@ def test_inline_links_meet_the_touch_target_floor_on_small_screens():
     rule = ".helper a,footer a,.empty a,.tnote a"
     assert rule in webui.CSS
     # and it must live inside the small-screen query, not change the desktop line
-    small = webui.CSS.split("@media(max-width:700px){")
+    # Property kept: 24px inline-link height, only inside the small-screen
+    # query. The query is now the <640px breakpoint of the new shell.
+    small = webui.CSS.split("@media(max-width:639px){")
     assert any(rule in part and "min-height:24px" in part for part in small[1:])
 
 
