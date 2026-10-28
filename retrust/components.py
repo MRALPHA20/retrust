@@ -777,7 +777,7 @@ CSS = """
 .rt-alert--review{border-color:var(--conditional);background:var(--conditional-fill)}
 .rt-alert__tag{flex:none;align-self:flex-start;padding:var(--s4) var(--s8);border-radius:var(--r-sm);background:var(--avoid);color:var(--on-avoid);font-family:var(--font-mono);font-weight:700;font-size:12px;line-height:1.2;letter-spacing:.06em}
 .rt-alert--review .rt-alert__tag{background:var(--conditional)}
-.rt-alert__main{min-width:0}
+.rt-alert__main{min-width:0;overflow-wrap:anywhere}
 .rt-alert__title{margin:0;font-weight:600;color:var(--text)}
 .rt-alert__text{margin:var(--s4) 0 0;color:var(--text-2)}
 
