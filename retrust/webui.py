@@ -78,13 +78,18 @@ def related_links(active=None):
     return f'<ul class="rt-related" aria-label="Related pages">{items}</ul>'
 
 
+_UNREADABLE = object()
+
+
 def _captured(provenance, source):
+    """The capture date, None when the feed has no row, _UNREADABLE when it has
+    a row whose date does not parse (the feed is loaded; only its age is unknown)."""
     for row in provenance:
         if row.get("source") == source:
             try:
                 return date.fromisoformat(str(row.get("captured") or "")[:10])
             except ValueError:
-                return None
+                return _UNREADABLE
     return None
 
 
@@ -102,16 +107,25 @@ def snapshot_status(provenance, today, hosted):
     feeds = (("KEV", _captured(provenance, "CISA KEV"), doctor.AGE_LIMITS["kev"]),
              ("EPSS", _captured(provenance, "FIRST EPSS"), doctor.AGE_LIMITS["epss"]))
     missing = [name for name, captured, _ in feeds if captured is None]
-    known = [captured for _, captured, _ in feeds if captured is not None]
+    unreadable = [name for name, captured, _ in feeds if captured is _UNREADABLE]
+    known = [captured for _, captured, _ in feeds if isinstance(captured, date)]
     oldest = f" · {min(known).isoformat()}" if known else ""
+    # A capture date after today cannot be "current": the clock or the feed is
+    # wrong, and a negative age would otherwise pass the age test.
+    future = any(captured > today for captured in known)
     if missing:
         state, word = "missing", " · " + " and ".join(missing) + " missing"
+    elif unreadable:
+        state, word = "stale", " · " + " and ".join(unreadable) + " date unreadable"
+    elif future:
+        state, word = "stale", " · date in the future"
     elif any((today - captured).days > limit for _, captured, limit in feeds):
         state, word = "stale", " · stale"
     else:
         state, word = "current", ""
     sr = '<span class="rt-sr"> (current)</span>' if state == "current" else ""
-    return (f'<span class="rt-snap rt-snap--{state}"><span aria-hidden="true">●</span> '
+    glyph = {"current": "●", "stale": "◆", "missing": "■"}[state]
+    return (f'<span class="rt-snap rt-snap--{state}"><span aria-hidden="true">{glyph}</span> '
             f'Snapshot · {mode}{oldest}{word}{sr}</span>')
 
 
@@ -242,8 +256,8 @@ main input[type=text],main select{width:100%;max-width:42rem;min-height:40px;pad
 main input.rt-input--mono{font-family:var(--font-mono);font-size:.8125rem}
 main input::placeholder{color:var(--muted);opacity:1}
 main input:focus,main select:focus{outline:2px solid var(--action);outline-offset:2px}
-main button:not(.rt-btn),main .button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 var(--s16);background:var(--action);color:var(--on-action);border:1px solid var(--action);border-radius:var(--r-lg);font-family:var(--font-sans);font-weight:600;font-size:.875rem;cursor:pointer;text-decoration:none;white-space:nowrap;margin-top:var(--s12)}
-main button:not(.rt-btn):hover,main .button:hover{background:var(--action-hover);border-color:var(--action-hover);color:var(--on-action)}
+main button:not(.rt-btn):not(.ev-open):not(.ev-close),main .button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 var(--s16);background:var(--action);color:var(--on-action);border:1px solid var(--action);border-radius:var(--r-lg);font-family:var(--font-sans);font-weight:600;font-size:.875rem;cursor:pointer;text-decoration:none;white-space:nowrap;margin-top:var(--s12)}
+main button:not(.rt-btn):not(.ev-open):not(.ev-close):hover,main .button:hover{background:var(--action-hover);border-color:var(--action-hover);color:var(--on-action)}
 main .button.secondary{background:transparent;border-color:var(--control-border);color:var(--text)}
 main .button.secondary:hover{background:var(--raised);color:var(--text);border-color:var(--text)}
 .search-form{margin:0}
@@ -360,7 +374,7 @@ pre{font-size:.8125rem;line-height:1.5;overflow-wrap:anywhere;padding:var(--s16)
 main h1{font-size:1.375rem}
 }
 @media(pointer:coarse){
-main input[type=text],main select,main button:not(.rt-btn),main .button{min-height:44px;font-size:1rem}
+main input[type=text],main select,main button:not(.rt-btn):not(.ev-open):not(.ev-close),main .button{min-height:44px;font-size:1rem}
 }
 """
 

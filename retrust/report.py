@@ -620,6 +620,20 @@ def _firmware(assessment, web):
     return "" if not found or found.group(1) == "unset" else found.group(1)
 
 
+def firmware_verified(assessment, resolution, findings, version):
+    """Was the submitted firmware actually checked against published ranges?
+
+    Needs an identified product AND something that was checked (a finding or a
+    cleared CVE). Vacuous truth is the trap: `any([])` over no findings would
+    otherwise mark the firmware of an unidentified product as verified.
+    """
+    if not version or resolution is None or not resolution.resolved:
+        return False
+    if not (findings or getattr(assessment, "cleared_count", 0)):
+        return False
+    return all(f.decided for f in findings)
+
+
 def _vendor(resolution):
     """The vendor of the matched product when every match agrees, else ""."""
     if resolution is None or not resolution.resolved:
@@ -646,8 +660,9 @@ def _identity(assessment, resolution, findings, web):
             unverified=_is_unidentified(assessment, resolution)))
     version = _firmware(assessment, web)
     if version:
-        undecided = any(not f.decided for f in findings)
-        chips.append(components.meta_chip("FW " + version, unverified=undecided))
+        chips.append(components.meta_chip(
+            "FW " + version,
+            unverified=not firmware_verified(assessment, resolution, findings, version)))
     else:
         chips.append(components.meta_chip("FW not given", unverified=True))
     zone = NETWORK_LABELS.get(assessment.network_exposure)
@@ -945,9 +960,11 @@ def _blocker_free(assessment, checks):
     kev, screening = checks.get("kev_loaded"), checks.get("screening_loaded")
     claims = []
     if kev is True:
-        claims.append("No applicable KEV.")
+        # Worded as what the KEV list gates, not "no KEV": a KEV-listed CVE in
+        # included software can still be evidence below without forcing AVOID.
+        claims.append("No KEV-listed CVE in the device firmware forces AVOID.")
     if screening is True:
-        claims.append("No supplier restriction configured.")
+        claims.append("No supplier screening match.")
     cards = []
     if kev is False:
         cards.append(components.context_card(
@@ -958,12 +975,14 @@ def _blocker_free(assessment, checks):
     if screening is False:
         cards.append(components.context_card(
             "Supplier screening list not loaded",
-            "<p>Covered-list and sanctions screening did not run, so the absence of "
-            "a supplier restriction here proves nothing. Load the screening lists "
-            "and assess again.</p>"))
+            "<p>Covered list only; sanctions list not loaded. Sanctions screening did "
+            "not run, so the absence of a supplier match here proves nothing. Load the "
+            "screening lists and assess again.</p>"))
     strip = ""
     if claims:
-        lead = ("No mandatory blockers." if not cards
+        # An unknown state (key absent) is as unproven as a missing list, so
+        # the plain lead needs both checks positively known to have run.
+        lead = ("No mandatory blockers." if kev is True and screening is True
                 else "No mandatory blockers in the checks that ran.")
         strip = ('<p class="rt-strip"><span class="rt-strip__tick" aria-hidden="true">'
                  f'{components.GLYPH[components.OK]}</span> '
@@ -1245,7 +1264,7 @@ def _call_view(function, *args, **kwargs):
         return None
 
 
-def _evidence_views(assessment, findings, web, hint):
+def _evidence_views(assessment, findings, web, hint, scope=""):
     """The one place the result page calls evidenceview.
 
     Returns (exposure_html, evidence_html, drawers_html). Each call is made
@@ -1257,13 +1276,17 @@ def _evidence_views(assessment, findings, web, hint):
     view = EvidenceView() if web is None else web.evidence
     advisories = None if web is None else web.advisories
     firmware = _firmware(assessment, web)
+    # Only a multi-product page passes a scope; the single-product page keeps
+    # the plain ids its fragment links and tests use.
+    extra = {"scope": scope} if scope else {}
     exposure = _call_view(evidenceview.exposure_card, assessment, static=static,
-                          findings=findings, view=view)
+                          findings=findings, view=view, **extra)
     if exposure is None:
         summary = _calculation_summary(assessment)
         exposure = components.card(summary, "Exposure") if summary else ""
     evidence = _call_view(evidenceview.evidence_card, findings, assessment, view,
-                          firmware=firmware, advisories=advisories, static=static)
+                          firmware=firmware, advisories=advisories, static=static,
+                          **extra)
     if evidence is None:
         evidence = _legacy_evidence(findings, hint)
     drawers = ""
@@ -1345,7 +1368,7 @@ def _technical(assessment, resolution, hint, static):
 
 def _assessment_block(assessment, resolution=None, findings=(), stability=None,
                       weights=None, tools='', hint=True, web=None, bands=None,
-                      checks=None):
+                      checks=None, scope=""):
     """One product's result, top to bottom in reading order (spec 3).
 
     identity -> actions and section nav (web) -> blockers -> [score | exposure]
@@ -1367,7 +1390,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
         parts.append(web.tabs_html)
 
     exposure_html, evidence_html, drawers_html = _evidence_views(
-        assessment, findings, web, hint)
+        assessment, findings, web, hint, scope)
 
     if assessment.gates:
         parts.append('<div class="rt-alerts">'
@@ -1745,10 +1768,13 @@ def body(blocks, stabilities=None, weights=None, tools='', web=None, bands=None,
     stabilities = stabilities or {}
     summary = (comparison_table(blocks, stabilities, bands=bands, weights=weights,
                                 **(compare or {})) if len(blocks) > 1 else "")
+    # Several blocks share one document: scope their ids by position (2, 3...).
+    # The first keeps the plain ids so existing links to it stay valid.
     return summary + "".join(
         _assessment_block(a, r, f, stabilities.get(id(a), stabilities.get(a.product)),
-                          weights, tools, web=web, bands=bands, checks=checks)
-        for a, r, f in blocks)
+                          weights, tools, web=web, bands=bands, checks=checks,
+                          scope=str(position + 1) if position and len(blocks) > 1 else "")
+        for position, (a, r, f) in enumerate(blocks))
 
 
 def _query_table(queries):

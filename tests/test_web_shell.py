@@ -155,7 +155,7 @@ def test_snapshot_exactly_at_the_limit_is_current_and_over_it_is_stale():
     assert "rt-snap--current" in webui.snapshot_status(
         _prov("2026-10-14", "2026-10-28"), TODAY, False)
     html = webui.snapshot_status(_prov("2026-10-13", "2026-10-28"), TODAY, True)
-    assert "rt-snap--stale" in html and "stale" in html and "●" in html
+    assert "rt-snap--stale" in html and "stale" in html and "◆" in html
     assert "Snapshot · hosted · 2026-10-13" in html
     assert 'role="alert"' not in html
 
@@ -165,7 +165,7 @@ def test_snapshot_exactly_at_the_limit_is_current_and_over_it_is_stale():
     (None, None, "KEV and EPSS missing")])
 def test_snapshot_missing(kev, epss, word):
     html = webui.snapshot_status(_prov(kev, epss), TODAY, False)
-    assert "rt-snap--missing" in html and word in html and "●" in html
+    assert "rt-snap--missing" in html and word in html and "■" in html
     assert 'role="alert"' not in html
 
 

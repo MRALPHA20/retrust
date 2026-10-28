@@ -55,6 +55,9 @@ def _uid(prefix, *parts):
     return "%s-%08x" % (prefix, zlib.crc32(key))
 
 
+_URL_ATTRS = frozenset(("href", "action", "formaction", "src", "poster", "xlink:href"))
+
+
 def _safe_href(href):
     """esc() stops attribute breakout but not a javascript: URL."""
     flat = re.sub(r"[\x00-\x20]+", "", str(href)).lower()
@@ -93,6 +96,11 @@ def _attrs(base, extra=None, protected=()):
         if value is True:
             parts.append(" " + name)
         else:
+            # URL-valued attributes get the scheme check wherever they come
+            # from, so a caller-supplied href/action/src can never be a
+            # javascript: or data: sink once scripts exist.
+            if name.lower() in _URL_ATTRS:
+                value = _safe_href(value)
             parts.append(' %s="%s"' % (name, esc(value)))
     return "".join(parts)
 
@@ -599,7 +607,8 @@ def menu(button_label, items, menu_id, *, kind="primary"):
             rid = "%s-why-%d" % (mid, index)
             rows.append(
                 '<a class="rt-menu__row rt-menu__row--disabled" '
-                'role="link" aria-disabled="true" aria-describedby="%s">'
+                'role="link" tabindex="0" aria-disabled="true" '
+                'aria-describedby="%s">'
                 '<span class="rt-menu__text">%s</span>%s'
                 '<span class="rt-menu__reason" id="%s">%s</span></a>'
                 % (rid, esc(text), tag_html, rid, esc(why)))

@@ -556,13 +556,23 @@ def _inputs_section(form):
             f'<h2 id="inputs-title">{_esc(EDIT_PANEL)}</h2>' + form + '</section>')
 
 
-def _export_menu(parameters, resolved):
+def _screening_loaded(context):
+    """Did a real screening list load, not just the shipped covered list?
+
+    Index.__bool__ is always True and len() counts the curated covered list, so
+    only the explicit flag can say a sanctions list was available to screen with.
+    """
+    return bool(getattr(context.get('screening'), 'screening_list_loaded', False))
+
+
+def _export_menu(parameters, resolved, has_statements=True):
+    reason = ('Needs an identified product.' if not resolved
+              else '' if has_statements else 'No CVE statements for this product.')
     return components.menu('Export evidence', (
         ('HTML report', f'/export.html?{parameters}', '.html', ''),
         ('JSON', f'/export.json?{parameters}', '.json', ''),
         ('CSV', f'/export.csv?{parameters}', '.csv', ''),
-        ('VEX', f'/export.vex.json?{parameters}', 'CycloneDX',
-         '' if resolved else 'Needs an identified product.'),
+        ('VEX', f'/export.vex.json?{parameters}', 'CycloneDX', reason),
     ), 'export-menu', kind='primary')
 
 
@@ -609,8 +619,9 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     evidence = _evidence_state(view, base)
     # A version that was submitted counts as confirmed unless its ranges could
     # not be decided (Redesign-plan.md item 24).
-    undecided = any(not f.decided for f in findings)
-    firmware_state = 'unverified' if (not version or undecided) else 'verified'
+    firmware_state = ('verified' if report.firmware_verified(assessment, resolution,
+                                                             findings, version)
+                      else 'unverified')
     form = _score_form(vendor, product, version, order_number, *answers,
                        prerequisites=owner.get("prerequisites", "unknown"),
                        update=True, carried=state, firmware_state=firmware_state)
@@ -634,7 +645,12 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     if named:
         actions.append(components.link_button('Supplier questions', f'/annex?{query}'))
         actions.append(components.link_button('Add to comparison', f'/compare?{candidate_query}'))
-    actions.append(_export_menu(parameters, resolution.resolved))
+    # The same test _export_vex applies, so the menu never offers a download
+    # that would 404.
+    from . import vex
+    has_statements = bool(resolution.resolved
+                          and vex.statements(connection, resolution, version or None))
+    actions.append(_export_menu(parameters, resolution.resolved, has_statements))
 
     profile = None
     if dossier is not None and resolution.matches:
@@ -655,7 +671,7 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
         advisories=_advisory_titles(connection, assessment, findings, evidence),
         checks={'kev_loaded': any(p['source'] == 'CISA KEV'
                                   for p in index_module.provenance(connection)),
-                'screening_loaded': bool(len(context.get('screening') or ()))},
+                'screening_loaded': _screening_loaded(context)},
         order_number=order_number, version=version, field_ids=dict(FIELD_IDS))
 
     body = '<h1>Product assessment</h1>'
@@ -916,7 +932,8 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
     firmware_help = ('Firmware is the software running on the equipment. Leave blank if '
                      'unknown; without it the result stays VERIFY with a range.'
                      if firmware_state == 'unverified' and not version else
-                     'Some affected ranges could not be checked against this version.'
+                     'Not checked against published ranges: the product is not identified, '
+                     'no CVE records were found, or some ranges could not be decided.'
                      if firmware_state == 'unverified' else
                      'Checked against the published affected ranges.')
     button = components.button('Update assessment' if update else 'Assess product',
@@ -1190,8 +1207,8 @@ def _alternatives_page(connection, assess, vendor, product, version, candidate_p
             for o in options)
         body += ('<div class="tw" tabindex="0" role="region" aria-label="Alternative products; scroll sideways for more columns">'
                  '<p class="table-scroll-hint">Scroll sideways to see all columns →</p>'
-                 '<table><thead><tr><th>Product — open for an assessment</th>'
-                 '<th>Verdict</th><th class="n">Score / 100</th><th class="n">Known vulnerabilities</th></tr></thead>'
+                 '<table><thead><tr><th scope="col">Product — open for an assessment</th>'
+                 '<th scope="col">Verdict</th><th scope="col" class="n">Score / 100</th><th scope="col" class="n">Known vulnerabilities</th></tr></thead>'
                  f'<tbody>{rows}</tbody></table></div>')
         if subject.score is not None and not subject.provisional and not any(o.provisional for o in options):
             better = sum(1 for o in options if o.score > subject.score)
@@ -1519,7 +1536,7 @@ A failed check blocks deployment; missing or outdated checks are identified in t
 <section class="rt-section"><h2>Common terms in plain language</h2>
 <dl class="term-list"><dt>Vulnerability / CVE</dt><dd>A known security weakness. A CVE number is its reference ID.</dd>
 <dt>Severity / CVSS</dt><dd>How serious the weakness could be, rated out of 10. It does not say how likely an attack is.</dd>
-<dt>EPSS</dt><dd>A model estimate of exploitation in the next 30 days, shown as a percentage.</dd>
+<dt>EPSS</dt><dd>A model estimate of exploitation in the next 30 days, shown in tables as a probability to two decimals (.04; &lt;.01 and &gt;.99 at the ends).</dd>
 <dt>CISA KEV</dt><dd>A public list of vulnerabilities confirmed to have been exploited. A missing entry does not prove no attack happened.</dd>
 <dt>LEV</dt><dd>A model estimate of earlier exploitation, built from historical EPSS scores. It does not show whether your own equipment was attacked.</dd>
 <dt>Firmware</dt><dd>The software running inside the equipment. Its version helps determine which vulnerabilities apply.</dd></dl></section>
@@ -1585,6 +1602,18 @@ def _export_comparison(assess, context, provenance, path, candidates):
                       'Add a version for each to compare on equal terms.']
                      if _comparison_warning(rows) else [])})
     return Download(batch.dumps(payload), 'retrust-comparison.json', 'application/json')
+
+
+def _back_to_assessment(params):
+    """/score with the inputs the failed export was asked for.
+
+    Only the assessment's own fields are carried (a whitelist), re-encoded, so
+    the link can neither smuggle another parameter nor break out of the href.
+    """
+    allowed = ('vendor', 'product', 'version', 'order_number', 'network_exposure',
+               *UNDECLARED)
+    kept = {key: params[key][0] for key in allowed if params.get(key) and params[key][0]}
+    return '/score?' + urllib.parse.urlencode(kept) if kept else '/score'
 
 
 class ExportUnavailable(Exception):
@@ -1998,7 +2027,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             except ExportUnavailable as error:
                 self._send(error.status, webui.error_page(
                     "Export unavailable", error.heading, str(error),
-                    '<p><a href="/score">Back to the assessment</a></p>'))
+                    '<p><a href="' + _esc(_back_to_assessment(params))
+                    + '">Back to the assessment</a></p>'))
                 return
             except Exception as error:
                 # A malformed query is the user's typo, not a crash. The message

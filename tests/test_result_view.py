@@ -240,11 +240,11 @@ def clean():
 def test_strip_claims_only_checks_that_ran():
     both = block(clean(), web=report.WebView(
         checks={"kev_loaded": True, "screening_loaded": True}))
-    assert ("✓</span> <span>No mandatory blockers. No applicable KEV. "
-            "No supplier restriction configured.") in both
+    assert ("✓</span> <span>No mandatory blockers. No KEV-listed CVE in the device firmware forces AVOID. "
+            "No supplier screening match.") in both
     kev_only = block(clean(), web=report.WebView(
         checks={"kev_loaded": True, "screening_loaded": False}))
-    assert "No applicable KEV." in kev_only
+    assert "No KEV-listed CVE in the device firmware forces AVOID." in kev_only
     assert "No supplier restriction configured" not in kev_only
     assert "Supplier screening list not loaded" in kev_only
     assert "No mandatory blockers in the checks that ran." in kev_only
@@ -267,11 +267,11 @@ def test_export_derives_kev_loaded_from_provenance():
     blocks = [(clean(), resolved(), [])]
     with_kev = report.render(blocks, provenance=[
         {"source": "CISA KEV", "detail": "d", "captured": "2026-10-01"}])
-    assert "No applicable KEV." in with_kev
+    assert "No KEV-listed CVE in the device firmware forces AVOID." in with_kev
     assert "No supplier restriction" not in with_kev
     without = report.render(blocks, provenance=[
         {"source": "FIRST EPSS", "detail": "d", "captured": "2026-10-01"}])
-    assert "KEV list not loaded" in without and "No applicable KEV" not in without
+    assert "KEV list not loaded" in without and "No KEV-listed CVE" not in without
     assert 'class="rt-strip"' not in report.render(blocks)
 
 

@@ -274,3 +274,51 @@ def test_aria_sort_follows_sort_navigation(browser, base_url):
         assert page.locator("th[aria-sort]:not([aria-sort=none])").count() == 1
     finally:
         context.close()
+
+
+# Gate R3: a legacy `main button:not(.rt-btn)` rule once out-specified .ev-open
+# and .ev-close, so every CVE-ID opener rendered as a primary button.
+_PRIMARY_PROBE = """() => {
+    const probe = document.createElement('i');
+    probe.style.background = 'var(--action)';
+    document.body.appendChild(probe);
+    const action = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    const out = [];
+    for (const e of document.querySelectorAll('button, a, input[type=submit]')) {
+      const r = e.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (e.classList.contains('skip-link')) continue;   // primary by design, off-screen until focused
+      if (getComputedStyle(e).backgroundColor === action
+          && !e.classList.contains('rt-btn--primary'))
+        out.push(e.tagName + '.' + e.className + ' ' + (e.textContent || '').trim().slice(0, 24));
+    }
+    return {primary: document.querySelectorAll('.rt-btn--primary').length, offenders: out}; }"""
+
+
+@pytest.mark.parametrize("name", ["result-avoid", "result-verify", "compare", "score-empty", "home"])
+def test_nothing_is_visibly_primary_unless_it_is_the_primary_button(browser, base_url, name):
+    context, page = _open(browser, base_url, PAGES[name])
+    try:
+        found = page.evaluate(_PRIMARY_PROBE)
+        assert not found["offenders"], found["offenders"]
+        assert found["primary"] <= 1
+    finally:
+        context.close()
+
+
+def test_cve_openers_are_links_and_drawer_close_is_not_primary(browser, base_url):
+    context, page = _open(browser, base_url, S7)
+    try:
+        openers = page.evaluate("""() => [...document.querySelectorAll('.ev-open')].map(e => {
+            const s = getComputedStyle(e);
+            return [s.backgroundColor, s.marginTop, s.minHeight, s.paddingLeft, s.textDecorationLine]; })""")
+        assert openers, "the evidence table has CVE openers"
+        for background, margin, min_height, padding, decoration in openers:
+            assert background == "rgba(0, 0, 0, 0)"
+            assert margin == "0px" and padding == "0px" and decoration == "underline"
+        closers = page.evaluate("""() => [...document.querySelectorAll('.ev-close')].map(
+            e => getComputedStyle(e).backgroundColor)""")
+        assert closers and all(c == "rgba(0, 0, 0, 0)" for c in closers)
+    finally:
+        context.close()

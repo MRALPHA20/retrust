@@ -153,7 +153,10 @@ def test_only_the_active_column_has_aria_sort_with_a_cyan_glyph():
     assert cell and "CVSS" in cell.group(1) and "▲" in cell.group(1)
     desc = ev.evidence_card(fs, a, view(sort="cvss", dir="desc"))
     assert 'aria-sort="descending"' in desc and "▼" in desc
-    assert "aria-sort" not in ev.evidence_card(fs, a, view())
+    # The default order is EPSS descending, so exactly that one header says so.
+    default = ev.evidence_card(fs, a, view())
+    assert default.count("aria-sort=") == 1
+    assert re.search(r'<th scope="col" aria-sort="descending"><a class="ev-sort"[^>]*>Signals', default)
     # Header cells are real links, and clicking the active column flips it.
     assert 'sort=cvss&amp;dir=desc#evidence' in card
     assert all('<th scope="col"' in card for _ in range(1))

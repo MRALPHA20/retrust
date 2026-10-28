@@ -428,12 +428,19 @@ def _legend(floored_any, static):
     return '<dl class="ev-legend">%s%s</dl>' % (items, note)
 
 
-def exposure_card(assessment, *, static=False, findings=None, view=None):
+def _scoped(ident, scope):
+    """An id made unique per candidate on a multi-product page."""
+    return "%s-%s" % (ident, scope) if scope else ident
+
+
+def exposure_card(assessment, *, static=False, findings=None, view=None, scope=""):
     """Top three review units and the arithmetic that turns them into E.
 
     ``findings`` and ``view`` are optional: when given, a unit row opens the
     drawer of its worst record if that record is among the shown rows. Without
-    them (or in an export) rows are static text.
+    them (or in an export) rows are static text. ``scope`` is "" for a
+    single-product page and "2", "3"... for the blocks of a comparison, so no
+    id repeats within one document.
     """
     paths = list(getattr(assessment, "paths", None) or [])
     head = ('<div class="ev-head">%s%s</div>'
@@ -446,7 +453,7 @@ def exposure_card(assessment, *, static=False, findings=None, view=None):
                 "No review units were measured. Absence of a record is not "
                 "proof of safety.")
         return components.card(head + '<p class="ev-empty">%s</p>' % esc(text),
-                               id="exposure")
+                               id=_scoped("exposure", scope))
     drawer_for = {}
     if findings is not None and not static:
         rows = shown(findings, assessment, view)
@@ -494,7 +501,7 @@ def exposure_card(assessment, *, static=False, findings=None, view=None):
              '<table class="ev-table ev-units"><thead><tr>%s</tr></thead>'
              '<tbody>%s</tbody></table></div>' % ("".join(heads), "".join(body)))
     return components.card(head + table + more + _legend(floored_any, static),
-                           id="exposure")
+                           id=_scoped("exposure", scope))
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +645,11 @@ def _head_cell(state, key, title, numeric, static):
         direction = "asc" if state.dir == "desc" else "desc"
     glyph = ""
     aria = ""
+    # The default order is EPSS descending (see _disclosure), so that column
+    # carries the sort state until the reader picks another; only one column
+    # may ever hold aria-sort.
+    if not state.sort and key == "epss":
+        aria = ' aria-sort="descending"'
     if active:
         glyph = ' <span class="ev-glyph" aria-hidden="true">%s</span>' % (
             "▲" if state.dir == "asc" else "▼")
@@ -713,7 +725,7 @@ def _detail_row(finding, info, firmware, advisories):
 
 
 def evidence_card(findings, assessment, view, *, firmware="", advisories=None,
-                  static=False):
+                  static=False, scope=""):
     state = _state(view)
     findings = list(findings or [])
     total = len(findings)
@@ -739,7 +751,7 @@ def evidence_card(findings, assessment, view, *, firmware="", advisories=None,
             text = ("No CVEs in scope. No advisory CVE was found for this "
                     "product, which is not proof that it has none.")
         return components.card(head + title + '<p class="ev-empty">%s</p>'
-                               % esc(text) + caption, id=state.anchor)
+                               % esc(text) + caption, id=_scoped(state.anchor, scope))
     if not rows:
         text = "No CVEs match the %s filter (%d in scope)." % (
             FILTER_LABELS[state.ev].lower(), total)
@@ -747,7 +759,7 @@ def evidence_card(findings, assessment, view, *, firmware="", advisories=None,
                                   % (_href(state, ev="all"), total))
         return components.card(
             head + title + '<p class="ev-empty">%s%s</p>' % (esc(text), link)
-            + caption, id=state.anchor)
+            + caption, id=_scoped(state.anchor, scope))
 
     index = _index(assessment)
     ids = _drawer_ids(rows)
@@ -797,11 +809,11 @@ def evidence_card(findings, assessment, view, *, firmware="", advisories=None,
         note += '<p class="ev-counts">Order: %s.</p>' % esc(order)
     table = ('<div class="tw ev-scroll" tabindex="0" role="region" '
              'aria-label="CVE evidence, scroll horizontally for more columns">'
-             '<table id="evidence-table" class="ev-table"><thead><tr>%s</tr>'
+             '<table id="%s" class="ev-table"><thead><tr>%s</tr>'
              '</thead><tbody>%s</tbody></table></div>'
-             % (thead, "".join(body)))
+             % (_scoped("evidence-table", scope), thead, "".join(body)))
     return components.card(head + title + intro + note + table + caption,
-                           id=state.anchor)
+                           id=_scoped(state.anchor, scope))
 
 
 # ---------------------------------------------------------------------------
