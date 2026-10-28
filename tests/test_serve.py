@@ -486,6 +486,7 @@ def test_the_policy_forbids_fetching_and_executing(handler):
     policy = headers["Content-Security-Policy"]
     assert "default-src 'none'" in policy
     assert "form-action 'self'" in policy
+    assert "font-src 'self'" in policy
     assert headers["X-Content-Type-Options"] == "nosniff"
     assert headers["Referrer-Policy"] == "no-referrer"
 

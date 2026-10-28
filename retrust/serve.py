@@ -30,7 +30,7 @@ import urllib.parse
 from datetime import date
 
 from . import alternatives, batch, lev, questions, report, score, search, sensitivity, ssvc, timeline, webviews
-from . import webui, supplychain, identity, webcache
+from . import webui, supplychain, identity, webcache, assets
 from .webui import page as _page
 from . import index as index_module
 from .index import normalize_name
@@ -69,7 +69,8 @@ Every value reaching a page goes through html.escape.
 Bound to 127.0.0.1 unless --host says otherwise, and that is printed when it is.
 On a loopback bind, the Host header must name this machine to prevent
   DNS-rebinding pages from reading the local index.
-No response is cached (Cache-Control: no-store) and none may be framed.
+No page or download is cached (Cache-Control: no-store) and none may be framed.
+Only the bundled font files are cacheable, found by exact name and never by path.
 A connection that stalls is dropped after 10 seconds and releases its worker.
 Request workers own independent read-only advisory and screening connections.
 Active and queued work is bounded; excess requests receive 503 with a retry hint.
@@ -1516,6 +1517,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                 lambda: _lev_page(connection, assess, first("vendor"), first("product"))),
             "/vendor": lambda: _vendor_page(connection, dossier, context, first("name")),
         }
+        if assets.is_static_path(path):
+            return assets.static_asset(path)      # None if the file is missing
         route = routes.get(path)
         return route() if route else None
 
@@ -1536,7 +1539,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                 return
             parsed = urllib.parse.urlparse(self.path)
             capacity = getattr(self.server, '_calculations', None)
-            if parsed.path == '/healthz' or capacity is None:
+            if (parsed.path == '/healthz' or assets.is_static_path(parsed.path)
+                    or capacity is None):
                 self._dispatch_get(parsed)
                 return
             if not capacity.acquire(timeout=.05):
@@ -1569,11 +1573,16 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             self._send(200, page)
 
         def _send(self, status, markup):
-            payload = markup.encode("utf-8")
-            kind = (markup.content_type if isinstance(markup, Download) else
-                    "text/plain" if isinstance(markup, PlainText) else "text/html")
+            if isinstance(markup, assets.Asset):
+                payload, content_type = markup.body, markup.content_type
+                cache_control = markup.cache_control
+            else:
+                payload = markup.encode("utf-8")
+                kind = (markup.content_type if isinstance(markup, Download) else
+                        "text/plain" if isinstance(markup, PlainText) else "text/html")
+                content_type, cache_control = f"{kind}; charset=utf-8", "no-store"
             self.send_response(status)
-            self.send_header("Content-Type", f"{kind}; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             revision = os.environ.get('RENDER_GIT_COMMIT', '')
             if 7 <= len(revision) <= 40 and all(char in '0123456789abcdef' for char in revision):
@@ -1584,8 +1593,8 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
             # works is the correct one: nothing may be fetched or executed.
             self.send_header("Content-Security-Policy",
                              "default-src 'none'; style-src 'unsafe-inline'; "
-                             "form-action 'self'; base-uri 'none'; "
-                             "frame-ancestors 'none'")
+                             "font-src 'self'; form-action 'self'; "
+                             "base-uri 'none'; frame-ancestors 'none'")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("Referrer-Policy", "no-referrer")
@@ -1596,7 +1605,7 @@ def build_handler(connection, assess, context, dossier, stats, provenance,
                                  "max-age=31536000; includeSubDomains")
             # Verdicts and sanctions screening have no business sitting in a
             # browser cache after the tab closes.
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache_control)
             if status == 503:
                 self.send_header("Retry-After", "2")
             # Which code is serving this, independent of the data it serves.
