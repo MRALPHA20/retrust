@@ -765,13 +765,57 @@ def _comparison_results(assess, context, rows):
 
 
 def _comparison_warning(rows):
-    return ('<p class="notice">Some candidates have firmware specified and others do not. '
-            'Add a version for each to compare on equal terms.</p>'
-            if any(row[2] for row in rows) and not all(row[2] for row in rows) else '')
+    if not (any(row[2] for row in rows) and not all(row[2] for row in rows)):
+        return ''
+    # "review" is the amber alert and carries no role=alert: this is advice
+    # about the comparison, not an error.
+    return report.components.alert(
+        'review', 'Firmware is not given for every candidate',
+        'Some candidates have firmware specified and others do not. '
+        'Add a version for each to compare on equal terms.')
+
+
+def _remove_hrefs(entries, rows):
+    """For each ranked entry, the shortlist URL without that one candidate.
+
+    Ranking reorders the rows, so an entry is matched back to its input row by
+    the four identifying fields, each row used once. Two rows identical in all
+    four fields (differing only in site details) are interchangeable here.
+    """
+    pool = list(range(len(rows)))
+    hrefs = []
+    for _, query, _ in entries:
+        key = [query.get(name, '') for name in batch.QUERY_FIELDS]
+        match = next((i for i in pool if list(rows[i][:4]) == key), None)
+        if match is None:
+            hrefs.append(None)
+            continue
+        pool.remove(match)
+        rest = [row for i, row in enumerate(rows) if i != match]
+        hrefs.append('/compare?' + _comparison_parameters(rest) if rest else '/compare')
+    return hrefs
+
+
+def _clear_shortlist():
+    """Destructive control that always confirms, with a native popover (no JS)."""
+    components = report.components
+    return (components.button('Clear shortlist', 'destructive',
+                              attrs={'popovertarget': 'clear-shortlist'})
+            + '<div class="rt-confirm" id="clear-shortlist" popover role="alertdialog" '
+              'aria-labelledby="clear-shortlist-text">'
+              '<p id="clear-shortlist-text">Clear the whole shortlist? Every candidate is '
+              'removed from this page. Nothing is saved.</p>'
+              '<div class="rt-confirm__actions">'
+            + components.link_button('Clear shortlist', '/compare', 'destructive')
+            + components.button('Keep shortlist', 'secondary',
+                                attrs={'popovertarget': 'clear-shortlist',
+                                       'popovertargetaction': 'hide'})
+            + '</div></div>')
 
 
 def _compare_page(assess, context, candidates, submitted=False):
     """A shortlist with separate input fields and ranked, explainable results."""
+    components = report.components
     filled = _comparison_rows(candidates)
     boxes = ''
     for i in range(min(MAX_CANDIDATES, max(2, len(filled) + 1))):
@@ -786,18 +830,21 @@ def _compare_page(assess, context, candidates, submitted=False):
                   + _field(f'cf{i}', f'version_{i}', 'Firmware (optional)', version, 'e.g. 3.0')
                   + '</div><h3>Network access and operating conditions</h3>'
                   + _owner_fields(network, suffix=f'_{i}', **owner) + '</fieldset>')
+    # Compare is secondary: the one primary control on this page is the export menu.
     form = ('<form method="get" action="/compare">' + boxes
             + '<p class="helper">Use an order number, or a vendor and model. If you enter both, '
             'they must agree. Leave unused candidates blank. Another row appears after comparing, '
             'up to 12 candidates. Each candidate keeps its own site details and fixes.</p>'
-            '<button type="submit">Compare candidates →</button></form>')
+            + components.button('Compare', 'secondary', 'submit') + '</form>')
     heading = ('<h1>Compare your candidates</h1><p class="lead">Review products side by side before '
                'choosing what to buy. Higher scores are more favourable; purchase blockers override the score. '
                'An engineer still needs to confirm that each product can do the required job.</p>')
     if not _valid_comparison(filled):
-        notice = ('<p class="notice" role="alert">Enter an order number, vendor or product in each '
-                  'used candidate row before comparing. Firmware alone does not identify '
-                  'a product.</p>' if submitted else '')
+        notice = (components.alert(
+            'error', 'Name a product in each candidate row',
+            'Enter an order number, vendor or product in each used candidate row before '
+            'comparing. Firmware alone does not identify a product.')
+            if submitted else '')
         example = ('<p class="helper"><a href="/compare?c=ABB%7CAC%20800M&amp;c=Moxa%7CEDS-405A">'
                    'Open an example comparison</a>. These examples demonstrate the tool; they are '
                    'different equipment types, not interchangeable products.</p>')
@@ -806,15 +853,19 @@ def _compare_page(assess, context, candidates, submitted=False):
     blocks = [block for block, _, _ in entries]
     stabilities = {id(block[0]): stability for block, _, stability in entries if stability}
     parameters = _comparison_parameters(filled)
-    downloads = '<details><summary>Save or share this comparison</summary><div class="actions">' + ''.join(
-        f'<a class="button secondary" href="/compare.{extension}?{_esc(parameters)}">'
-        f'Download {label} ↓</a>' for extension, label in
-        (('html', 'comparison report'), ('json', 'comparison JSON'), ('csv', 'comparison CSV'))) + '</div></details>'
+    export = components.menu('Export comparison', [
+        (label, f'/compare.{extension}?{parameters}', tag, '')
+        for extension, label, tag in (('html', 'HTML report', 'HTML'),
+                                      ('json', 'JSON', 'JSON'),
+                                      ('csv', 'CSV', 'CSV'))], 'export-comparison')
+    actions = f'<div class="rt-cmp-actions">{export}{_clear_shortlist()}</div>'
+    hrefs = _remove_hrefs(entries, filled)
+    queries = [query for _, query, _ in entries]
     warning = _comparison_warning(filled)
-    return _page('Procurement comparison', heading + warning
+    return _page('Procurement comparison', heading + warning + actions
                  + '<details><summary>Edit candidates or add another</summary>' + form + '</details>'
-                 + downloads
-                 + report.body(blocks, stabilities=stabilities, weights=context['weights']),
+                 + report.body(blocks, stabilities=stabilities, weights=context['weights'],
+                               compare={'remove': lambda i: hrefs[i], 'queries': queries}),
                  f'{len(blocks)} candidate(s)')
 
 

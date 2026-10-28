@@ -41,6 +41,49 @@ _LEGACY_ALIASES = (":root{--field:var(--ground);--panel:var(--surface);--sunk:va
                    "--ink:var(--text);--soft:var(--text-2);--faint:var(--muted);"
                    "--cond:var(--conditional)}\n")
 
+# Kept apart from RESULT_CSS so the comparison page can change without
+# touching the result rules. Appended to RESULT_CSS below.
+COMPARE_CSS = """
+.rt-cmp-card{padding:0;overflow:hidden;margin:var(--s20) 0}
+.rt-cmp-card .tw{margin:0}
+.rt-cmp-card .tnote{margin:0;padding:var(--s12) var(--s16);border-top:1px solid var(--rule)}
+.rt-cmp-card .table-scroll-hint{padding:var(--s8) var(--s16)}
+.tw table.rt-cmp{min-width:620px;border:0;border-collapse:separate;border-spacing:0}
+.rt-cmp th,.rt-cmp td{vertical-align:middle;min-width:132px}
+.rt-cmp thead th{position:sticky;top:0;z-index:2;vertical-align:top}
+.rt-cmp .rt-cmp__label,.rt-cmp .rt-cmp__corner{position:sticky;left:0;z-index:1;min-width:150px;background:var(--bar);border-right:1px solid var(--rule)}
+.rt-cmp thead .rt-cmp__corner{z-index:3}
+.rt-cmp td.n{text-align:left}
+@media (max-width:700px){.rt-cmp .rt-cmp__label,.rt-cmp .rt-cmp__corner{min-width:136px;max-width:136px;white-space:normal;overflow-wrap:break-word}.rt-cmp td{min-width:150px}}
+.rt-cmp .rt-cmp__head{position:relative;min-width:150px;padding-right:calc(var(--s12) + 44px);font-family:var(--font-sans);font-size:.875rem;font-weight:600;line-height:1.3;text-transform:none;letter-spacing:0;white-space:normal;color:var(--text)}
+.rt-cmp__name{display:block;overflow-wrap:anywhere}
+.rt-cmp__order{display:block;margin-top:var(--s2);font-family:var(--font-mono);font-size:.75rem;font-weight:400;color:var(--muted);overflow-wrap:anywhere}
+.rt-cmp__gate{color:var(--avoid)}
+.rt-cmp__remove{position:absolute;top:0;right:0;display:flex;align-items:center;justify-content:center;width:44px;height:44px;font-size:1.25rem;line-height:1;text-decoration:none;color:var(--muted)}
+.rt-cmp__remove:hover{color:var(--text)}
+.rt-cmp__remove:focus-visible{outline:2px solid var(--action);outline-offset:-2px}
+.rt-cmp__key{font-family:var(--font-mono);font-weight:600;color:var(--action)}
+.rt-cmp td{font-family:var(--font-mono);font-size:.8125rem;color:var(--text-2)}
+.rt-cmp td.rt-cmp__reason{font-family:var(--font-sans);color:var(--text-2);overflow-wrap:anywhere}
+.rt-cmp td.rt-cmp__best,.rt-cmp td.rt-cmp__best .rt-cmp__val,.rt-cmp td.rt-cmp__best .rt-cmp__score{font-weight:700;color:var(--text)}
+.rt-cmp__score{font-family:var(--font-mono);font-weight:500;font-size:1.25rem;line-height:1.2;color:var(--text);font-variant-numeric:tabular-nums}
+.rt-cmp__score--range{font-size:.875rem}
+.rt-cmp__score--struck{text-decoration:line-through;text-decoration-thickness:1px;color:var(--muted)}
+.rt-cmp__val{display:block;color:var(--text)}
+.rt-cmp__val--range{font-size:.75rem}
+.rt-cmp__val--neutral{color:var(--verify)}
+.rt-cmp__bar{position:relative;display:block;height:4px;margin-top:var(--s4);overflow:hidden;background:var(--raised)}
+.rt-cmp__bar i{position:absolute;top:0;bottom:0;left:0;background:var(--action)}
+.rt-cmp__bar i.rt-cmp__hatch{background:repeating-linear-gradient(90deg,var(--verify) 0 4px,transparent 4px 8px)}
+.rt-confirm{box-sizing:border-box;width:min(320px,calc(100vw - 32px));margin:auto;padding:var(--s20);color:var(--text);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-card);box-shadow:var(--overlay-shadow)}
+.rt-confirm::backdrop{background:rgba(0,0,0,.5)}
+.rt-confirm:not(:popover-open){display:none}
+.rt-confirm p{margin:0 0 var(--s16)}
+.rt-confirm__actions{display:flex;flex-wrap:wrap;gap:var(--s8)}
+.rt-cmp-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s8);margin:var(--s16) 0}
+@media print{.rt-cmp .rt-cmp__label,.rt-cmp .rt-cmp__corner,.rt-cmp thead th{position:static}.rt-cmp__remove{display:none}}
+"""
+
 RESULT_CSS = """
 .block{margin:var(--s32) 0 0}
 .rt-result{display:flex;flex-direction:column;gap:var(--s20)}
@@ -156,7 +199,7 @@ tr.unscored{background:var(--bar)}
 tr.unscored .bar i{background:var(--muted)}
 .note{border:1px solid var(--rule);border-left:3px solid var(--conditional);background:var(--surface);border-radius:var(--r-lg);padding:var(--s12) var(--s16);margin:var(--s8) 0;color:var(--text-2)}
 .tnote{font-size:.8125rem;color:var(--muted);margin:0 0 var(--s12)}
-"""
+""" + COMPARE_CSS
 
 # Everything that exists only because the export is a document: the page frame,
 # the glossary that replaces tooltips, and print behaviour.
@@ -1503,8 +1546,193 @@ def _summary_table(blocks, stabilities, hint=True):
             'the stability of the ranking. A dash means this check was not run.</p>')
 
 
+def _cmp_robust(assessment, st):
+    """(text, agreement-or-None) for the verdict stability row."""
+    if st is None:
+        return "&mdash;", None
+    if st.gated:
+        return "Blocked", None
+    if assessment.provisional:
+        return "Needs verification", None
+    if not st.samples:
+        return "Not tested", None
+    return f"{st.agreement:.0%}", st.agreement
+
+
+def _cmp_note(assessment, resolution):
+    if not resolution.resolved:
+        return resolution.reason
+    if assessment.gates:
+        return assessment.gates[0]["gate"]
+    if assessment.cautions or assessment.third_party_count:
+        return "Supplier verification required"
+    if assessment.provisional and assessment.verification:
+        return f"Needs verification: {len(assessment.verification)} open check(s)"
+    return ""
+
+
+def _cmp_pillar(assessment, spec, neutral, bands):
+    """(value for ranking or None, cell html) for one E/P/V/C cell."""
+    pillar = {p.name: p for p in assessment.pillars}.get(spec.name)
+    if pillar is None or assessment.score is None:
+        return None, "&mdash;"
+    if (spec.key == "exposure" and assessment.provisional
+            and assessment.exposure_min is not None
+            and assessment.exposure_max is not None):
+        low, high = assessment.exposure_min, assessment.exposure_max
+        return None, (f'<span class="rt-cmp__val rt-cmp__val--range">{_esc(_range_text(low, high))}</span>'
+                      '<span class="rt-cmp__bar" aria-hidden="true">'
+                      f'<i style="width:{_pct(low)}%"></i>'
+                      f'<i class="rt-cmp__hatch" style="left:{_pct(low)}%;width:{_pct(high - low)}%"></i></span>')
+    if spec.key in neutral:
+        return None, (f'<span class="rt-cmp__val rt-cmp__val--neutral">{score.MISSING_PILLAR:.0f}*</span>'
+                      '<span class="rt-cmp__bar rt-cmp__bar--neutral" aria-hidden="true">'
+                      f'<i class="rt-cmp__hatch" style="width:{_pct(score.MISSING_PILLAR)}%"></i></span>')
+    if not pillar.scored:
+        return None, "&mdash;"
+    return pillar.score, (f'<span class="rt-cmp__val">{_esc(_score_text(pillar.score))}</span>'
+                          '<span class="rt-cmp__bar" aria-hidden="true">'
+                          f'<i style="width:{_pct(pillar.score)}%"></i></span>')
+
+
+def _cmp_best(values, high):
+    """Indexes holding the best value of a row, or none at all.
+
+    Bold marks the winner; when everyone ties, or only one candidate has a
+    number, there is no winner and bolding would only be noise.
+    """
+    numbers = [(i, v) for i, v in enumerate(values) if v is not None]
+    if len(numbers) < 2:
+        return set()
+    best = (max if high else min)(v for _, v in numbers)
+    winners = {i for i, v in numbers if v == best}
+    return set() if len(winners) == len(numbers) else winners
+
+
+def comparison_table(blocks, stabilities=None, hint=True, remove=None,
+                     queries=None, bands=None, weights=None):
+    """The transposed shortlist (spec 4.18): candidates are columns.
+
+    `blocks` are (assessment, resolution, findings) in ranked order and keep
+    that order. `remove(index)` returns the href that drops that candidate, or
+    None for the static export, which has nowhere to link. `queries` is a
+    parallel list of input dicts, used only to show the order number. The best
+    value in a row is bold; there is no hue for "best".
+    """
+    stabilities = stabilities or {}
+    cols = []
+    for index, (assessment, resolution, findings) in enumerate(blocks):
+        findings = list(findings or ())
+        known = bool(resolution.resolved) and assessment.score is not None
+        st = stabilities.get(id(assessment), stabilities.get(assessment.product))
+        robust_text, agreement = _cmp_robust(assessment, st)
+        neutral = {s.key for s in _neutral_pillars(assessment)}
+        low, high = _bounds(assessment)
+        gates = len(assessment.gates)
+        unpatched = sum(1 for f in findings if not f.fixed)
+        cols.append({
+            "a": assessment, "known": known, "gated": bool(assessment.gates),
+            "low": low, "high": high, "robust": robust_text, "agreement": agreement,
+            "pillars": [_cmp_pillar(assessment, spec, neutral, bands) for spec in score.PILLARS],
+            "blockers": gates if resolution.resolved else None,
+            "gaps": (len(_gap_cards(assessment, resolution, findings, weights, None))
+                     if resolution.resolved else None),
+            "unpatched": unpatched if known else None,
+            "kev": sum(1 for f in findings if f.in_kev) if known else None,
+            "note": _cmp_note(assessment, resolution),
+            "order": ((queries[index] or {}).get("order_number", "")
+                      if queries and index < len(queries) else ""),
+            "href": remove(index) if remove else None,
+        })
+
+    def number(value):
+        return "&mdash;" if value is None else str(value)
+
+    def cells(values, best):
+        return "".join(f'<td class="n{" rt-cmp__best" if i in best else ""}">{number(v)}</td>'
+                       for i, v in enumerate(values))
+
+    def row(label, inner, key):
+        return (f'<tr class="rt-cmp__row rt-cmp__row--{key}">'
+                f'<th scope="row" class="rt-cmp__label">{label}</th>{inner}</tr>')
+
+    head = ['<th scope="col" class="rt-cmp__corner">Measure</th>']
+    for col in cols:
+        a = col["a"]
+        gate = ('<span class="rt-cmp__gate" role="img" aria-label="Has a purchase blocker">■</span> '
+                if col["gated"] else "")
+        order = f'<span class="rt-cmp__order">{_esc(col["order"])}</span>' if col["order"] else ""
+        x = (f'<a class="rt-cmp__remove" href="{_esc(col["href"])}" '
+             f'aria-label="Remove {_esc(a.product)} from the shortlist"><span aria-hidden="true">×</span></a>'
+             if col["href"] else "")
+        head.append(f'<th scope="col" class="rt-cmp__head"><span class="rt-cmp__name">{gate}{_esc(a.product)}</span>'
+                    f'{order}{x}</th>')
+
+    rows = []
+    verdicts = "".join(
+        '<td>' + components.verdict_badge(
+            c["a"].verdict, "s",
+            c["low"] if c["a"].provisional else None,
+            c["high"] if c["a"].provisional else None) + '</td>' for c in cols)
+    rows.append(row("Verdict", verdicts, "verdict"))
+
+    # A gated candidate's number is overridden by its blocker, so it cannot be
+    # the best score even when it is the highest.
+    scores = [c["a"].score if c["a"].score is not None and not c["gated"] else None for c in cols]
+    best = _cmp_best(scores, True)
+    cell = []
+    for i, c in enumerate(cols):
+        a = c["a"]
+        if c["low"] is None:
+            text, klass = "&mdash;", ""
+        elif a.provisional:
+            text, klass = _esc(_range_text(c["low"], c["high"])), " rt-cmp__score--range"
+        else:
+            text, klass = _esc(_score_text(c["low"])), ""
+        if c["gated"] and c["low"] is not None:
+            klass += " rt-cmp__score--struck"
+        bold = " rt-cmp__best" if i in best else ""
+        cell.append(f'<td class="n{bold}"><span class="rt-cmp__score{klass}">{text}</span></td>')
+    rows.append(row("Score", "".join(cell), "score"))
+
+    for k, spec in enumerate(score.PILLARS):
+        values = [c["pillars"][k][0] for c in cols]
+        best = _cmp_best(values, True)
+        inner = "".join(
+            f'<td class="rt-cmp__pillar{" rt-cmp__best" if i in best else ""}">{c["pillars"][k][1]}</td>'
+            for i, c in enumerate(cols))
+        label = f'<span class="rt-cmp__key">{_esc(_letter(spec))}</span> {_esc(PILLAR_LABELS.get(spec.name, spec.name))}'
+        rows.append(row(label, inner, "pillar-" + spec.key))
+
+    for key, label in (("blockers", "Blockers"), ("gaps", "Open gaps"),
+                       ("unpatched", "Unpatched CVEs"), ("kev", "In CISA KEV")):
+        values = [c[key] for c in cols]
+        rows.append(row(label, cells(values, _cmp_best(values, False)), key))
+
+    values = [c["agreement"] for c in cols]
+    best = _cmp_best(values, True)
+    inner = "".join(f'<td class="n{" rt-cmp__best" if i in best else ""}">{c["robust"]}</td>'
+                    for i, c in enumerate(cols))
+    rows.append(row("Verdict stability", inner, "stability"))
+    rows.append(row("Main reason", "".join(
+        f'<td class="rt-cmp__reason">{_esc(c["note"]) or "&mdash;"}</td>' for c in cols), "reason"))
+
+    return ('<section class="rt-card rt-cmp-card" aria-label="Shortlist comparison">'
+            '<div class="tw" tabindex="0" role="region" '
+            'aria-label="Candidate comparison, scroll horizontally for more columns">'
+            + _scroll_hint('Scroll sideways to see all candidates’ evidence →', hint)
+            + '<table class="rt-cmp"><thead><tr>' + "".join(head) + '</tr></thead><tbody>'
+            + "".join(rows) + '</tbody></table></div>'
+            '<p class="tnote">Verdict stability shows how often the most common verdict '
+            'repeated when score weights were changed. Below 90%, the result depends more '
+            'strongly on the chosen weights. This does not measure evidence accuracy or '
+            'the stability of the ranking. A dash means this check was not run. Bold marks '
+            'the best value in a row; a score overridden by a blocker is never marked best.</p>'
+            '</section>')
+
+
 def body(blocks, stabilities=None, weights=None, tools='', web=None, bands=None,
-         checks=None):
+         checks=None, compare=None):
     """The summary table and assessment blocks, without the page around them.
 
     Split out so the local web server can put the same markup inside its own
@@ -1515,7 +1743,8 @@ def body(blocks, stabilities=None, weights=None, tools='', web=None, bands=None,
     screening_loaded} facts for a caller with no WebView.
     """
     stabilities = stabilities or {}
-    summary = _summary_table(blocks, stabilities) if len(blocks) > 1 else ""
+    summary = (comparison_table(blocks, stabilities, bands=bands, weights=weights,
+                                **(compare or {})) if len(blocks) > 1 else "")
     return summary + "".join(
         _assessment_block(a, r, f, stabilities.get(id(a), stabilities.get(a.product)),
                           weights, tools, web=web, bands=bands, checks=checks)
