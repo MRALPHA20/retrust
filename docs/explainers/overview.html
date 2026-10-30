@@ -1,0 +1,188 @@
+<title>ReTrust Explained</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+  /* ---- palette: ISA-101 control-room echo. Light default; dark redefines tokens. ---- */
+  :root{
+    --bg:#eceff1; --surface:#f8fafb; --sunk:#e1e6e9; --rule:#ccd3d8;
+    --ink:#1b242b; --soft:#54606a; --faint:#889299;
+    --accent:#0d7a64; --accent-soft:#0d7a6418;
+    --prefer:#1c7a4a; --cond:#a2690a; --avoid:#b02a20;
+    --shadow:0 1px 2px rgba(20,30,40,.06),0 8px 24px rgba(20,30,40,.05);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme=light]){
+      --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+      --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+      --accent:#49cdac; --accent-soft:#49cdac1f;
+      --prefer:#49b67e; --cond:#d79a26; --avoid:#e46a60;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme=dark]{
+    --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+    --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+    --accent:#49cdac; --accent-soft:#49cdac1f;
+    --prefer:#49b67e; --cond:#d79a26; --avoid:#e46a60;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.6;font-size:17px;-webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility}
+  .wrap{max-width:880px;margin:0 auto;padding:clamp(1.3rem,4vw,3rem) clamp(1.1rem,4vw,2rem) 5rem}
+
+  /* ---- masthead ---- */
+  .top{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2.6rem}
+  .brand{display:flex;align-items:center;gap:.7rem;font-weight:700;font-size:1.18rem;letter-spacing:-.01em}
+  .mark{width:38px;height:38px;flex:none;display:grid;place-items:center;position:relative;
+    border:1.5px solid var(--accent);border-radius:11px 3px 11px 3px;color:var(--accent);
+    font-family:var(--mono);font-weight:600;font-size:1.25rem}
+  .mark sup{position:absolute;top:3px;right:5px;font-size:.6rem}
+  .toggle{appearance:none;border:1px solid var(--rule);background:var(--surface);color:var(--soft);
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;
+    padding:.5rem .8rem;border-radius:7px;cursor:pointer}
+  .toggle:hover{color:var(--ink);border-color:var(--accent)}
+
+  .eyebrow{font-family:var(--mono);font-size:.74rem;font-weight:500;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 .9rem}
+  h1{font-size:clamp(2rem,6vw,3rem);line-height:1.08;letter-spacing:-.025em;font-weight:700;
+    margin:0 0 1rem;text-wrap:balance}
+  .lede{font-size:clamp(1.05rem,2.4vw,1.28rem);color:var(--soft);max-width:36ch;margin:0 0 .4rem}
+  .hero .lede{max-width:46ch}
+
+  h2{font-size:1.5rem;letter-spacing:-.015em;font-weight:700;margin:3.4rem 0 .5rem;text-wrap:balance}
+  .section-note{color:var(--soft);margin:0 0 1.4rem;max-width:58ch}
+  section:first-of-type h2{margin-top:2.2rem}
+
+  .card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;
+    padding:1.4rem 1.5rem;box-shadow:var(--shadow)}
+  .grid{display:grid;gap:14px}
+  @media(min-width:620px){.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}}
+
+  /* the one question */
+  .question{border-left:4px solid var(--accent);background:var(--accent-soft);
+    border-radius:0 12px 12px 0;padding:1.2rem 1.4rem;margin:.4rem 0 0}
+  .question p{margin:0;font-size:1.18rem;line-height:1.5}
+  .question em{font-style:normal;color:var(--accent);font-weight:600}
+
+  /* flow figure */
+  figure{margin:1rem 0 0}
+  figure svg{display:block;width:100%;height:auto}
+  figcaption{color:var(--faint);font-size:.86rem;margin-top:.7rem;font-family:var(--mono)}
+
+  /* verdict chips */
+  .verdicts{display:grid;gap:12px;margin-top:.3rem}
+  @media(min-width:620px){.verdicts{grid-template-columns:1fr 1fr}}
+  .verdict{display:flex;gap:.9rem;align-items:flex-start;background:var(--surface);
+    border:1px solid var(--rule);border-left-width:4px;border-radius:10px;padding:.9rem 1.1rem}
+  .verdict .v{font-family:var(--mono);font-weight:600;font-size:.95rem;letter-spacing:.02em;flex:none;
+    padding-top:.05rem}
+  .verdict small{display:block;color:var(--soft);font-size:.92rem;line-height:1.45;font-family:var(--sans)}
+  .v-prefer{border-left-color:var(--prefer)} .v-prefer .v{color:var(--prefer)}
+  .v-cond{border-left-color:var(--cond)}     .v-cond .v{color:var(--cond)}
+  .v-avoid{border-left-color:var(--avoid)}   .v-avoid .v{color:var(--avoid)}
+  .v-na{border-left-color:var(--faint)}      .v-na .v{color:var(--faint)}
+
+  /* numbered steps */
+  ol.steps{list-style:none;counter-reset:s;margin:.3rem 0 0;padding:0;display:grid;gap:12px}
+  ol.steps li{counter-increment:s;display:flex;gap:1rem;align-items:flex-start}
+  ol.steps li::before{content:counter(s);flex:none;width:30px;height:30px;border-radius:50%;
+    display:grid;place-items:center;font-family:var(--mono);font-size:.9rem;font-weight:600;
+    color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent)}
+  ol.steps b{font-weight:600}
+  ol.steps p{margin:.1rem 0 0;color:var(--soft);font-size:.96rem}
+
+  /* way-to-find & feature tiles */
+  .tile h3{margin:0 0 .3rem;font-size:1.02rem;font-weight:600;display:flex;align-items:center;gap:.5rem}
+  .tile p{margin:0;color:var(--soft);font-size:.94rem}
+  .pill{font-family:var(--mono);font-size:.72rem;color:var(--accent);background:var(--accent-soft);
+    border-radius:20px;padding:.12rem .55rem;font-weight:500}
+  code,kbd{font-family:var(--mono);font-size:.86em;background:var(--sunk);border:1px solid var(--rule);
+    border-radius:5px;padding:.08em .4em;white-space:nowrap}
+
+  /* example table */
+  .tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:430px;background:var(--surface);font-size:.95rem}
+  th,td{text-align:left;padding:.75rem 1rem;border-bottom:1px solid var(--rule)}
+  th{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--soft);background:var(--sunk);font-weight:500}
+  tbody tr:last-child td{border-bottom:none}
+  td.prod{font-weight:600} td .sub{display:block;color:var(--faint);font-size:.8rem;font-weight:400;font-family:var(--mono)}
+  td.n{font-family:var(--mono);text-align:right}
+  .tag{font-family:var(--mono);font-size:.76rem;font-weight:600;padding:.12rem .5rem;border-radius:6px}
+  .tag.prefer{color:var(--prefer);background:color-mix(in srgb,var(--prefer) 14%,transparent)}
+  .tag.avoid{color:var(--avoid);background:color-mix(in srgb,var(--avoid) 14%,transparent)}
+
+  /* feature grid */
+  .features{display:grid;gap:10px}
+  @media(min-width:620px){.features{grid-template-columns:1fr 1fr}}
+  .feat{display:flex;gap:.7rem;padding:.7rem .3rem;border-bottom:1px solid var(--rule)}
+  .feat .cmd{font-family:var(--mono);font-size:.82rem;color:var(--accent);flex:none;width:7.2rem;font-weight:500}
+  .feat span{color:var(--soft);font-size:.92rem}
+
+  ul.honest{list-style:none;margin:.3rem 0 0;padding:0;display:grid;gap:12px}
+  ul.honest li{display:flex;gap:.8rem;color:var(--soft)}
+  ul.honest li b{color:var(--ink);font-weight:600}
+  ul.honest .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:.55rem}
+
+  .run{background:var(--sunk);border:1px solid var(--rule);border-radius:12px;padding:1.1rem 1.3rem;
+    font-family:var(--mono);font-size:.86rem;line-height:1.9;overflow-x:auto}
+  .run .c{color:var(--faint)}
+  .run b{color:var(--accent);font-weight:500}
+
+  /* scoring section */
+  .layers{display:grid;gap:10px;margin:.3rem 0 1.7rem}
+  .layer{display:flex;gap:.85rem;align-items:center;background:var(--surface);
+    border:1px solid var(--rule);border-radius:10px;padding:.7rem 1rem}
+  .layer .ln{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+    font-family:var(--mono);font-weight:600;font-size:.82rem;color:var(--accent);
+    background:var(--accent-soft);border:1px solid var(--accent)}
+  .layer div{font-size:.96rem;color:var(--soft)} .layer b{color:var(--ink);font-weight:600}
+  .formula{display:grid;place-items:center;background:var(--sunk);border:1px solid var(--rule);
+    border-radius:12px;padding:1.5rem 1rem;margin:.2rem 0 1.5rem}
+  .frac{text-align:center;font-family:var(--mono);font-size:clamp(.78rem,2.3vw,.95rem);color:var(--ink)}
+  .frac .num{display:block;padding:0 1.1rem .55rem} .frac .den{display:block;padding:.55rem 1.1rem 0;
+    border-top:2px solid var(--accent);color:var(--soft)}
+  td.tot{font-weight:600;border-top:2px solid var(--rule)} tr.tot td{background:var(--sunk)}
+
+  .related{display:grid;gap:10px;margin:1.4rem 0 0}
+  @media(min-width:560px){.related{grid-template-columns:1fr 1fr}}
+  .related a{display:flex;gap:.6rem;align-items:center;text-decoration:none;background:var(--surface);
+    border:1px solid var(--rule);border-radius:10px;padding:.8rem 1rem;color:var(--ink)}
+  .related a:hover{border-color:var(--accent)}
+  .related .emo{font-size:1.3rem;flex:none}
+  .related small{display:block;color:var(--faint);font-size:.82rem}
+
+  footer{margin-top:4rem;padding-top:1.6rem;border-top:1px solid var(--rule);color:var(--faint);
+    font-size:.86rem;display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;align-items:center}
+  footer .mono{font-family:var(--mono)}
+a{color:var(--accent);text-underline-offset:.15em}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{color:var(--soft)}
+</style>
+
+<div class="wrap"><div class="top"><span class="brand">ReTrust</span><button id="themeBtn" class="toggle">Theme</button></div>
+<h1>Security evidence before the purchase order</h1><p class="lede">ReTrust helps you review industrial equipment before buying it. Give it a manufacturer order number or vendor and model, then confirm the deployment and firmware with your technical team.</p>
+<section><h2>What problem does it solve?</h2><p>Public vulnerability notices, fix information and supplier restrictions are spread across sources. ReTrust brings those records into one assessment and preserves the reasons behind it. It supports procurement decisions; it does not prove a product is secure or suitable for a process.</p></section>
+<section><h2>How to use it</h2><ol><li><b>Identify the product.</b> Enter the exact order number or vendor and model. Add the planned firmware when known.</li><li><b>Establish access.</b> Record the network context, then establish the actual reachability of each weakness: topology is kept as context only, and isolation alone does not prove an attack path is blocked.</li><li><b>Check consequences and fixes.</b> Ask an engineer what each weakness could do to the process, and whether the selected firmware is affected or patched.</li><li><b>Read the outcome.</b> Blockers override the number. Missing material information produces VERIFY and a provisional range.</li><li><b>Save the evidence.</b> Export HTML or JSON, ask the supplier specific questions, and reassess when evidence changes.</li></ol></section>
+<section><h2>Understand the outcomes</h2><dl><dt><b>PREFER</b></dt><dd>80 or higher, with material inputs resolved and no blocker. Confirm suitability before approval.</dd><dt><b>CONDITIONAL</b></dt><dd>60 to below 80. Review the stated risks and commitments.</dd><dt><b>VERIFY</b></dt><dd>Technical checks are still needed. The range shows how the score can change.</dd><dt><b>AVOID</b></dt><dd>A mandatory blocker or a score below 60 makes this unfavourable.</dd></dl></section>
+<section><h2>What is behind the number?</h2><p>Exposure safety carries 60%, available fixes 20%, vendor practices 15% and certification evidence 5% in a weighted product. Exposure uses threat evidence, actual attack access, credible OT harm and affected firmware status.</p><p>RT8 uses <code>Z=T×I×A×H×U</code>, with T floored for service life by how each flaw is reached and I its CVSS severity, <code>R=min(1,Z1+.20Z2+.10Z3)</code> and <code>E=100(1−R)</code>. A contribution of .48 gives E=52; adding .20 and .10 gives E=47. Higher scores are more favourable, not percentages of safety.</p><p>Duplicate advisories for one CVE count once. Different CVEs are review units, not proof of independent attack paths. The tool does not build a verified attack graph.</p><p><a href="scoring.html">Read the formula, its worked example and its limits.</a></p></section>
+<section><h2>Three interfaces, the same evidence</h2><ul><li><b>Browser:</b> run <code>retrust serve</code> and use the main assessment form.</li><li><b>Menu:</b> run <code>retrust shell</code> for guided terminal actions.</li><li><b>Commands:</b> use <code>retrust score</code>, <code>compare</code> or <code>batch</code> for repeatable checks and exports.</li></ul><p><a href="commands.html">See the command reference.</a></p></section>
+<section><h2>What it cannot verify for you</h2><p>ReTrust reads public evidence and operator statements. It does not scan your plant, independently verify a firewall rule, test firmware binaries or establish functional equivalence between products. Site-wide answers must be justified for all findings in scope.</p><p>The proposed weights and OT consequence values require validation. Historical benchmarks from earlier models do not establish RT8 procurement accuracy.</p></section><footer>ReTrust RT8 · 28 October 2026 · Evidence before commitment.</footer></div>
+<script>
+  (function(){
+    var btn=document.getElementById('themeBtn'),root=document.documentElement;
+    btn.addEventListener('click',function(){
+      var dark=matchMedia('(prefers-color-scheme:dark)').matches;
+      var cur=root.getAttribute('data-theme')||(dark?'dark':'light');
+      root.setAttribute('data-theme',cur==='dark'?'light':'dark');
+    });
+  })();
+</script>

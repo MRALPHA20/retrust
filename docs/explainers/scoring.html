@@ -1,0 +1,160 @@
+<title>How ReTrust Scores</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+  :root{
+    --bg:#eceff1; --surface:#f8fafb; --sunk:#e1e6e9; --rule:#ccd3d8;
+    --ink:#1b242b; --soft:#54606a; --faint:#889299;
+    --accent:#0d7a64; --accent-soft:#0d7a6418;
+    --prefer:#1c7a4a; --cond:#a2690a; --avoid:#b02a20;
+    --shadow:0 1px 2px rgba(20,30,40,.06),0 8px 24px rgba(20,30,40,.05);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+    --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+    --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+    --accent:#49cdac; --accent-soft:#49cdac1f;
+    --prefer:#49b67e; --cond:#d79a26; --avoid:#e46a60;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);}}
+  :root[data-theme=dark]{
+    --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+    --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+    --accent:#49cdac; --accent-soft:#49cdac1f;
+    --prefer:#49b67e; --cond:#d79a26; --avoid:#e46a60;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);}
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.62;font-size:17px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  .wrap{max-width:880px;margin:0 auto;padding:clamp(1.3rem,4vw,3rem) clamp(1.1rem,4vw,2rem) 5rem}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2.4rem}
+  .brand{display:flex;align-items:center;gap:.7rem;font-weight:700;font-size:1.18rem;letter-spacing:-.01em}
+  .mark{width:38px;height:38px;flex:none;display:grid;place-items:center;position:relative;
+    border:1.5px solid var(--accent);border-radius:11px 3px 11px 3px;color:var(--accent);
+    font-family:var(--mono);font-weight:600;font-size:1.25rem}
+  .mark sup{position:absolute;top:3px;right:5px;font-size:.6rem}
+  .toggle{appearance:none;border:1px solid var(--rule);background:var(--surface);color:var(--soft);
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;padding:.5rem .8rem;border-radius:7px;cursor:pointer}
+  .toggle:hover{color:var(--ink);border-color:var(--accent)}
+
+  .eyebrow{font-family:var(--mono);font-size:.74rem;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 .9rem}
+  h1{font-size:clamp(1.95rem,5.5vw,2.9rem);line-height:1.08;letter-spacing:-.025em;font-weight:700;margin:0 0 1rem;text-wrap:balance}
+  .lede{font-size:clamp(1.02rem,2.3vw,1.2rem);color:var(--soft);max-width:52ch;margin:0}
+
+  h2{font-size:1.45rem;letter-spacing:-.015em;font-weight:700;margin:3.2rem 0 .3rem;text-wrap:balance;scroll-margin-top:1rem}
+  h3{font-size:1.05rem;font-weight:600;margin:0 0 .5rem}
+  .note-txt{color:var(--soft);margin:0 0 1.3rem;max-width:60ch}
+
+  /* table of contents */
+  .toc{display:flex;flex-wrap:wrap;gap:.5rem;margin:1.8rem 0 .5rem}
+  .toc a{font-family:var(--mono);font-size:.76rem;color:var(--soft);text-decoration:none;
+    border:1px solid var(--rule);background:var(--surface);border-radius:20px;padding:.3rem .75rem}
+  .toc a:hover{border-color:var(--accent);color:var(--accent)}
+
+  .layers{display:grid;gap:10px;margin:.3rem 0 1.5rem}
+  .layer{display:flex;gap:.85rem;align-items:center;background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:.75rem 1rem}
+  .layer .ln{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-weight:600;font-size:.82rem;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent)}
+  .layer div{font-size:.97rem;color:var(--soft)} .layer b{color:var(--ink);font-weight:600}
+
+  .formula{display:grid;place-items:center;background:var(--sunk);border:1px solid var(--rule);border-radius:12px;padding:1.5rem 1rem;margin:.2rem 0 1.2rem}
+  .frac{text-align:center;font-family:var(--mono);font-size:clamp(.76rem,2.2vw,.95rem);color:var(--ink)}
+  .frac .num{display:block;padding:0 1.1rem .55rem}
+  .frac .den{display:block;padding:.55rem 1.1rem 0;border-top:2px solid var(--accent);color:var(--soft)}
+
+  .eq{font-family:var(--mono);font-size:.84rem;background:var(--sunk);border:1px solid var(--rule);
+    border-left:3px solid var(--accent);border-radius:8px;padding:.7rem .9rem;margin:.1rem 0 .7rem;overflow-x:auto;white-space:pre;color:var(--ink)}
+
+  .pillar{background:var(--surface);border:1px solid var(--rule);border-radius:13px;padding:1.3rem 1.4rem;margin-bottom:14px;box-shadow:var(--shadow)}
+  .pillar .ph{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.7rem}
+  .pillar .wt{font-family:var(--mono);font-size:.76rem;color:var(--accent);background:var(--accent-soft);border-radius:20px;padding:.18rem .6rem;white-space:nowrap}
+  .pillar .why{color:var(--soft);font-size:.95rem;margin:.3rem 0 0}
+  .pillar .why b{color:var(--ink)}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);margin:.3rem 0}
+  table{border-collapse:collapse;width:100%;min-width:420px;background:var(--surface);font-size:.94rem}
+  th,td{text-align:left;padding:.7rem 1rem;border-bottom:1px solid var(--rule)}
+  th{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);background:var(--sunk);font-weight:500}
+  tbody tr:last-child td{border-bottom:none}
+  td.n,th.n{text-align:right;font-family:var(--mono)}
+  td.prod{font-weight:600}
+  tr.tot td{background:var(--sunk);font-weight:600;border-top:2px solid var(--rule)}
+  .tag{font-family:var(--mono);font-size:.76rem;font-weight:600;padding:.12rem .5rem;border-radius:6px}
+  .tag.prefer{color:var(--prefer);background:color-mix(in srgb,var(--prefer) 15%,transparent)}
+  .tag.cond{color:var(--cond);background:color-mix(in srgb,var(--cond) 15%,transparent)}
+  .tag.avoid{color:var(--avoid);background:color-mix(in srgb,var(--avoid) 15%,transparent)}
+
+  .gate-list{display:grid;gap:10px;margin:.2rem 0}
+  .gate-item{background:var(--surface);border:1px solid var(--rule);border-left:4px solid var(--avoid);border-radius:10px;padding:.8rem 1.1rem}
+  .gate-item b{color:var(--avoid)} .gate-item .g{color:var(--soft);font-size:.93rem;margin-top:.15rem}
+
+  .callout{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:0 12px 12px 0;padding:1rem 1.3rem;margin:1.3rem 0}
+  .callout p{margin:0;font-size:1.03rem}
+  .callout em{font-style:normal;color:var(--accent);font-weight:600}
+
+  ul.know{list-style:none;margin:.3rem 0 0;padding:0;display:grid;gap:12px}
+  ul.know li{display:flex;gap:.8rem;color:var(--soft)}
+  ul.know li b{color:var(--ink);font-weight:600}
+  ul.know .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:.55rem}
+
+  .bands{display:flex;gap:10px;flex-wrap:wrap;margin:.3rem 0 1rem}
+  .band{flex:1;min-width:150px;border:1px solid var(--rule);border-top-width:4px;border-radius:10px;padding:.8rem 1rem;background:var(--surface)}
+  .band .r{font-family:var(--mono);font-size:.8rem;color:var(--faint)}
+  .band .v{font-weight:700;font-size:1.05rem;margin-top:.1rem}
+  .band.p{border-top-color:var(--prefer)} .band.p .v{color:var(--prefer)}
+  .band.c{border-top-color:var(--cond)} .band.c .v{color:var(--cond)}
+  .band.a{border-top-color:var(--avoid)} .band.a .v{color:var(--avoid)}
+
+  .related{display:grid;gap:10px;margin:1.4rem 0 0}
+  @media(min-width:560px){.related{grid-template-columns:1fr 1fr}}
+  .related a{display:flex;gap:.6rem;align-items:center;text-decoration:none;background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:.8rem 1rem;color:var(--ink)}
+  .related a:hover{border-color:var(--accent)}
+  .related .emo{font-size:1.3rem;flex:none}
+  .related small{display:block;color:var(--faint);font-size:.82rem}
+
+  footer{margin-top:3.4rem;padding-top:1.6rem;border-top:1px solid var(--rule);color:var(--faint);font-size:.86rem;display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;align-items:center}
+  footer .mono{font-family:var(--mono)}
+  code{font-family:var(--mono);font-size:.85em;background:var(--sunk);border:1px solid var(--rule);border-radius:5px;padding:.08em .4em;white-space:nowrap}
+a{color:var(--accent);text-underline-offset:.15em}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer{color:var(--soft)}
+</style>
+
+<div class="wrap">
+<div class="top"><a href="overview.html" class="brand">ReTrust</a><button id="themeBtn" class="toggle">Theme</button></div>
+<h1>How a ReTrust score works</h1>
+<p class="lede">Start with the product and firmware. Then check whether each weakness can actually matter in your network and industrial process.</p>
+<h2>First, check the blockers</h2><p>Known exploited, unfixed flaws and supplier restrictions can force AVOID regardless of the number. A score never cancels a mandatory blocker.</p>
+<h2>Measure each material weakness</h2><div class="eq">Z = T × I × A × H × U</div>
+<ul><li><b>T — threat evidence:</b> the maximum of confirmed exploitation (KEV), estimated past exploitation (LEV), current EPSS and a service-life floor set by how the flaw is reached: wormable (network, no privileges, no user action) .50, other network or adjacent .30, local .15, physical .05. EPSS forecasts only the next thirty days, and for most OT flaws it is near .003; without the floor, an unexploited-today critical flaw counted for almost nothing over a controller's decade or more in service. The order of the floors follows the KEV rate of the OT corpus by access type; their size is a policy setting, not a measured probability. Missing data stays unavailable.</li>
+<li><b>I — technical severity:</b> the CVSS base score divided by 10. H says what the process could lose; I says how much of that this weakness can deliver, so a 2.7 information leak no longer weighs the same as a 9.8 remote code execution.</li>
+<li><b>A — attack access:</b> 1 when a feasible path and its prerequisites are established; 0 when all relevant paths are verified blocked. Unknown is a range.</li>
+<li><b>H — operational harm:</b> safety/environment 1; control .8; recoverable disruption .5; minor .2; no material harm 0. An engineer must establish the credible effect of this particular weakness.</li>
+<li><b>U — affected and unfixed:</b> 1 for affected firmware without an applied fix; 0 for verified patched or not affected. Unknown firmware produces a range.</li></ul>
+<h2>Reachability comes from the weakness, not the topology</h2><p>Choose isolated, OT-only, IT–OT connected, remote vendor access, direct Internet or unknown. The answer is recorded as context and never moves the score: isolated, IT–OT and direct Internet all produce an identical range. An isolated controller may still be reachable from a compromised engineering workstation. A is settled instead by each weakness's own CVSS attack vector and the conditions it demands — reporting the affected service reachable resolves a network or adjacent flaw, while a local or physical one also needs execution on the box or hands on the cabinet, so it stays a range until someone confirms the attacker can meet what that weakness requires. ReTrust does not inspect your network.</p>
+<h2>Use the three largest contributions</h2><div class="eq">R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)
+E = 100 × (1 − R)</div><p>A single contribution of .48 gives E=52. Adding .20 gives E=48; adding .10 gives E=47. The largest contribution counts fully, and missing paths count as zero.</p>
+<p>Duplicate advisories for the same CVE count once. Different CVEs are review units, not proof of independent paths. A reviewed shared path can be grouped explicitly by an engineer.</p>
+<h2>Combine four pillars</h2><div class="eq">S = E^.60 × P^.20 × V^.15 × C^.05</div>
+<p>E is exposure safety (60%), P is patch availability (20%), V is vendor security practice (15%), and C is certification evidence (5%). Values enter on a 1–100 scale. Missing P, V or C keeps its original weight and contributes a neutral score of 50; unknown exposure stays in the provisional range.</p>
+<p><b>Illustrative calculation:</b> E=47, P=70, V=80, C=60 produces 55.80/100. A higher score is more favourable under the chosen settings. It is not a percentage chance that equipment is safe.</p>
+<h2>Unknown means VERIFY</h2><p>For T=.6, I=1 (CVSS 10.0), A=1, H=.8 and unknown U, the contribution is between 0 and .48. Exposure safety is between 52 and 100. The result shows a range and the checks needed before deciding. It does not guess a middle value.</p>
+<p>Resolved, ungated scores use the current bands: PREFER ≥80, CONDITIONAL 60–79.9, AVOID below 60. Mandatory gates can still force AVOID, and unfixed hardcoded credentials cap the score below PREFER. A product with no usable evidence — not identified, or named in advisories with no affected CVE, as a vendor's fixed release often is — is VERIFY across the full range, and the conservative low end is the headline. A named firmware outside every published affected range is scored instead: no recorded CVE applies, so exposure is 100. Bands read the score as displayed, to one decimal.</p>
+<h2>Firmware blockers come first</h2><p>A published fix does not show that it is installed. A confirmed-exploitation weakness still blocks affected or unresolved firmware, even when a newer patched version is available. Select the correct firmware and keep evidence of the fix. Network controls do not clear a firmware blocker.</p><h2>Keep the evidence</h2><p>Save the JSON or HTML report. It records the RT8 settings, tool build, data fingerprint, source capture dates, factor ranges and missing checks. Website answers apply across the findings in scope, so ask an engineer to review any that need different consequences or controls. Operator statements need supporting evidence; the tool does not independently verify them.</p>
+<p>These weights and consequence values are ReTrust design choices that require validation. Historical benchmarks from earlier models do not establish RT8 procurement accuracy.</p>
+<footer>ReTrust RT8 · 28 October 2026 · <a href="overview.html">Overview</a> · <a href="commands.html">Commands</a></footer>
+</div>
+<script>
+  (function(){
+    var btn=document.getElementById('themeBtn'),root=document.documentElement;
+    btn.addEventListener('click',function(){
+      var dark=matchMedia('(prefers-color-scheme:dark)').matches;
+      var cur=root.getAttribute('data-theme')||(dark?'dark':'light');
+      root.setAttribute('data-theme',cur==='dark'?'light':'dark');
+    });
+  })();
+</script>

@@ -1,0 +1,349 @@
+<title>ReTrust Commands</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+  :root{
+    --bg:#eceff1; --surface:#f8fafb; --sunk:#e1e6e9; --rule:#ccd3d8;
+    --ink:#1b242b; --soft:#54606a; --faint:#889299;
+    --accent:#0d7a64; --accent-soft:#0d7a6418;
+    --shadow:0 1px 2px rgba(20,30,40,.06),0 8px 24px rgba(20,30,40,.05);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme=light]){
+      --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+      --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+      --accent:#49cdac; --accent-soft:#49cdac1f;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme=dark]{
+    --bg:#14191e; --surface:#1d242a; --sunk:#10151a; --rule:#313c44;
+    --ink:#e7ebee; --soft:#9aa5ad; --faint:#6b757d;
+    --accent:#49cdac; --accent-soft:#49cdac1f;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.28);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.6;font-size:17px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  .wrap{max-width:900px;margin:0 auto;padding:clamp(1.3rem,4vw,3rem) clamp(1.1rem,4vw,2rem) 5rem}
+
+  .top{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2.4rem}
+  .brand{display:flex;align-items:center;gap:.7rem;font-weight:700;font-size:1.18rem;letter-spacing:-.01em}
+  .mark{width:38px;height:38px;flex:none;display:grid;place-items:center;position:relative;
+    border:1.5px solid var(--accent);border-radius:11px 3px 11px 3px;color:var(--accent);
+    font-family:var(--mono);font-weight:600;font-size:1.25rem}
+  .mark sup{position:absolute;top:3px;right:5px;font-size:.6rem}
+  .toggle{appearance:none;border:1px solid var(--rule);background:var(--surface);color:var(--soft);
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;
+    padding:.5rem .8rem;border-radius:7px;cursor:pointer}
+  .toggle:hover{color:var(--ink);border-color:var(--accent)}
+
+  .eyebrow{font-family:var(--mono);font-size:.74rem;font-weight:500;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 .9rem}
+  h1{font-size:clamp(1.9rem,5.5vw,2.8rem);line-height:1.08;letter-spacing:-.025em;font-weight:700;margin:0 0 1rem;text-wrap:balance}
+  .lede{font-size:clamp(1.02rem,2.3vw,1.2rem);color:var(--soft);max-width:54ch;margin:0}
+  .lede code{font-family:var(--mono);font-size:.82em;background:var(--sunk);border:1px solid var(--rule);border-radius:5px;padding:.08em .4em}
+
+  h2{font-size:1.4rem;letter-spacing:-.015em;font-weight:700;margin:0 0 .25rem;text-wrap:balance}
+  .group-purpose{color:var(--soft);margin:0 0 1.2rem;font-size:.98rem}
+  .group{margin-top:3rem}
+  .group-head{display:flex;align-items:baseline;gap:.8rem;border-bottom:2px solid var(--rule);padding-bottom:.6rem;margin-bottom:1.1rem}
+  .group-head .gn{font-family:var(--mono);font-size:.8rem;color:var(--accent);font-weight:600;flex:none}
+
+  /* command rows */
+  .cmd{display:grid;grid-template-columns:9.5rem 1fr;gap:.3rem 1.2rem;padding:1rem 0;border-bottom:1px solid var(--rule)}
+  .cmd:last-child{border-bottom:none}
+  .cmd .name{font-family:var(--mono);font-weight:600;font-size:.95rem;color:var(--accent);word-break:break-word}
+  .cmd .body p{margin:0}
+  .cmd .what{font-size:1rem}
+  .cmd .when{color:var(--soft);font-size:.92rem;margin-top:.2rem}
+  .cmd .ex{margin-top:.5rem;font-family:var(--mono);font-size:.8rem;color:var(--faint);
+    background:var(--sunk);border:1px solid var(--rule);border-radius:6px;padding:.4rem .6rem;overflow-x:auto;white-space:nowrap}
+  .cmd .ex b{color:var(--accent);font-weight:500}
+  @media(max-width:560px){.cmd{grid-template-columns:1fr;gap:.35rem}}
+
+  /* start-here */
+  .starter{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:1.4rem 1.5rem;box-shadow:var(--shadow);margin-top:.5rem}
+  .starter h2{margin-bottom:.2rem}
+  ol.path{list-style:none;counter-reset:s;margin:1rem 0 0;padding:0;display:grid;gap:.7rem}
+  ol.path li{counter-increment:s;display:flex;gap:.9rem;align-items:baseline}
+  ol.path li::before{content:counter(s);flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+    font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent)}
+  ol.path code{font-family:var(--mono);font-size:.85rem;color:var(--ink);background:var(--sunk);border:1px solid var(--rule);border-radius:5px;padding:.1em .45em}
+  ol.path .d{color:var(--soft);font-size:.92rem}
+
+  .note{background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:0 12px 12px 0;padding:1rem 1.3rem;margin:1.4rem 0 0;color:var(--soft);font-size:.96rem}
+  .note b{color:var(--ink)}
+
+  .related{display:grid;gap:10px;margin:1.4rem 0 0}
+  @media(min-width:560px){.related{grid-template-columns:1fr 1fr}}
+  .related a{display:flex;gap:.6rem;align-items:center;text-decoration:none;background:var(--surface);
+    border:1px solid var(--rule);border-radius:10px;padding:.8rem 1rem;color:var(--ink)}
+  .related a:hover{border-color:var(--accent)}
+  .related .emo{font-size:1.3rem;flex:none}
+  .related small{display:block;color:var(--faint);font-size:.82rem}
+
+  footer{margin-top:4rem;padding-top:1.6rem;border-top:1px solid var(--rule);color:var(--faint);
+    font-size:.86rem;display:flex;flex-wrap:wrap;gap:.4rem 1.2rem;align-items:center}
+  footer .mono{font-family:var(--mono)}
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand"><span class="mark">R<sup>↗</sup></span> ReTrust</div>
+    <button class="toggle" id="themeBtn" aria-label="Switch light or dark theme">◐ theme</button>
+  </div>
+
+  <p class="eyebrow">The command reference</p>
+  <h1>Every ReTrust command, by the job it does.</h1>
+  <p class="lede">ReTrust is one program — <code>retrust</code> — with a verb after it. You rarely need
+    more than four. The rest are here for when a question comes up.</p>
+
+  <div class="starter">
+    <h2>Start here</h2>
+    <p class="group-purpose">The whole day-one workflow is four commands (plus a one-time setup).</p>
+    <ol class="path">
+      <li><code>setup</code><span class="d">— once: fetch the public sources and build your local index.</span></li>
+      <li><code>search moxa</code><span class="d">— find the exact product (shorthand and re-ordered words are fine; spell the name right).</span></li>
+      <li><code>score …</code><span class="d">— assess one product: verdict, pillars, evidence.</span></li>
+      <li><code>compare …</code><span class="d">— put a shortlist on equal terms and rank it.</span></li>
+    </ol>
+    <p class="note" style="margin-top:1.2rem"><b>Not on the command line?</b> <code style="font-family:var(--mono)">retrust serve</code>
+      opens the same thing as a browser workspace, and <code style="font-family:var(--mono)">retrust shell</code>
+      is a menu that asks questions instead of taking flags.</p>
+  </div>
+
+  <!-- 1 -->
+  <div class="group">
+    <div class="group-head"><span class="gn">01</span><h2>Find &amp; assess</h2></div>
+    <p class="group-purpose">The core loop: name a product, get a verdict.</p>
+    <div class="cmd"><div class="name">search</div><div class="body">
+      <p class="what">Find a vendor, product or order number in the index.</p>
+      <p class="when">Use it first, when you don’t know the exact model. Shorthand and re-ordered words
+        still land — <code>--vendor ABB --product "800M AC"</code> reaches <em>AC 800M</em>, because every
+        word of what you typed appears in the name. A <em>misspelling</em> does not:
+        <code>retrust search Siemems</code> prints <em>No product in the corpus matches 'Siemems'</em> and exits 1,
+        and <code>score --vendor Siemems …</code> returns a full-range VERIFY (4.8–75.8) with no shortlist. That is deliberate —
+        guessing which manufacturer you meant would put a report under the wrong company's advisories, so
+        ReTrust abstains and <code>retrust eval</code> counts the abstention as a pass. Only
+        <code>retrust vendor Siemems</code> offers near-name suggestions (<em>Siemens, similar 0.86</em>);
+        for a product, reach for the order number instead.</p>
+      <p class="ex"><b>retrust</b> search "simatic s7-1500"</p></div></div>
+    <div class="cmd"><div class="name">score</div><div class="body">
+      <p class="what">Assess one product — the verdict, the four pillars, and the evidence behind each.</p>
+      <p class="when">Your main command. Add <code>--version</code> to narrow it to the firmware you’d actually buy.</p>
+      <p class="ex"><b>retrust</b> score --order-number 6ES7518-4AX00-1AB0 --version 3.1.6</p>
+      <p class="when" style="margin-top:.45rem">Four answers narrow the range, and each one can only narrow it:
+        <code>--consequence</code> (what a compromise costs this process),
+        <code>--interface</code> (have you verified the vulnerable interface is unreachable),
+        <code>--prerequisites</code> (can an attacker meet the privileges, interaction and conditions the CVSS
+        vector demands) and <code>--remediation</code> (is the fix actually on the box).
+        <code>--assessment-type</code> says whether this is a purchase or an installed asset.
+        Leave any out and it stays unresolved rather than guessed — ABB AC 800M bare is
+        <em>VERIFY 71.6–87.7</em>; <code>--consequence control</code> lifts the floor to 75.0, and
+        <code>--interface blocked</code> collapses the range to a single 87.7.</p>
+      <p class="when" style="margin-top:.45rem"><code>--prerequisites</code> is the one that settles
+        reachability for <em>every</em> attack vector. <code>--interface exposed</code> answers a network
+        question, so on its own it resolves only a remotely-reachable flaw; a local or physical flaw also needs
+        execution on the box or hands on the cabinet, and the network answer says nothing about either.
+        Without that distinction an AV:P flaw would score exactly like an unauthenticated remote one.</p>
+      <p class="when" style="margin-top:.45rem"><code>--network-exposure</code> is recorded as context and
+        <em>never</em> scored: topology is not a reachability discount, so <code>isolated</code>,
+        <code>it_ot</code> and <code>internet_ot</code> all return the same 71.6–87.7 on that product.
+        It is still worth declaring — it goes into the assessment vector and the record — but an unanswered
+        one leaves a verification item rather than moving the number.</p></div></div>
+    <div class="cmd"><div class="name">compare</div><div class="body">
+      <p class="what">Rank several candidates for one decision, on equal terms.</p>
+      <p class="when">When you have a shortlist and need to say which one goes on the purchase order.</p>
+      <p class="ex"><b>retrust</b> compare --candidate "ABB|AC 800M" --candidate "Moxa|EDS-405A"</p></div></div>
+    <div class="cmd"><div class="name">shell</div><div class="body">
+      <p class="what">An interactive menu — no flags to remember; it prints the equivalent command each time.</p>
+      <p class="when">For a first look, or for colleagues who don’t live in a terminal.</p>
+      <p class="ex"><b>retrust</b> shell</p></div></div>
+    <div class="cmd"><div class="name">serve</div><div class="body">
+      <p class="what">The same assessments as web pages on <code>127.0.0.1</code>.</p>
+      <p class="when">For whoever signs the order — search, assess, compare and download evidence in a browser.</p>
+      <p class="ex"><b>retrust</b> serve   <span style="color:var(--faint)"># then open http://127.0.0.1:8765</span></p></div></div>
+  </div>
+
+  <!-- 2 -->
+  <div class="group">
+    <div class="group-head"><span class="gn">02</span><h2>Dig into the evidence</h2></div>
+    <p class="group-purpose">Follow a verdict back to where it came from.</p>
+    <div class="cmd"><div class="name">vendor</div><div class="body">
+      <p class="what">Everything the index holds on one manufacturer — advisories, screening and certification status.</p>
+      <p class="when">When you’re weighing a supplier, not just a single part.</p>
+      <p class="ex"><b>retrust</b> vendor "Schneider Electric"</p></div></div>
+    <div class="cmd"><div class="name">alternatives</div><div class="body">
+      <p class="what">Other products in the same vendor family, scored the same way.</p>
+      <p class="when">When a candidate scores poorly and you want safer options to put to an engineer.</p>
+      <p class="ex"><b>retrust</b> alternatives --vendor Moxa --product EDS-405A</p></div></div>
+    <div class="cmd"><div class="name">cve</div><div class="body">
+      <p class="what">One CVE, and everything the index knows about it — which products it touches, KEV, EPSS.</p>
+      <p class="when">When a specific vulnerability lands in the news and you need to know your exposure.</p>
+      <p class="ex"><b>retrust</b> cve CVE-2023-44487</p></div></div>
+    <div class="cmd"><div class="name">timeline</div><div class="body">
+      <p class="what">A vendor’s (or product’s) advisory history drawn as a shape: cadence, fix share, quiet time.</p>
+      <p class="when">To see whether a supplier discloses steadily or has gone suspiciously quiet.</p>
+      <p class="ex"><b>retrust</b> timeline --vendor Siemens</p></div></div>
+    <div class="cmd"><div class="name">questions</div><div class="body">
+      <p class="what">An RFQ security annex — the questions the evidence supports, ready to paste into a request for quotation.</p>
+      <p class="when">When you’re about to go back to the supplier and want to ask the right things.</p>
+      <p class="ex"><b>retrust</b> questions --vendor Moxa --product EDS-405A</p></div></div>
+  </div>
+
+  <!-- 3 -->
+  <div class="group">
+    <div class="group-head"><span class="gn">03</span><h2>Decide &amp; prioritise</h2></div>
+    <p class="group-purpose">Turn evidence into a response, and test how firm the verdict is.</p>
+    <div class="cmd"><div class="name">ssvc</div><div class="body">
+      <p class="what">Place each finding on CERT/CC’s SSVC decision tree to get a response priority.</p>
+      <p class="when">When you already own the product and need to decide how urgently to act.</p>
+      <p class="ex"><b>retrust</b> ssvc --vendor ABB --product "AC 800M"</p></div></div>
+    <div class="cmd"><div class="name">lev</div><div class="body">
+      <p class="what">How likely a finding has <em>already</em> been exploited, from the EPSS history (NIST CSWP 41).</p>
+      <p class="when">A prompt to go and look — a lower bound from a model, never a claim it happened.</p>
+      <p class="ex"><b>retrust</b> lev --vendor Siemens --product "SIMATIC S7-1500"</p></div></div>
+    <div class="cmd"><div class="name">sensitivity</div><div class="body">
+      <p class="what">Re-runs the verdict under many random weightings and reports whether it holds.</p>
+      <p class="when">To know if a verdict is solid or a “judgement call” that depends on the exact weights.</p>
+      <p class="ex"><b>retrust</b> sensitivity --vendor ABB --product "AC 800M"</p></div></div>
+    <div class="cmd"><div class="name">config</div><div class="body">
+      <p class="what">Show or create the scoring weights; <code>--appetites</code> lists the shipped risk profiles.</p>
+      <p class="when">When your organisation weighs risk differently and you want to adjust — transparently.</p>
+      <p class="ex"><b>retrust</b> config --appetites</p></div></div>
+  </div>
+
+  <!-- 4 -->
+  <div class="group">
+    <div class="group-head"><span class="gn">04</span><h2>Supply chain &amp; pipelines</h2></div>
+    <p class="group-purpose">Score many things at once, and fit into automated checks.</p>
+    <div class="cmd"><div class="name">batch</div><div class="body">
+      <p class="what">Score a whole bill-of-materials or a CycloneDX SBOM — with a CI exit code.</p>
+      <p class="when">For a full equipment list, or a build pipeline that should fail on a gated part.</p>
+      <p class="ex"><b>retrust</b> batch components.csv --json out.json</p></div></div>
+    <div class="cmd"><div class="name">vex</div><div class="body">
+      <p class="what">Write one product's assessment as a CycloneDX VEX document: a product query in,
+        one statement per CVE out.</p>
+      <p class="when">When a customer or regulator asks for machine-readable exploitability statements.
+        It takes the same identity flags as <code>score</code> — not an SBOM path; feed an SBOM to
+        <code>batch</code>, which reads CycloneDX. Statements cover only the CVEs this index's advisories
+        name for the matched rows: a CVE absent here was never assessed, which is a different fact from
+        not affected.</p>
+      <p class="ex"><b>retrust</b> vex --vendor Moxa --product EDS-405A --out vex.json</p></div></div>
+    <div class="cmd"><div class="name">diff</div><div class="body">
+      <p class="what">Re-score a stored result and show what changed since you saved it.</p>
+      <p class="when">To see whether a product got better or worse between two reviews.</p>
+      <p class="ex"><b>retrust</b> diff saved-assessment.json</p></div></div>
+  </div>
+
+  <!-- 5 -->
+  <div class="group">
+    <div class="group-head"><span class="gn">05</span><h2>Trust the data</h2></div>
+    <p class="group-purpose">Prove the inputs are genuine and the numbers reproduce.</p>
+    <div class="cmd"><div class="name">verify</div><div class="body">
+      <p class="what">Are the advisories the ones CISA published? Checks SHA-512 digests and PGP signatures.</p>
+      <p class="when">Before trusting a result. Add <code>--strict</code> so a pipeline fails unless origin is positively established.</p>
+      <p class="ex"><b>retrust</b> verify --strict</p></div></div>
+    <div class="cmd"><div class="name">doctor</div><div class="body">
+      <p class="what">Is this installation current enough to trust right now? Flags stale feeds and says what to run.</p>
+      <p class="when">Any time before a decision — KEV and EPSS age, and a stale feed changes verdicts.</p>
+      <p class="ex"><b>retrust</b> doctor</p></div></div>
+    <div class="cmd"><div class="name">eval</div><div class="body">
+      <p class="what">Reproduce the published accuracy figures from your own index.</p>
+      <p class="when">When someone asks “how do you know the matching is right?” — they can re-run it.</p>
+      <p class="ex"><b>retrust</b> eval --sample 4000</p></div></div>
+    <div class="cmd"><div class="name">backtest</div><div class="body">
+      <p class="what">Did the score predict later disclosure? <code>--sweep</code> tries five cutoffs.</p>
+      <p class="when">For the honest limits of the method — a diagnostic, not a promise of prediction.</p>
+      <p class="ex"><b>retrust</b> backtest --sweep</p></div></div>
+    <div class="cmd"><div class="name">stats</div><div class="body">
+      <p class="what">Plain counts from the index: advisories, products, vendors, CVEs, KEV entries.</p>
+      <p class="when">A quick “what’s loaded?” check.</p>
+      <p class="ex"><b>retrust</b> stats</p></div></div>
+  </div>
+
+  <!-- 6 -->
+  <div class="group">
+    <div class="group-head"><span class="gn">06</span><h2>Manage the data</h2></div>
+    <p class="group-purpose">Build, extend, refresh and pin the local index.</p>
+    <div class="cmd"><div class="name">setup</div><div class="body">
+      <p class="what">The all-in-one: fetch every source and build the index. Run once to get started.</p>
+      <p class="when">First install, or a full rebuild. Needs network; everything after runs offline.</p>
+      <p class="ex"><b>retrust</b> setup</p></div></div>
+    <div class="cmd"><div class="name">ingest</div><div class="body">
+      <p class="what">Build the index from one or several CSAF advisory directories you already have.</p>
+      <p class="when">When you manage the source files yourself instead of letting <code>setup</code> fetch them.</p>
+      <p class="ex"><b>retrust</b> ingest --csaf data/CSAF</p></div></div>
+    <div class="cmd"><div class="name">provider</div><div class="body">
+      <p class="what">Fetch a vendor’s own CSAF feed and index it beside the CISA corpus.</p>
+      <p class="when">To add a manufacturer’s first-party advisories (e.g. Siemens) for deeper coverage.</p>
+      <p class="ex"><b>retrust</b> provider https://…/provider-metadata.json</p></div></div>
+    <div class="cmd"><div class="name">refresh</div><div class="body">
+      <p class="what">Update the certification and sanctions / covered lists.</p>
+      <p class="when">Periodically — screening lists change whenever a government acts.</p>
+      <p class="ex"><b>retrust</b> refresh</p></div></div>
+    <div class="cmd"><div class="name">snapshot</div><div class="body">
+      <p class="what">Pin all the data into one portable, checksummed file.</p>
+      <p class="when">For a reproducible record (“this is the data that produced this verdict”) or an offline demo.</p>
+      <p class="ex"><b>retrust</b> snapshot --note "Q4 procurement review"</p></div></div>
+  </div>
+
+  <!-- 7 -->
+  <div class="group">
+    <div class="group-head"><span class="gn">07</span><h2>Extras</h2></div>
+    <p class="group-purpose">Nice-to-haves you’ll reach for occasionally.</p>
+    <div class="cmd"><div class="name">screenshot</div><div class="body">
+      <p class="what">Render an HTML report to a PNG image.</p>
+      <p class="when">For a slide or a document, when a picture of the report is easier to share than the file.
+        The flag names a <em>directory</em>, not a file. Write <code>--out-dir</code> in full: argparse accepts
+        <code>--out</code> as an abbreviation of it, so <code>--out report.png</code> succeeds and quietly
+        creates a folder called <code>report.png</code> with the image inside.</p>
+      <p class="ex"><b>retrust</b> screenshot report.html --out-dir shots/</p></div></div>
+    <div class="cmd"><div class="name">completion</div><div class="body">
+      <p class="what">Print a shell tab-completion script for bash or zsh.</p>
+      <p class="when">One-time convenience so the shell completes commands and flags for you.</p>
+      <p class="ex"><b>retrust</b> completion zsh</p></div></div>
+    <div class="cmd"><div class="name">demo</div><div class="body">
+      <p class="what">Run the whole workflow end to end.</p>
+      <p class="when">To show the tool off, or to sanity-check a fresh install in one go.</p>
+      <p class="ex"><b>retrust</b> demo</p></div></div>
+  </div>
+
+  <div class="note" style="margin-top:3rem"><b>Lost?</b> Run <code style="font-family:var(--mono)">retrust</code>
+    on its own — it prints what the index holds and what to try next. Every command also takes
+    <code style="font-family:var(--mono)">--help</code>.</div>
+
+  <div class="group">
+    <div class="group-head"><span class="gn">↗</span><h2>More</h2></div>
+    <div class="related">
+      <a href="overview.html"><span class="emo">🛡️</span><span><strong>ReTrust Explained</strong><small>What it is &amp; how it works</small></span></a>
+      <a href="scoring.html"><span class="emo">🧮</span><span><strong>How ReTrust Scores</strong><small>The full scoring methodology</small></span></a>
+    </div>
+  </div>
+
+  <footer>
+    <span class="mono">ReTrust RT8 · 28 October 2026</span>
+    <span>One program, many verbs.</span>
+    <span>Apache-2.0 · runs offline after <span class="mono">setup</span></span>
+    <span><a href="overview.html">Overview</a> · <a href="scoring.html">Scoring</a></span>
+  </footer>
+</div>
+
+<script>
+  (function(){
+    var btn=document.getElementById('themeBtn'),root=document.documentElement;
+    btn.addEventListener('click',function(){
+      var dark=matchMedia('(prefers-color-scheme:dark)').matches;
+      var cur=root.getAttribute('data-theme')||(dark?'dark':'light');
+      root.setAttribute('data-theme',cur==='dark'?'light':'dark');
+    });
+  })();
+</script>

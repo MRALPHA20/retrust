@@ -1,0 +1,71 @@
+Measuring against the local index. This is the number ReTrust publishes;
+re-run it yourself to check it.
+
+IDENTIFIER COVERAGE   (what the corpus gives us to join on)
+  product entries                28,951
+  CPE -- what scanners join on         60    0.21%
+  order number, declared            8,211   28.36%
+  order number, recovered by us     1,364    4.71%
+  order number, either              9,575   33.07%
+  vendor name                      28,947   99.99%
+  product name                     28,951   100.00%
+  declared order numbers are 137x more available than CPE; all of them, 160x
+
+VERSION-RANGE COVERAGE
+  ranges examined                28,651
+  decided deterministically      27,193   94.91%
+  undecidable by design             559    1.95%  (serial / revision / date scoped)
+  missed                            899    3.14%
+
+  accuracy on decidable ranges 96.80%
+
+PRODUCT ROUND-TRIP
+  products tested                 4,000
+  resolved to the right advisory  3,988
+  resolved to the wrong one           6
+  abstained                           6
+
+  precision (of those answered) 99.85%
+  recall (of all attempted)     99.70%
+
+  by method:
+    exact_name     2,617/2,623 99.77%
+    order_number   1,334/1,334 100.00%
+    token_subset      37/37    100.00%
+
+  most common unparsed ranges:
+       6  '<C3414-500-S02J2'
+       6  'HD 16 | HD23'
+       6  'vers:all/<=C3414-500-S02K5_P8'
+       6  'C3414-500-S02K5_P9'
+       5  '< 12.4 (firmware 1.46)'
+       5  '<=A8'
+       4  '<Revision_08'
+       4  '< NVR 5.6 Build 595 T2-Patch'
+
+BUYER-QUERY SET   20/21 as a human would answer
+
+  pass  Siemens SIMATIC S7-1500                      correct by exact_name
+  pass  siemens simatic s7-1500 cpu 1518             correct by exact_name
+  pass  Siemens 6ES7 518-4AX00-1AB0                  correct by order_number
+  pass  6es7518-4ax00-1ab0                           correct by order_number
+  pass  Siemems SIMATIC S7-1500                      abstained
+  pass  Rockwell RSLogix 5                           correct by exact_name
+  pass  Rockwell Automation Inc. RSLogix 5000        correct by exact_name
+  pass  Rockwell 1756-EN2T                           correct by exact_name
+  pass  Moxa Inc. EDS-405A                           correct by exact_name
+  pass  Moxa EDS405A                                 correct by exact_name
+  pass  Schneider Modicon M340                       correct by exact_name
+  pass  Schneider Electric Modicon M580              correct by exact_name
+  pass  ABB AC 800M                                  correct by token_subset
+  pass  Mitsubishi MELSEC iQ-R                       correct by exact_name
+  pass  Phoenix Contact ILC 1xx                      correct by exact_name
+  pass  SIEMENS Scalance X414-3E                     correct by exact_name
+  pass  EC150                                        abstained
+  pass  Siemens SIMATIC S7-1200 6ES7518-4AX00-1AB0   abstained
+  pass  Siemens -                                    abstained
+  pass  Hirschmann RS switches                       correct by token_subset
+  MISS  Belden RS switches                           abstained
+        KNOWN MISS: Belden sits mid-key so only a substring guess would reach it and the tool refuses to guess
+
+JSON written to reports/qa/benchmark-current.json

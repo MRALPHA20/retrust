@@ -1,0 +1,414 @@
+"""Read CSAF 2.0 advisories into flat records.
+
+CSAF is the format CISA and the major OT vendors publish advisories in. Two
+parts matter to us:
+
+    product_tree     a nested tree of vendor -> product -> version branches,
+                     whose leaves carry a product_id
+    vulnerabilities  per CVE, which product_ids are affected
+
+Together they give an authoritative "this CVE affects exactly these product
+versions" mapping, which is far more reliable than guessing from CPE strings.
+Across CISA's OT corpus only 0.1% of product entries carry a CPE at all, while
+30% carry the manufacturer's order number and ~50% have one recoverable from
+the product name -- so order numbers are what we key on.
+"""
+
+import json
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# Manufacturer order numbers, e.g. Siemens MLFB "6ES7518-4AX00-1AB0" or
+# Rockwell "1756-L71". Order numbers always contain a digit, which is what
+# separates them from words in the product name.
+ORDER_NUMBER_PATTERNS = [
+    re.compile(r"\b6[A-Z]{2}\d{4}-\d[A-Z]{2}\d{2}-\d[A-Z]{3}\b"),   # Siemens MLFB
+    re.compile(r"\b\d{4}-[A-Z]{1,3}\d{1,3}[A-Z]{0,3}\b"),            # Rockwell
+    re.compile(r"\(([0-9A-Z][0-9A-Z\-./ ]{4,})\)"),                  # in parentheses
+]
+
+
+# Parenthetical text often holds a rating or a version rather than an order
+# number ("(54VDC)", "(V2.1)", "(2 GB)"). Matching one of those to a product
+# would be worse than not matching at all, so we drop them.
+_NOT_AN_ORDER_NUMBER = re.compile(
+    r"^(?:V|FW|SW|REV)?[\d.]+$"                              # a bare version
+    r"|\d\s*(?:V(?:AC|DC)?|A|W|Hz|[KMG]Hz|[KMG]B|mm|cm|kg|bit|port|ch)\b"  # a rating
+    r"|^(?:AND|THE|FOR|WITH|ALL|SEE|NOTE)\b"
+    # A standards citation or a Microsoft KB id in parentheses is a reference,
+    # not something anyone orders: "(IEC 61131-3)" linked two ABB drives as if
+    # they shared a part.
+    r"|^(?:IEC|ISO|IEEE|EN|DIN|ANSI|UL|CSA|NEMA)[\s-]*\d{3,}"
+    r"|^KB\d{6,}$",
+    re.I,
+)
+
+
+def find_order_numbers(text):
+    """Pull manufacturer order numbers out of a product name.
+
+    Biased towards precision: an order-number match is the strongest signal the
+    matcher has, so a wrong one is more costly than a missing one.
+    """
+    found = set()
+    for pattern in ORDER_NUMBER_PATTERNS:
+        for match in pattern.finditer(text or ""):
+            value = (match.group(1) if pattern.groups else match.group(0)).strip()
+            if len(value) < 5 or not any(c.isdigit() for c in value):
+                continue
+            if not any(c.isalpha() for c in value):   # digits only is a version
+                continue
+            if _NOT_AN_ORDER_NUMBER.search(value):
+                continue
+            found.add(value)
+    return found
+
+
+@dataclass
+class Product:
+    """One leaf of a product tree: a specific product at a version range."""
+
+    product_id: str
+    vendor: str
+    name: str
+    version_range: str
+    order_numbers: set = field(default_factory=set)
+    # What identifiers the advisory itself declared, as opposed to what we
+    # recovered from the product name. Recorded so `retrust eval` can reproduce
+    # the coverage table that justifies keying on order numbers at all.
+    has_cpe: bool = False
+    helper_order_number: bool = False
+
+
+# An advisory that bundles a component stack's CVEs wholesale -- the Linux
+# kernel, glibc and OpenSSH behind a PLC's web server -- is a different kind
+# of evidence from a flaw in the vendor's own firmware: which of those
+# hundreds of CVEs is reachable on the device is exactly what such a bundle
+# does not establish. Flagged by an explicit title, or by sheer bulk.
+#
+# The bulk rule is a deliberate tradeoff. Most 50+-CVE advisories ARE component
+# bundles (Siemens files its MFP Linux stacks this way with no "third-party" in
+# the title, and the external review specifically wanted the Rapid Reset CVE in
+# that 352-CVE bundle to CAUTION, not gate). A genuinely first-party advisory
+# with 50+ CVEs is rare; when one occurs its findings are treated as a bundle,
+# which SOFTENS them (caution, not gate) rather than hiding them -- the safe
+# direction to err. Raising the threshold would start letting real bundles gate
+# again, which is the error the review flagged. So bulk stays, documented.
+ROLLUP_TITLE = re.compile(r"third.?party|open.?source", re.I)
+ROLLUP_CVES = 50
+
+# Remediation text that names a shipped fix despite a "mitigation" category.
+# Across the corpus CISA and the vendors file real, shipped patches under
+# "mitigation"/"workaround" far more often than under "vendor_fix": "Schneider
+# Electric released firmware v1.5.1.0", "Update to the latest version",
+# "Upgrade to one of the corrected versions", "Install firmware patch". Read
+# naively as "0 fixes available" every one of those understates a product the
+# vendor actually fixed -- the Moxa EDS bug was one phrasing of thousands.
+#
+# A fix signal is a RELEASE/GO-TO/GET verb pointing at a fix OBJECT (a version,
+# firmware, patch, release, or a bare v-number), optionally qualified ("the
+# latest", "one of the corrected"). Measured against the whole corpus this
+# flags 4,010 of 31,991 mitigation/workaround remediations and -- the guard
+# that matters -- ZERO of the 1,086 that CISA itself marks "none_available".
+_FIX_QUAL = (r"(?:the |one of the |their |latest |newest |new |current |"
+             r"corrected |fixed |patched |updated |following |supported |a |an )*")
+_FIX_NOUN = (r"(?:firmware|version|release|update|patch|hotfix|build|revision|"
+             r"service pack)")
+_FIX_OBJ = r"(?:" + _FIX_QUAL + _FIX_NOUN + r"|v\d[\w.]*)"
+FIX_IN_TEXT = re.compile(
+    r"(?:released?|releases|publish(?:ed|es)?|issued?|provides?|provided|"
+    r"made available|offers?|created|developed|has)\s+(?:a |an |the |new )?" + _FIX_OBJ +
+    r"|(?:update|upgrade|migrate|move)\s+(?:your [\w ]+ )?to\s+" + _FIX_OBJ +
+    r"|(?:download|install|apply|deploy|obtain|get)\s+(?:and install )?(?:the |a )?" + _FIX_OBJ +
+    r"|(?:fixed|resolved|corrected|addressed|remediated|patched)\s+(?:in|with|by|as of)\s+" + _FIX_OBJ +
+    r"|" + _FIX_OBJ + r"\s+(?:is|are|can be|has been)\s+(?:available|obtained|downloaded|found|released)"
+    r"|(?:patch|update|fix|hotfix)(?:es)?\s+(?:is|are)\s+available"
+    r"|available\s+(?:in|for|as of|starting (?:in|with))\s+" + _FIX_OBJ,
+    re.I)
+
+# Text that cancels a fix signal: no patch, a future patch, an un-patchable
+# flaw, end of support. A positive match beside any of these is not a shipped
+# fix -- "there is no fixed version", "a patch will be released", "cannot be
+# patched" must never read as a fix on the strength of the word "version".
+NO_FIX_IN_TEXT = re.compile(
+    r"\bno\s+(?:patch|fix|update|remediation|mitigation)\b"
+    r"|\b(?:do(?:es)?\s+not|cannot|can't|unable to)\s+[\w ]{0,20}"
+    r"(?:fix|patch|updat|upgrad|remediat)"
+    r"|\bnot\s+(?:yet\s+)?(?:fixed|patched|available|planned)\b"
+    r"|\bno\s+(?:fixed|patched|corrected)\s+version\b"
+    r"|\b(?:will|to)\s+(?:be\s+)?(?:released?|provid\w+|publish\w+|issu\w+|"
+    r"deliver\w+|address\w+)\b"
+    r"|\bplan(?:s|ned|ning)?\s+to\b|\bfuture\s+(?:release|version|update)\b"
+    r"|\bend[- ]of[- ](?:life|support)\b|\bno longer supported\b", re.I)
+
+
+# The optional qualifier runs in FIX_IN_TEXT backtrack quadratically on a long
+# run of "a a a ..." with no fix-noun after it, so a crafted multi-megabyte
+# remediation `details` in one advisory would stall the whole single-pass build.
+# Across the real corpus every genuine fix is named within the first 1,206
+# characters and no `details` exceeds 3,708, so scanning a 2 KB window loses no
+# real match (all 4,010 preserved) while bounding the worst case to milliseconds.
+_FIX_SCAN_LIMIT = 2048
+
+
+def _names_a_shipped_fix(text):
+    """The remediation text names a fix that already shipped, not a promise."""
+    text = (text or "")[:_FIX_SCAN_LIMIT]
+    return bool(FIX_IN_TEXT.search(text)) and not NO_FIX_IN_TEXT.search(text)
+
+
+@dataclass
+class Advisory:
+    """One advisory, with its products and its CVE-to-product mapping."""
+
+    advisory_id: str
+    title: str
+    released: str
+    source: str
+    rollup: bool = False   # a third-party/component bundle, see ROLLUP_TITLE
+    products: list = field(default_factory=list)
+    # cve -> {"product_ids": [...], "cvss": float|None, "cwe": str|None}
+    vulnerabilities: dict = field(default_factory=dict)
+
+
+# A real CSAF product tree is a handful of levels deep. A pathologically nested
+# one (the JSON decoder sets no nesting cap) would otherwise recurse until it
+# raised RecursionError; stopping at an explicit, generous ceiling makes the
+# limit a deliberate defense rather than an incidental crash that happens to be
+# caught upstream.
+_MAX_TREE_DEPTH = 100
+
+
+def _walk(branches, inherited=None, depth=0):
+    """Yield (attributes, product) for every leaf of a product tree."""
+    if depth > _MAX_TREE_DEPTH:
+        return
+    inherited = inherited or {}
+    for branch in branches or []:
+        attributes = dict(inherited)
+        category, name = branch.get("category"), branch.get("name")
+        if category == "product_name" and attributes.get(category) \
+                and name and name != attributes[category]:
+            # A product_name nested under another names a product of a family
+            # ("DCS880" -> "DEMag"). First-wins collapsed both leaves onto the
+            # family name, giving two different products one identity.
+            attributes[category] = f"{attributes[category]} {name}"
+        else:
+            attributes.setdefault(category, name)
+        if "product" in branch:
+            yield attributes, branch["product"]
+        yield from _walk(branch.get("branches"), attributes, depth + 1)
+
+
+def _from_relationships(tree, leaves):
+    """Leaves for the product ids CSAF defines through relationships.
+
+    A relationship mints a new product id for "this firmware installed on that
+    controller", and the vulnerabilities section then names that id rather than
+    either component. Walking only the branches loses them: 1,777 of 69,560
+    affected rows in CISA's corpus pointed at ids that existed nowhere, and 105
+    CVEs resolved to no product at all. The Modicon M580 firmware scored PREFER
+    90.2 with "no known CVEs" while its advisory listed 22 against it.
+
+    The identity inherited is the `product_reference` side, because that is the
+    component whose version a buyer types. Where that reference does not resolve
+    the relationship is skipped rather than guessed at -- only 7 of 1,724 in the
+    corpus, and a product identity assembled from a name string is worse than no
+    row at all.
+    """
+    known = {}
+    for attributes, entry in leaves:
+        if isinstance(entry, dict) and entry.get("product_id"):
+            known[entry["product_id"]] = (attributes, entry)
+
+    minted = []
+    for relationship in (tree.get("relationships") or []):
+        if not isinstance(relationship, dict):
+            continue
+        full = relationship.get("full_product_name") or {}
+        product_id = full.get("product_id")
+        source = known.get(relationship.get("product_reference"))
+        if not product_id or product_id in known or not source:
+            continue
+        attributes, entry = source
+        minted.append((dict(attributes), dict(entry, product_id=product_id)))
+    return minted
+
+
+def parse(path):
+    """Read one CSAF file. Returns an Advisory, or None if it is not usable.
+
+    Deliberately total: any unreadable or structurally odd file yields None
+    rather than an exception. The corpus is ~4,000 files from hundreds of
+    vendors, and one of them having `"document": null` must not abort an ingest
+    of all the rest.
+    """
+    try:
+        return _parse(path)
+    except Exception:           # malformed structure, wrong types, bad encoding
+        return None
+
+
+def _parse(path):
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        return None
+
+    meta = document.get("document") or {}
+    tracking = meta.get("tracking") or {}
+    advisory = Advisory(
+        advisory_id=tracking.get("id") or Path(path).stem,
+        title=meta.get("title", ""),
+        # .get(key, "") returns None when the key is present and JSON-null, and
+        # None[:10] raises -- which parse()'s catch-all swallowed, silently
+        # dropping the whole advisory and every CVE in it.
+        released=(tracking.get("initial_release_date") or "")[:10],
+        source=str(path),
+    )
+
+    tree = document.get("product_tree") or {}
+    leaves = list(_walk(tree.get("branches")))
+    leaves += [({}, p) for p in (tree.get("full_product_names") or [])]
+    leaves += _from_relationships(tree, leaves)
+
+    # Element by element, each under its own guard: parse()'s catch-all used
+    # to swallow the whole advisory when one product leaf or one score entry
+    # was malformed, and every other CVE in the file vanished with it.
+    for attributes, entry in leaves:
+        try:
+            if product := _product(attributes, entry):
+                advisory.products.append(product)
+        except Exception:
+            continue
+
+    for vulnerability in document.get("vulnerabilities") or []:
+        try:
+            if parsed := _vulnerability(vulnerability, tree.get("product_groups")):
+                advisory.vulnerabilities[parsed.pop("cve")] = parsed
+        except Exception:
+            continue
+
+    advisory.rollup = bool(ROLLUP_TITLE.search(advisory.title)) \
+        or len(advisory.vulnerabilities) >= ROLLUP_CVES
+
+    return advisory if advisory.products else None
+
+
+def _list(value):
+    """The list a field should hold. A string here would iterate as letters."""
+    return value if isinstance(value, list) else []
+
+
+def _product(attributes, entry):
+    """One Product from a tree leaf, or None if the leaf names nothing."""
+    if not isinstance(entry, dict) or not entry.get("product_id"):
+        return None
+    name = entry.get("name", "")
+    helper = entry.get("product_identification_helper") or {}
+    declared = set(_list(helper.get("model_numbers"))) | set(_list(helper.get("skus")))
+    order_numbers = set(declared)
+    order_numbers |= find_order_numbers(name)
+    order_numbers |= find_order_numbers(attributes.get("product_name", ""))
+
+    return Product(
+        product_id=entry["product_id"],
+        vendor=(attributes.get("vendor") or "").strip(),
+        name=(attributes.get("product_name") or name).strip(),
+        version_range=(
+            attributes.get("product_version_range")
+            or attributes.get("product_version")
+            or ""
+        ).strip(),
+        order_numbers={o.strip() for o in order_numbers if o and o.strip()},
+        has_cpe=bool(helper.get("cpe")),
+        helper_order_number=bool(declared),
+    )
+
+
+def _vulnerability(vulnerability, product_groups=None):
+    """One vulnerability record, keyed for Advisory.vulnerabilities, or None."""
+    if not isinstance(vulnerability, dict) or not vulnerability.get("cve"):
+        return None
+    status = vulnerability.get("product_status") or {}
+
+    # The vendor's highest score, preferring the newest CVSS version it
+    # gives, and the vector that produced that same score. Taking the
+    # vector from a different entry would describe a different flaw.
+    scores = vulnerability.get("scores") or []
+    rated = [[(float(b), (s.get(k) or {}).get("vectorString"))
+              for s in scores
+              if (b := (s.get(k) or {}).get("baseScore")) is not None]
+             for k in ("cvss_v4", "cvss_v3", "cvss_v2")]
+    # Keyed on the score alone: max() over bare tuples would fall through to
+    # comparing the vectors when two entries tie, and a None vector beside a
+    # string one raises rather than picking either.
+    best = next((max(v, key=lambda rating: rating[0]) for v in rated if v),
+                (None, None))
+    cvss, vector = best
+
+    # CSAF remediation categories, best first. "vendor_fix" means a patch
+    # exists; "mitigation"/"workaround" mean you must live with it; and
+    # "none_available" means neither.
+    categories = {(r.get("category") or "") for r in
+                  _list(vulnerability.get("remediations")) if isinstance(r, dict)}
+    for best in ("vendor_fix", "mitigation", "workaround", "none_available"):
+        if best in categories:
+            remediation = best
+            break
+    else:
+        remediation = "unknown"
+
+    # The category is kept as published; this flag says the text names a
+    # shipped fix, so "0/10 have a vendor fix" is never printed about a
+    # product the vendor actually fixed.
+    # Remediation scope belongs to the product, not just the CVE. A patch for
+    # one controller must not make another controller appear repairable --
+    # neither its category nor its fix-in-text flag.
+    groups = {g.get("group_id"): set(_list(g.get("product_ids")))
+              for g in _list(product_groups) if isinstance(g, dict)}
+    per_product = {}
+    fix_text_by_product = {}
+    for product_id in _list(status.get("known_affected")):
+        applicable = set()
+        texted = False
+        for remedy in _list(vulnerability.get("remediations")):
+            if not isinstance(remedy, dict):
+                continue
+            scoped = "product_ids" in remedy or "group_ids" in remedy
+            targets = set(_list(remedy.get("product_ids")))
+            for group_id in _list(remedy.get("group_ids")):
+                targets.update(groups.get(group_id, ()))
+            if not scoped or product_id in targets:
+                applicable.add(remedy.get("category"))
+                if (remedy.get("category") in ("mitigation", "workaround")
+                        and _names_a_shipped_fix(remedy.get("details"))):
+                    texted = True
+        category = next(
+            (c for c in ("vendor_fix", "mitigation", "workaround",
+                         "none_available") if c in applicable), "unknown")
+        per_product[product_id] = category
+        fix_text_by_product[product_id] = texted and category != "vendor_fix"
+
+    return {
+        "cve": vulnerability["cve"],
+        # _list, not list(): a string known_affected would otherwise iterate into
+        # one-character product ids, exactly the junk the per-product map above
+        # already guards against with _list.
+        "product_ids": _list(status.get("known_affected")),
+        "cvss": cvss,
+        "cwe": (vulnerability.get("cwe") or {}).get("id"),
+        "vector": vector,
+        "remediation": remediation,
+        "remediation_by_product": per_product,
+        "fix_text_by_product": fix_text_by_product,
+    }
+
+
+def parse_directory(root):
+    """Read every CSAF file under `root`, skipping ROLIE feed indexes."""
+    for path in sorted(Path(root).rglob("*.json")):
+        if "feed" in path.name:
+            continue
+        if advisory := parse(path):
+            yield advisory

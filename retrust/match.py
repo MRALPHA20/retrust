@@ -1,0 +1,404 @@
+"""Resolve a procurement request to the products advisories actually name.
+
+A buyer asks about "Siemens SIMATIC S7-1500 1518-4, firmware 3.1.6". We have to
+decide which advisory products that refers to. Four strategies are tried in
+order, strongest first:
+
+    1. order number   "6ES7518-4AX00-1AB0" -> exact, unambiguous
+    2. vendor+name    normalised exact match on both
+    3. vendor+token   all words of the query appear in the product name
+    4. abstain        say so, with a reason
+
+Confidence falls with each rung. Below ``MIN_CONFIDENCE`` we return no match
+rather than a weak guess: a wrong answer about whether a PLC is vulnerable is
+far more costly than "needs review".
+"""
+
+import re
+from dataclasses import dataclass, field
+
+from .index import normalize_name, normalize_order_number, normalize_vendor
+from .version import affects
+
+MIN_CONFIDENCE = 0.55
+
+CONFIDENCE = {
+    "order_number": 0.98,
+    "exact_name": 0.90,
+    "token_subset": 0.70,
+}
+
+
+@dataclass
+class Match:
+    """One advisory product the request resolved to."""
+
+    product_rowid: int
+    advisory_id: str
+    product_id: str
+    vendor: str
+    name: str
+    version_range: str
+    method: str
+    confidence: float
+
+
+@dataclass
+class Resolution:
+    """The outcome of resolving one request."""
+
+    query: str
+    matches: list = field(default_factory=list)
+    method: str = "none"
+    confidence: float = 0.0
+    abstained: bool = False
+    reason: str = ""
+
+    @property
+    def resolved(self):
+        return bool(self.matches) and not self.abstained
+
+    @property
+    def product_count(self):
+        """Distinct products behind the matches, not advisory-product rows.
+
+        One product is re-declared by every advisory that names it, so the
+        raw row count reads as far more products than were matched -- "74
+        advisory product(s)" for the 11 real Modicon M340 variants. A buyer
+        reads that as scope bleed; the honest figure is the distinct count.
+        """
+        return len({(m.vendor, m.name) for m in self.matches})
+
+    @property
+    def advisory_count(self):
+        return len({m.advisory_id for m in self.matches})
+
+
+_SEPARATOR = re.compile(r"[^a-z0-9]+")
+
+
+def boundary_key(text):
+    """Normalise like name_key, but keep one mark where the separators were.
+
+    name_key strips punctuation entirely, which is right for matching and wrong
+    for deciding where a name ends: "RSLogix 5" and "RSLogix 500" both start
+    "rslogix5". Keeping a single mark lets a prefix test tell a component
+    boundary from a longer number.
+    """
+    return _SEPARATOR.sub("|", (text or "").lower()).strip("|")
+
+
+def prefix_matches(wanted, candidate):
+    """Does `candidate` continue `wanted` at one of the candidate's boundaries?
+
+    "RSLogix 5" matched RSLogix 500 and RSLogix 5000 -- three products with three
+    different advisory sets -- because normalisation had already thrown away the
+    space that separated the components. Compared against the candidate's
+    boundaries, a name may only continue at a separator, so "SIMATIC S7-1500
+    CPU 1518" still reaches "...1518-4 PN/DP MFP" while "5" no longer reaches
+    "500".
+
+    The buyer's own separators are flattened before comparing, because
+    transcription loses them: "EDS405A" on a requisition is the corpus's
+    "EDS-405A". The corpus spelling is the authoritative one, so its
+    boundaries are the ones that decide where a name may end.
+
+    Version tokens are deliberately allowed to continue: "PCS 7 V9" reaches
+    the "V9.0", "V9.1" and "V9.X" rows, which are the release line the buyer
+    named. Refusing that (tried, measured) lost more true advisories than
+    the one "V15"-reaches-"V15.1" case it prevented: 99.85%/99.70% became
+    99.77%/99.62% on a 4,000-product round trip.
+    """
+    flat = wanted.replace("|", "")
+    if not flat:
+        return False
+    position = 0
+    for component in candidate.split("|"):
+        if position == len(flat):
+            return True                   # ended exactly at a boundary
+        if flat.startswith(component, position):
+            position += len(component)
+        else:
+            return False                  # ends inside a component: "5" in "5000"
+    return position == len(flat)
+
+
+def _rows_to_matches(rows, method):
+    confidence = CONFIDENCE[method]
+    return [
+        Match(r["rowid_"], r["advisory_id"], r["product_id"], r["vendor"],
+              r["name"], r["version_range"], method, confidence)
+        for r in rows
+    ]
+
+
+def _vendor_key(connection, vendor):
+    """The corpus key a typed vendor name refers to, or None if it names none.
+
+    An exact key wins. Otherwise a prefix reaching exactly one key is that
+    vendor -- "Hirschmann" for the corpus's merged "Hirschmann Automation and
+    Control GmbH, Belden Inc." entity. Reaching two keys would be a guess, and
+    a short fragment proves nothing, so both count as unknown. Every rung uses
+    this one answer: the order-number filter deciding differently from the
+    name rung made a correct short vendor WORSE than no vendor at all.
+    """
+    key = normalize_vendor(vendor or "")
+    if not key:
+        return None
+    if connection.execute("SELECT 1 FROM product WHERE vendor_key = ? LIMIT 1",
+                          (key,)).fetchone():
+        return key
+    if len(key) < 4:
+        return None
+    prefixed = [r[0] for r in connection.execute(
+        "SELECT DISTINCT vendor_key FROM product WHERE vendor_key LIKE ?",
+        (key + "%",))]
+    return prefixed[0] if len(prefixed) == 1 else None
+
+
+def resolve(connection, vendor=None, product=None, order_number=None):
+    """Find the advisory products matching this request."""
+    query = " ".join(filter(None, [vendor, product, order_number]))
+    result = Resolution(query=query)
+
+    # Rung 1 - order number. Unambiguous, so we stop here when it hits.
+    if order_number:
+        key = normalize_order_number(order_number)
+        rows = connection.execute(
+            "SELECT p.* FROM product p JOIN order_number o ON o.product_rowid = p.rowid_"
+            " WHERE o.number_key = ?", (key,)).fetchall()
+        # Order numbers are not globally unique: several in the corpus belong to
+        # two vendors. Trusting one blindly resolved to the wrong manufacturer
+        # at 0.98 confidence, and screening then ran against that wrong vendor.
+        # A mismatch falls through to rung 2 rather than being believed.
+        if rows and vendor:
+            wanted = _vendor_key(connection, vendor) or normalize_vendor(vendor)
+            rows = [r for r in rows if r["vendor_key"] == wanted]
+        # A product name was given too, so it has to agree. It named the
+        # S7-1200 while the order number named the S7-1500, and the report
+        # carried the typed name above the other product's 1,063 CVEs.
+        if rows and product and normalize_name(product):
+            wanted_boundary = boundary_key(product)
+            agreeing = [r for r in rows
+                        if prefix_matches(wanted_boundary, boundary_key(r["name"]))]
+            if not agreeing:
+                result.abstained = True
+                result.reason = (
+                    f"order number {order_number!r} names "
+                    f"{rows[0]['name']!r}, not {product!r}. Drop one of them: "
+                    "ReTrust will not decide which you meant.")
+                return result
+            rows = agreeing
+        # Without a vendor to disambiguate, an order number belonging to two
+        # manufacturers cannot be resolved. Merging them scored one product
+        # against another company's advisories and screened the wrong vendor.
+        if rows and not vendor and len({r["vendor_key"] for r in rows}) > 1:
+            named = sorted({r["vendor"] for r in rows})
+            result.abstained = True
+            result.reason = (
+                f"order number {order_number!r} belongs to {len(named)} "
+                f"manufacturers ({', '.join(named)}). Give --vendor to say "
+                "which.")
+            return result
+        if rows:
+            result.matches = _rows_to_matches(rows, "order_number")
+            result.method, result.confidence = "order_number", CONFIDENCE["order_number"]
+            return result
+
+    if not (vendor and product):
+        result.abstained = True
+        result.reason = (
+            "no order number matched and no vendor+product given"
+            if order_number else "need either an order number or vendor and product"
+        )
+        return result
+
+    name_key = normalize_name(product)
+    # Punctuation-only input normalises to "", and an empty name_key turns the
+    # rung-2 LIKE into "match everything": --product "-" returned all 15,015
+    # Siemens products at 0.90 confidence. "-" is also the commonest spreadsheet
+    # placeholder, so this is reachable straight from the documented batch path.
+    if not (normalize_vendor(vendor) and name_key):
+        result.abstained = True
+        result.reason = (f"{vendor!r} and {product!r} do not contain enough "
+                         "characters to identify a product")
+        return result
+
+    if (vendor_key := _vendor_key(connection, vendor)) is None:
+        result.abstained = True
+        result.reason = f"vendor {vendor!r} does not appear in the advisory corpus"
+        return result
+
+    # Rung 2 - exact normalised product name, plus the longer variants that
+    # start with it. A buyer writing "SIMATIC S7-1500" means the family, so the
+    # CPU 1518-4 variants belong in the answer too; returning only the literal
+    # match would silently drop most of the affected models.
+    rows = connection.execute(
+        "SELECT * FROM product WHERE vendor_key = ? AND (name_key = ? OR name_key LIKE ?)",
+        (vendor_key, name_key, name_key + "%")).fetchall()
+    wanted_boundary = boundary_key(product)
+    rows = [r for r in rows
+            if prefix_matches(wanted_boundary, boundary_key(r["name"]))]
+    if rows:
+        result.matches = _rows_to_matches(rows, "exact_name")
+        result.method, result.confidence = "exact_name", CONFIDENCE["exact_name"]
+        return result
+
+    # Rung 3 - every word of the query appears in the product name. Requires at
+    # least two words, because one short word matches far too much.
+    words = [w for w in re.split(r"[^a-z0-9]+", product.lower()) if len(w) > 1]
+    if len(words) >= 2:
+        candidates = connection.execute(
+            "SELECT * FROM product WHERE vendor_key = ?", (vendor_key,)).fetchall()
+        rows = [r for r in candidates
+                if all(w in (r["name"] or "").lower() for w in words)]
+        if rows:
+            result.matches = _rows_to_matches(rows, "token_subset")
+            result.method, result.confidence = "token_subset", CONFIDENCE["token_subset"]
+            return result
+
+    # A title copied from Explore may include the vendor, even though it is
+    # also supplied in its own field. Recover only an exact title within this
+    # vendor; a typo or a different manufacturer's title cannot be accepted.
+    from .search import exact_product_title, split_product_query
+    title = exact_product_title(connection, product, vendor_key=vendor_key)
+    supplied = ((title.vendor, title.name) if title else
+                split_product_query(connection, product))
+    if (supplied and normalize_vendor(supplied[0]) == vendor_key
+            and normalize_name(supplied[1]) != name_key):
+        recovered = resolve(connection, vendor=supplied[0], product=supplied[1])
+        recovered.query = query
+        return recovered
+
+    result.abstained = True
+    result.reason = f"no product of {vendor!r} matched {product!r}"
+    return result
+
+
+@dataclass
+class Finding:
+    """One CVE that affects the resolved product at the given version."""
+
+    cve: str
+    advisory_id: str
+    cvss: float | None
+    cwe: str | None
+    epss: float | None
+    in_kev: bool
+    ransomware: bool
+    version_range: str
+    # True when this finding's version range was actually evaluated against a
+    # supplied version. With no --version nothing was checked, so this is False
+    # and the evidence line says "not checked" rather than "parsed cleanly".
+    decided: bool
+    remediation: str = "unknown"   # vendor_fix / mitigation / workaround / none_available
+    vector: str | None = None      # the CVSS vector behind cvss, when given
+    # The advisory's remediation text names a shipped fix even though its
+    # category says "mitigation" -- CISA's filing for patches that ship via a
+    # support channel. The category above stays as published.
+    fix_text: bool = False
+    # The finding arrives via a third-party/component bundle advisory, where
+    # per-CVE reachability on the device is exactly what was not established.
+    third_party: bool = False
+    # NIST CSWP 41's retrospective estimate that this CVE has been exploited.
+    # Distinct from epss, which forecasts the next thirty days, and from
+    # in_kev, which records a sighting. `exposure.threat` takes the strongest.
+    #
+    # Appended, not inserted next to the other exploitation signals where it
+    # belongs by meaning: callers build Findings positionally, so a field added
+    # mid-list silently feeds the wrong argument to the wrong name. New fields
+    # go at the end.
+    lev: float | None = None
+    # Whether the caller supplied a firmware version at all -- which is NOT
+    # what `decided` means. `decided` says the range was evaluated and this
+    # finding survived it, and findings whose range EXCLUDES the version are
+    # dropped before they get here, so `decided` really means "the range check
+    # says this firmware IS affected". A claim about a selected firmware needs
+    # only to know that a firmware was selected.
+    version_supplied: bool = False
+    kev_available: bool = True
+    path_id: str | None = None
+    review: dict = field(default_factory=dict)
+    source_dates: dict = field(default_factory=dict)
+    # Set by the caller on every finding when the supplied firmware lies
+    # outside all of a product's published affected ranges: the advisories
+    # themselves say none of these CVEs applies to it. Kept, not dropped, so
+    # the product's patch and vendor record can still be measured.
+    outside_range: bool = False
+
+    @property
+    def fixed(self):
+        """A vendor fix exists, whatever CISA's category calls it."""
+        return self.remediation == "vendor_fix" or self.fix_text
+
+
+def findings(connection, resolution, version=None):
+    """Collect the CVEs affecting a resolution, filtered by version when given.
+
+    A CVE whose version range cannot be parsed is still returned, flagged
+    ``decided=False``, so the report can show it as needing review. Dropping it
+    silently would understate risk.
+    """
+    if not resolution.resolved:
+        return []
+
+    sources = {row["source"]: row["captured"] for row in connection.execute(
+        "SELECT source, captured FROM provenance")}
+    out, seen = [], {}
+    for match in resolution.matches:
+        # Skip products whose range we can read and that clearly exclude this
+        # version. When the range is unparseable we keep the CVE and flag it.
+        decided = False
+        if version and match.version_range:
+            verdict = affects(match.version_range, version)
+            if verdict is False:
+                continue
+            decided = verdict is not None
+        elif not version:
+            decided = False            # no version given: nothing was decided
+
+        rows = connection.execute(
+            "SELECT a.cve, a.cvss, a.cwe, a.remediation, a.vector, a.fix_text,"
+            "       v.rollup, e.epss, e.in_kev, e.ransomware, l.lev"
+            " FROM affected a"
+            " JOIN advisory v ON v.id = a.advisory_id"
+            " LEFT JOIN exploitation e ON e.cve = a.cve"
+            " LEFT JOIN lev_estimate l ON l.cve = a.cve"
+            " WHERE a.advisory_id = ? AND a.product_id = ?",
+            (match.advisory_id, match.product_id)).fetchall()
+
+        for row in rows:
+            key = (row["cve"], match.advisory_id)
+            if key in seen:
+                # A family query can include repairable and unrepairable
+                # variants. Keep the least repairable applicable status.
+                repair_rank = {"none_available": 0, "unknown": 1,
+                               "workaround": 2, "mitigation": 3, "vendor_fix": 4}
+                remedy = row["remediation"] or "unknown"
+                if repair_rank.get(remedy, 1) < repair_rank.get(seen[key].remediation, 1):
+                    seen[key].remediation = remedy
+                # Two products of the same advisory can carry the same CVE with
+                # different ranges, and whichever SQLite returned first decided
+                # the flag. A range we could evaluate outranks one we could not:
+                # "checked against your version" is a stronger statement than
+                # "kept in scope because we could not tell".
+                if decided and not seen[key].decided:
+                    seen[key].decided = True
+                    seen[key].version_range = match.version_range
+                continue
+            finding = Finding(
+                cve=row["cve"], advisory_id=match.advisory_id,
+                cvss=row["cvss"], cwe=row["cwe"], epss=row["epss"],
+                in_kev=bool(row["in_kev"]), ransomware=bool(row["ransomware"]),
+                lev=row["lev"], kev_available="CISA KEV" in sources,
+                version_supplied=bool(version),
+                source_dates=dict(sources),
+                version_range=match.version_range, decided=decided,
+                remediation=row["remediation"] or "unknown",
+                vector=row["vector"],
+                fix_text=bool(row["fix_text"]),
+                third_party=bool(row["rollup"]),
+            )
+            seen[key] = finding
+            out.append(finding)
+    return out

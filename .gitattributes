@@ -1,0 +1,4 @@
+# Consistent text line endings and binary documentation assets.
+* text=auto eol=lf
+*.pdf binary
+*.png binary

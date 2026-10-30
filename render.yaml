@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: retrust
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: bash scripts/render-build.sh
+    startCommand: python -u -m retrust.cli serve --host 0.0.0.0 --port "$PORT" --workers 8
+    healthCheckPath: /healthz
+    # Deploy main, not the branch this service happened to be created from.
+    # The service was first wired to a different branch, so three commits of
+    # fixes pushed to main never went live and two manual deploys rebuilt the
+    # same old commit with fresh data -- a failure that is completely silent,
+    # because the index hash moves while the code does not. Confirmed tracking
+    # main on 2026-10-30.
+    branch: main
+    # Every push to the tracked branch rebuilds and redeploys. The build
+    # refetches the corpus and the EPSS history, so a deploy is tens of
+    # minutes on the free plan -- expected, not a hang.
+    autoDeployTrigger: commit
+    envVars:
+      - key: RETRUST_HOSTED
+        value: "1"
+      - key: RETRUST_BUILD_LEV_HISTORY
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"

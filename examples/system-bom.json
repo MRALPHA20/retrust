@@ -1,0 +1,16 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "component": {"type": "device", "name": "Line 4 control system"}
+  },
+  "components": [
+    {"type": "device", "name": "SIMATIC S7-1500", "version": "3.1.6",
+     "supplier": {"name": "Siemens"}, "mpn": "6ES7518-4AX00-1AB0"},
+    {"type": "device", "name": "Modicon M340",
+     "supplier": {"name": "Schneider Electric"}},
+    {"type": "device", "name": "EDS-405A", "publisher": "Moxa"},
+    {"type": "device", "name": "AC 800M", "supplier": {"name": "ABB"}}
+  ]
+}

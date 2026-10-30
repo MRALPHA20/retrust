@@ -1,0 +1,461 @@
+"""ReTrust V1 exposure: evidence-based T x I x A x H x U with explicit bounds.
+
+Unknown factors are intervals, never guessed fractions. Network topology is
+required context; it cannot establish whether an attack path is reachable.
+Duplicate advisory records are grouped by CVE unless an explicit reviewed
+path ID is supplied. A reviewed group uses its greatest contribution, keeping
+repeated evidence from manufacturing independent attack paths.
+"""
+
+from dataclasses import dataclass, field
+from . import cvss
+
+# Plain answers a buyer can give without a glossary. The wording is the only
+# thing that changed here: the rubric values are the specification's.
+CONSEQUENCES = {
+    'safety': ('Major safety or environmental impact', 1.0),
+    'control': ('Major loss of process control', .8),
+    'recoverable': ('Recoverable production disruption', .5),
+    'minor': ('Minor operational disruption', .2),
+    'negligible': ('No material operational impact', 0.0),
+}
+# The specification groups "Yes" with "No additional requirements" as one
+# answer, because both mean the same thing for A: nothing stands in the way.
+# Splitting them left a buyer with no way to say a weakness needs nothing.
+PREREQUISITES = {
+    'satisfiable': ('Satisfied or not required', 1.0),
+    'unsatisfiable': ('Verified unsatisfied', 0.0),
+    'unknown': ('Unknown', None),
+}
+INTERFACES = {
+    'exposed': ('Reachable', 1.0),
+    'blocked': ('Verified blocked across all relevant paths', 0.0),
+    'unknown': ('Unknown', None),
+}
+REMEDIATIONS = {
+    'affected': ('Confirmed affected — not remediated', 1.0),
+    'applied': ('Fix verified installed', 0.0),
+    'not_affected': ('Verified not affected', 0.0),
+    'mitigated': ('Mitigation applied — effectiveness unverified', None),
+    'available': ('Fix available — not installed', 1.0),
+    'planned': ('Remediation planned', None),
+    'unknown': ('Unknown', None),
+}
+ASSESSMENT_TYPES = {'purchase': 'Procurement assessment', 'installed': 'Installed asset'}
+CONCENTRATION = (1.0, .20, .10)
+NETWORK_QUESTION = ('Answer "Network exposure" -- recorded as context, and'
+                    ' needed before a verdict is given')
+
+# A flaw nobody is exploiting this month is not a flaw nobody will exploit over
+# a controller's service life. EPSS forecasts the next thirty days and sits near
+# 0.003 for most OT CVEs, so T = max(KEV, LEV, EPSS) alone left Z near zero for
+# almost every product: exposure read ~99/100 whatever the operator answered,
+# and a switch with four unfixed CVSS 9.8s scored PREFER (RT6). T is therefore
+# floored by how the flaw is reached, read from its own CVSS vector. The order
+# follows this corpus's KEV rate by access profile (wormable 1.3%, other remote
+# 0.9%, local 0.6%, physical 0.0%); the magnitudes are a service-life policy,
+# not a measured probability -- the same standing as the consequence values.
+THREAT_FLOORS = {
+    'wormable': ('Network-reachable, no privileges, no user action', .50),
+    'remote': ('Network or adjacent, with conditions', .30),
+    'local': ('Needs local execution on the device', .15),
+    'physical': ('Needs physical access to the device', .05),
+}
+
+
+@dataclass(frozen=True)
+class Bounds:
+    low: float
+    high: float
+
+    @property
+    def resolved(self):
+        return abs(self.high - self.low) < 1e-12
+
+    def values(self):
+        return [self.low, self.high]
+
+
+@dataclass
+class Exposure:
+    safety_min: float
+    safety_max: float
+    coverage: float
+    paths: list = field(default_factory=list)
+    missing: list = field(default_factory=list)
+    evidence: list = field(default_factory=list)
+    # Declared answers that could not apply to every finding. An answer the
+    # tool quietly ignores is worse than one it refuses: the operator believes
+    # they have ruled something out when they have not.
+    inapplicable: list = field(default_factory=list)
+    # False when a declared answer bore on nothing at all, so a caller can
+    # decline to cite it as a reason the verdict holds.
+    prerequisites_applied: bool = True
+
+    @property
+    def provisional(self):
+        return bool(self.missing)
+
+
+def _probability(value):
+    if value is None:
+        return None
+    value = float(value)
+    if not 0 <= value <= 1:
+        raise ValueError('Threat estimates must be between 0 and 1')
+    return value
+
+
+def threat(finding):
+    """Maximum available KEV, LEV and EPSS; None means no source is available."""
+    kev = 1.0 if finding.in_kev or finding.ransomware else (
+        0.0 if getattr(finding, 'kev_available', True) else None)
+    available = [v for v in (kev, _probability(finding.lev), _probability(finding.epss))
+                 if v is not None]
+    return max(available) if available else None
+
+
+def access_profile(finding):
+    """The THREAT_FLOORS row a finding belongs to, read from its CVSS vector.
+
+    A missing or unreadable vector takes the wormable row: absence of evidence
+    must never lower a risk term.
+    """
+    vector = cvss.parse(finding.vector) if finding.vector else None
+    if vector is None or vector.attack_vector is None:
+        return 'wormable'
+    if vector.attack_vector in ('local', 'physical'):
+        return vector.attack_vector
+    return 'wormable' if vector.wormable else 'remote'
+
+
+def threat_bounds(finding):
+    value = threat(finding)
+    if value == 1:
+        return Bounds(1, 1)
+    # LEV needs the optional EPSS history download, so on a default install it
+    # is absent for every CVE. The specification computes T from whichever of
+    # KEV, LEV and EPSS exist and reports the missing source as reduced
+    # coverage; treating an absent LEV as T in [value, 1] left every product
+    # permanently provisional, with E spanning 0-95 whatever the owner answered.
+    complete = (getattr(finding, 'kev_available', True)
+                and finding.epss is not None)
+    floor = THREAT_FLOORS[access_profile(finding)][1]
+    return Bounds(max(value or 0.0, floor), max(value if complete else 1.0, floor))
+
+
+def severity(finding):
+    """Technical severity I = CVSS base / 10: how much this flaw can deliver.
+
+    H says what the process stands to lose; I says how much of that a given
+    weakness can reach. Without it a CVSS 2.7 information leak and a 9.8 remote
+    code execution on the same controller carried exactly the same weight. A
+    missing score takes 1: absence never lowers a risk term.
+    """
+    if finding.cvss is None:
+        return Bounds(1, 1)
+    value = min(1.0, max(0.0, float(finding.cvss) / 10))
+    return Bounds(value, value)
+
+
+def impact(finding, consequence=None):
+    """Declared credible OT consequence; CVSS severity is recorded separately."""
+    if consequence is None:
+        return None
+    if consequence not in CONSEQUENCES:
+        raise ValueError('Unknown operational consequence')
+    return CONSEQUENCES[consequence][1]
+
+
+def demands_conditions(vector):
+    if vector is None:
+        return None
+    # A missing prerequisite metric is unresolved, rather than "no conditions".
+    if (vector.privileges not in (None, 'none')
+            or vector.interaction not in (None, 'none')
+            or vector.requirements == 'present' or vector.complexity == 'high'):
+        return True
+    if (vector.privileges is None or vector.interaction is None
+            or (vector.version.startswith('4') and vector.requirements is None)):
+        return None
+    return False
+
+
+# The spec's step A1: read the flaw's own attack vector first, because it
+# decides WHICH question establishes reachability. "The affected service is
+# reachable" is an answer about the network; it cannot establish that an
+# attacker has the local execution or the physical contact that an AV:L or
+# AV:P flaw additionally requires.
+REMOTE_VECTORS = ('network', 'adjacent')
+
+
+def reach_bounds(finding, interface='unknown', network=None, prerequisites='unknown'):
+    if interface not in INTERFACES or prerequisites not in PREREQUISITES:
+        raise ValueError('Unknown reachability or prerequisite status')
+    if interface == 'blocked':
+        return Bounds(0, 0)
+    vector = cvss.parse(finding.vector) if finding.vector else None
+    conditions = demands_conditions(vector)
+    if conditions is True and prerequisites == 'unsatisfiable':
+        return Bounds(0, 0)
+    # "The affected service is reachable" settles a NETWORK question, so on its
+    # own it resolves only a remotely-reachable flaw. A local or physical flaw
+    # additionally needs execution on the box or hands on the cabinet, and the
+    # network answer says nothing about either -- without that, an AV:P flaw
+    # would score exactly like an unauthenticated remote one. An explicit
+    # "the attacker can meet what this weakness requires" does cover that
+    # access, so it still resolves any vector.
+    remotely_reachable = vector is None or vector.attack_vector in REMOTE_VECTORS
+    if interface == 'exposed' and (
+            prerequisites == 'satisfiable'
+            or (conditions is False and remotely_reachable)):
+        return Bounds(1, 1)
+    return Bounds(0, 1)
+
+
+def reach(finding, interface='unknown', network=None, prerequisites='unknown'):
+    """Conservative endpoint; use reach_bounds to retain unresolved evidence."""
+    return reach_bounds(finding, interface, network, prerequisites).high
+
+
+def applicability_bounds(finding, assessment_type='purchase', remediation='unknown'):
+    if remediation not in REMEDIATIONS:
+        raise ValueError('Unknown firmware applicability status')
+    if remediation in ('applied', 'not_affected'):
+        # The spec's U table zeroes a SELECTED version verified patched or
+        # not affected, so the claim needs a selected firmware -- and
+        # `decided` is emphatically not that test. `match.findings` drops
+        # every finding whose range excludes the supplied version, so a
+        # surviving finding with decided=True is one the range check says IS
+        # affected. Gating the claim on it made the proof of affectedness the
+        # licence for believing the device was patched: an internet-exposed,
+        # safety-critical, CVSS 10.0, confirmed-affected device read PREFER
+        # 99.2. The honest test is whether a firmware was named at all.
+        # Three cases, and only one of them resolves:
+        #   no firmware named        -> the claim is about nothing; unresolved
+        #   named, range says AFFECTED -> our own evidence contradicts the
+        #                               claim; refuse to pick a side silently
+        #   named, range not decided -> nothing contradicts it; honour it
+        if finding.version_supplied and not finding.decided:
+            return Bounds(0, 0)
+        return Bounds(0, 1)
+    if remediation in ('affected', 'available') or finding.decided:
+        return Bounds(1, 1)
+    return Bounds(0, 1)
+
+
+def applicability(finding, assessment_type='purchase', remediation='unknown'):
+    return applicability_bounds(finding, assessment_type, remediation).high
+
+
+def factors(finding, consequence=None, interface='unknown', assessment_type='purchase',
+            remediation='unknown', network=None, prerequisites='unknown'):
+    review = getattr(finding, 'review', {}) or {}
+    # Finding-specific reviews take precedence over product-wide assertions.
+    consequence = review.get('consequence', consequence)
+    interface = review.get('interface', interface)
+    prerequisites = review.get('prerequisites', prerequisites)
+    remediation = review.get('remediation', remediation)
+    h = impact(finding, consequence)
+    return {'T': threat_bounds(finding),
+            'I': severity(finding),
+            'A': reach_bounds(finding, interface, network, prerequisites),
+            'H': Bounds(0, 1) if h is None else Bounds(h, h),
+            'U': applicability_bounds(finding, assessment_type, remediation)}
+
+
+def risk_bounds(finding, consequence=None, interface='unknown', assessment_type='purchase',
+                remediation='unknown', network=None, prerequisites='unknown'):
+    values = factors(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
+    low = high = 1.0
+    for bounds in values.values():
+        low *= bounds.low
+        high *= bounds.high
+    return Bounds(low, high)
+
+
+def risk(finding, consequence=None, interface='unknown', assessment_type='purchase',
+         remediation='unknown', network=None, prerequisites='unknown'):
+    """Conservative Z endpoint; unresolved factors are preserved in risk_bounds."""
+    return risk_bounds(finding, consequence, interface, assessment_type, remediation,
+                       network, prerequisites).high
+
+
+def concentrate(risks):
+    risks = list(risks)
+    if any(not 0 <= value <= 1 for value in risks):
+        raise ValueError('Path contributions must be between 0 and 1')
+    return min(1.0, sum(w * z for w, z in zip(CONCENTRATION, sorted(risks, reverse=True))))
+
+
+def analyse(findings, consequence=None, interface='unknown', assessment_type='purchase',
+            remediation='unknown', network=None, prerequisites='unknown'):
+    if not findings:
+        return Exposure(100, 100, 0, evidence=['No advisory findings to measure; absence is not proof of safety'])
+    groups = {}
+    missing = set()
+    unresolved = {name: set() for name in ('T', 'I', 'A', 'H', 'U')}
+    measured = total = 0
+    # A reviewed path id must claim EVERY record of its CVEs: grouping by
+    # "path_id or cve" alone would split one CVE into two units when a reviewer
+    # tagged only some of its advisory records, and the same flaw would then
+    # enter R twice as Z1 + 0.20 Z2.
+    assignments = {}
+    for f in findings:
+        if getattr(f, 'path_id', None):
+            assignments.setdefault(f.cve, set()).add(f.path_id)
+    conflicts = sorted(cve for cve, ids in assignments.items() if len(ids) > 1)
+    if conflicts:
+        raise ValueError('Conflicting reviewed attack-path labels for '
+                         + ', '.join(conflicts)
+                         + '. Assign one consistent path per CVE before assessing.')
+    reviewed = {cve: next(iter(ids)) for cve, ids in assignments.items()}
+    for finding in findings:
+        values = factors(finding, consequence, interface, assessment_type, remediation, network, prerequisites)
+        # The factors above are also the exported evidence. Reuse them for
+        # Z rather than parsing every vector and deriving all four twice.
+        low = high = 1.0
+        for bounds in values.values():
+            low *= bounds.low
+            high *= bounds.high
+        z = Bounds(low, high)
+        key = getattr(finding, 'path_id', None) or reviewed.get(finding.cve) or finding.cve
+        group = groups.setdefault(key, {'path_id': key, 'grouping': 'reviewed path' if key != finding.cve else 'CVE review unit',
+                                       'cves': set(), 'advisories': set(), 'z_min': 0, 'z_max': 0, 'inputs': []})
+        group['cves'].add(finding.cve)
+        group['advisories'].add(finding.advisory_id)
+        group['z_min'] = max(group['z_min'], z.low)
+        group['z_max'] = max(group['z_max'], z.high)
+        measured += sum(v.resolved for v in values.values())
+        total += len(values)
+        absent = [name for name, bounds in values.items() if not bounds.resolved]
+        if not z.resolved:
+            for name in absent:
+                unresolved[name].add(finding.cve)
+        group['inputs'].append({'cve': finding.cve, 'advisory': finding.advisory_id,
+                                'factors': {name: bounds.values() for name, bounds in values.items()},
+                                'missing': absent, 'kev': bool(finding.in_kev),
+                                'kev_available': getattr(finding, 'kev_available', True),
+                                'lev': finding.lev, 'epss': finding.epss,
+                                'cvss_vector': finding.vector, 'cvss_severity': finding.cvss,
+                                'firmware_range': finding.version_range, 'version_checked': finding.decided,
+                                'review': dict(getattr(finding, 'review', {}) or {}),
+                                'source_dates': dict(getattr(finding, 'source_dates', {}) or {})})
+    # Each item names the question that closes it, in the words the form uses,
+    # so a buyer reading the checklist knows exactly where to go. The T item is
+    # the exception and says so: no answer from the owner can supply missing
+    # exploitation data, only a feed refresh can.
+    labels = {
+        'T': 'Exploitation data is missing for these. Refresh the data sources'
+             ' -- this is not something you can answer',
+        'I': 'The CVSS base score is missing for these. Ask the vendor to score them',
+        'A': 'Answer "Attack reachability (A)" and "Exploitation prerequisites" -- confirm with the network owner',
+        'H': 'Answer "Credible operational impact (H)"'
+             ' -- confirm with operations or safety',
+        'U': 'Answer "Is the firmware you are getting already fixed?" -- and give'
+             ' the exact firmware version',
+    }
+    if remediation in ('applied', 'not_affected'):
+        disputed = sorted({f.cve for f in findings
+                           if f.version_supplied and f.decided})
+        if disputed:
+            sample = ', '.join(disputed[:3])
+            more = f' and {len(disputed)-3} more' if len(disputed) > 3 else ''
+            missing.add(
+                'The firmware you gave is inside the affected range published '
+                f'for {sample}{more}, which contradicts "{REMEDIATIONS[remediation][0]}". '
+                'Re-check the version, or ask the vendor to confirm the fix in writing')
+    for name, cves in unresolved.items():
+        requests = {}
+        for finding in findings:
+            if finding.cve not in cves:
+                continue
+            review = getattr(finding, 'review', {}) or {}
+            message = labels[name]
+            if name == 'A':
+                questions = []
+                if review.get('interface', interface) == 'unknown':
+                    questions.append('"Attack reachability (A)"')
+                if review.get('prerequisites', prerequisites) == 'unknown':
+                    questions.append('"Exploitation prerequisites"')
+                message = ('Answer ' + ' and '.join(questions) + ' -- confirm with the network owner'
+                           if questions else
+                           'Review the attack requirements in the advisory; the supplied answers '
+                           'do not settle reachability for these weaknesses')
+            if name == 'U' and review.get('remediation', remediation) in ('applied', 'not_affected'):
+                message = (
+                    'Give the exact firmware version to check the recorded fixed or unaffected claim'
+                    if not finding.version_supplied else
+                    'Resolve the conflict between the recorded firmware claim and the published affected range')
+            requests.setdefault(message, set()).add(finding.cve)
+        for message, affected in requests.items():
+            sample = ', '.join(sorted(affected)[:3])
+            more = f' and {len(affected)-3} more' if len(affected) > 3 else ''
+            missing.add(f'{message} ({sample}{more})')
+    if network is None:
+        missing.add(NETWORK_QUESTION)
+    paths = []
+    for group in groups.values():
+        group['cves'] = sorted(group['cves'])
+        group['advisories'] = sorted(group['advisories'])
+        paths.append(group)
+    paths.sort(key=lambda p: (-p['z_max'], p['path_id']))
+    r_min = concentrate([p['z_min'] for p in paths])
+    r_max = concentrate([p['z_max'] for p in paths])
+    # "An attacker could not meet what this weakness requires" is a claim about
+    # conditions. A weakness that demands none -- no privileges, no user
+    # interaction, no attack requirement -- has nothing for that answer to rule
+    # out, so it stays reachable and the answer is vacuous. Saying so matters:
+    # the alternative is a report citing "verified impossible" among the
+    # assertions SUPPORTING a high-exposure verdict, which reads backwards.
+    inapplicable, prerequisites_applied = [], True
+    if prerequisites == 'unsatisfiable':
+        conditions = [(f.cve, demands_conditions(cvss.parse(f.vector)
+                                                if f.vector else None))
+                      for f in findings]
+        unknown = {cve for cve, state in conditions if state is None}
+        conditioned = {cve for cve, state in conditions if state is True}
+        unconditioned = sorted({cve for cve, state in conditions if state is False}
+                               - unknown - conditioned)
+        prerequisites_applied = bool(conditioned)
+        if unconditioned:
+            sample = ', '.join(unconditioned[:3])
+            inapplicable.append(
+                f'{len(unconditioned)} weakness(es) need nothing extra to exploit '
+                f'({sample}), so the answer that extra conditions cannot be met '
+                'did not reduce their reachability')
+        if unknown:
+            sample = ', '.join(sorted(unknown)[:3])
+            inapplicable.append(
+                f'Attack requirements are unknown in some advisory evidence for '
+                f'{len(unknown)} weakness(es) ({sample}). Missing attack-vector '
+                'evidence cannot establish that no extra conditions are needed, '
+                'or that an attacker cannot meet them')
+        if not conditioned:
+            inapplicable[-1] += '. That answer changed nothing in this assessment'
+
+    no_lev = sum(1 for f in findings if f.lev is None)
+    evidence = ['R = min(1, Z1 + 0.20 Z2 + 0.10 Z3)',
+                f'{len(paths)} review unit(s) across {len(findings)} advisory finding(s); duplicate advisories count once per unit',
+                'Default units are CVEs; independence of different CVEs is not established by this grouping',
+                f'Exposure safety range: {100*(1-r_max):.1f}–{100*(1-r_min):.1f}/100',
+                f'Network context: {network or "Unknown"}; topology alone does not prove reachability',
+                *([f'LEV is not available for {no_lev} of {len(findings)} finding(s); T uses KEV and EPSS only. Load the EPSS history to add LEV'] if no_lev else []),
+                'Z = T × I × A × H × U. T = max(KEV, LEV, EPSS, service-life floor by attack vector); I = CVSS base / 10; A is verified reachability; H is declared credible OT consequence; U is unremediated applicability']
+    evidence.extend(inapplicable)
+    if missing:
+        evidence.append('Verify unresolved inputs before using the result as a purchase recommendation')
+    return Exposure(100*(1-r_max), 100*(1-r_min), measured/total, paths, sorted(missing),
+                    evidence, inapplicable, prerequisites_applied)
+
+
+def measure(findings, consequence=None, interface='unknown', assessment_type='purchase',
+            remediation='unknown', network=None, prerequisites='unknown'):
+    result = analyse(findings, consequence, interface, assessment_type, remediation, network, prerequisites)
+    return result.safety_min, result.coverage, result.evidence
+
+
+def worst(findings, consequence=None, interface='unknown', assessment_type='purchase',
+          remediation='unknown', network=None, prerequisites='unknown'):
+    result = analyse(findings, consequence, interface, assessment_type, remediation, network, prerequisites)
+    return max((p['z_max'] for p in result.paths), default=None)

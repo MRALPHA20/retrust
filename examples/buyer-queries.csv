@@ -1,0 +1,22 @@
+vendor,product,version,order_number,expect,reject,note
+Siemens,SIMATIC S7-1500,,,ICSA-22-167-14,,family name reaches its CPU variants
+siemens,simatic s7-1500 cpu 1518,,,ICSA-22-167-14,,case must not matter
+Siemens,,,6ES7 518-4AX00-1AB0,ICSA-22-167-14,,order number with the nameplate's spacing
+,,,6es7518-4ax00-1ab0,ICSA-22-167-14,,order number alone and lowercase
+Siemems,SIMATIC S7-1500,,,abstain,,misspelled vendor must abstain with a suggestion rather than guess
+Rockwell,RSLogix 5,,,ICSA-24-263-01,ICSA-12-088-01A,RSLogix 5 is not RSLogix 500 or 5000
+Rockwell Automation Inc.,RSLogix 5000,,,ICSA-12-088-01A,,company suffix must not matter
+Rockwell,1756-EN2T,,,ICSA-16-061-02,,a buyer types the catalogue number into the product field
+Moxa Inc.,EDS-405A,,,ICSA-19-057-01,,vendor suffix again
+Moxa,EDS405A,,,ICSA-19-057-01,,hyphen dropped in transcription
+Schneider,Modicon M340,,,ICSA-15-351-01,,"""Schneider"" for ""Schneider Electric"""
+Schneider Electric,Modicon M580,,,ICSA-19-136-01,,the relationships fix keeps this resolvable
+ABB,AC 800M,,,ICSA-20-154-01,,rung 3: every query word appears mid-name
+Mitsubishi,MELSEC iQ-R,,,ICSA-20-091-02,,series name continuing at a boundary
+Phoenix Contact,ILC 1xx,,,ICSA-16-313-01,,trailing word on the corpus side
+SIEMENS,Scalance X414-3E,,,ICSA-12-102-04,,exact model
+,,,EC150,abstain,,one number two manufacturers: naming either would be a guess
+Siemens,SIMATIC S7-1200,,6ES7518-4AX00-1AB0,abstain,,name and order number disagree
+Siemens,-,,,abstain,,a spreadsheet placeholder is not a product
+Hirschmann,RS switches,,,ICSA-18-065-01,,corpus vendor is the merged Belden entity; a unique prefix reaches it
+Belden,RS switches,,,ICSA-18-065-01,,KNOWN MISS: Belden sits mid-key so only a substring guess would reach it and the tool refuses to guess

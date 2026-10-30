@@ -1,0 +1,13 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/MRALPHA20/retrust/security/advisories/new
+    about: >-
+      Do not open a public issue for a suspected vulnerability. Use private
+      reporting instead. SECURITY.md describes what is in scope and what to
+      include.
+  - name: Documentation, scoring methodology and limits
+    url: https://github.com/MRALPHA20/retrust/blob/main/docs/README.md
+    about: >-
+      How assessment works, what the score does and does not mean, and the
+      retained measurements behind the benchmark claims.
