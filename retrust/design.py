@@ -2,7 +2,8 @@
 
 The tokens, colour maths and the base and print stylesheets every surface shares.
 
-Decisions confirmed by the user (Redesign-plan.md section 7):
+Decisions confirmed by the project owner (docs/design/implementation-plan.md,
+section 7):
 
 D1  JavaScript is in scope: one same-origin external script
     /static/retrust.js, CSP script-src 'self'; connect-src 'self', no inline

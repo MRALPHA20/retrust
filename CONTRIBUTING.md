@@ -32,9 +32,9 @@ assessments use the downloaded snapshot.
 | `retrust/bootstrap.py`, `csaf.py`, `index.py` | Public source fetching, parsing and indexing |
 | `retrust/formula_check.py` | Independent all-product formula validation |
 | `tests/test_*.py` | Automated regression cases |
-| `docs/` | Current guides and retained benchmark evidence |
+| `docs/` | Current guides, design documents and retained benchmark evidence |
 | `examples/` | Small sample inputs without confidential information |
-| `scripts/` | Build and deployment operations |
+| `scripts/` | Deployment build and real-data smoke checks |
 | `tools/` | Documentation generation and benchmark utilities |
 
 Pages must work with JavaScript off, load nothing from another origin and add
@@ -58,16 +58,23 @@ make smoke                  # Real-data CLI checks; requires setup first.
 make formula-check          # Every indexed product; requires setup first.
 ```
 
-The smoke script performs broad CLI work and writes local reports. Some checks
+The smoke script (`scripts/smoke.sh`) performs broad CLI work and writes local
+reports. Some checks
 reflect its retained corpus and require review when source data changes.
 The all-product validator can take several minutes. Its output is ignored by
 Git; Render runs this validator against newly fetched data during every build.
 
-For an interface change, check the relevant interaction and desktop/mobile
-layout. For a scoring change, cover the numeric result, unknown inputs,
+For an interface change, follow the
+[design language](docs/design/design-language.md) and check the relevant
+interaction and desktop/mobile layout. For a scoring change, cover the numeric result, unknown inputs,
 firmware applicability and any gate that can override the score. Update the
 current methodology when behavior changes. A passing formula check establishes
 arithmetic consistency, not predictive accuracy.
+
+## Security issues
+
+Do not report vulnerabilities in public issues or pull requests. Use the
+private channel described in [SECURITY.md](SECURITY.md).
 
 ## Working with GitHub
 

@@ -1,4 +1,7 @@
-"""Regression tests for the Gate R3 review findings (numbers match the review)."""
+"""Regression tests for the findings of the third UI review round.
+
+The numbers in the test names match the review.
+"""
 
 import collections
 import os

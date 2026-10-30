@@ -1,6 +1,6 @@
 # ReTrust "Control Room" redesign: implementation plan
 
-Repo root: `D:\karthik\retrust`, branch `redesign`. Baseline today: 1,102 tests collect (`python -m pytest -p no:cacheprovider --collect-only -q`). Local Python is 3.13; CI runs 3.10 and 3.13. Local tooling is in place for verification: `data/retrust.db` (44 MB real index), Playwright, ReportLab 5.1 and Chrome 156.
+Working plan for the Control Room user-interface redesign, developed on the `redesign` branch against a 1,102-test baseline. Verification used a real local index, Playwright, ReportLab and Chrome. Section 8 records what was built and where it deviates from this plan. The design language itself is in [design-language.md](design-language.md).
 
 ---
 
@@ -152,7 +152,7 @@ Repo root: `D:\karthik\retrust`, branch `redesign`. Baseline today: 1,102 tests 
 - Class contract:
   - New components use an `rt-` prefixed BEM scheme (`rt-badge rt-badge--verify rt-badge--l`).
   - Legacy hook classes that tests or regexes depend on keep their names: `hit`, `tw`, `table-scroll-hint`, `subject`, `n`, `meta`, `tnote`, `note`, `helper`, `empty`, `assessment-more-info`, `edit-effects`.
-- CSP gotcha for implementers: `url(data:…)` in CSS is blocked by `default-src 'none'` (img-src). Inline `<svg>` and `style=""` attributes are allowed, and gradients are fine (hatching).
+- CSP gotcha: `url(data:…)` in CSS is blocked by `default-src 'none'` (img-src). Inline `<svg>` and `style=""` attributes are allowed, and gradients are fine (hatching).
 
 **A3. Component model.**
 - Components are pure functions: data in, escaped HTML string out, no I/O.
@@ -210,10 +210,10 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 ### Phase 0: contracts (lead, serial, small)
 **WP0 Contracts and stubs**
 - **Files:**
-  - `D:\karthik\retrust\retrust\design.py` (token dicts, `alpha()`, `theme_css()` signatures)
-  - `D:\karthik\retrust\retrust\components.py` (signatures and docstrings)
-  - `D:\karthik\retrust\retrust\evidenceview.py` (`EvidenceView` dataclass and stub functions)
-  - `D:\karthik\retrust\retrust\report.py`: split the current CSS into `THEME` + `RESULT_CSS`, with `CSS = THEME + RESULT_CSS` producing byte-identical output; add the `WebView` dataclass
+  - `retrust/design.py` (token dicts, `alpha()`, `theme_css()` signatures)
+  - `retrust/components.py` (signatures and docstrings)
+  - `retrust/evidenceview.py` (`EvidenceView` dataclass and stub functions)
+  - `retrust/report.py`: split the current CSS into `THEME` + `RESULT_CSS`, with `CSS = THEME + RESULT_CSS` producing byte-identical output; add the `WebView` dataclass
 - `WebView` fields: `actions_html`, `tabs_html`, `inputs_html`, `questions_html`, `evidence: EvidenceView`, `advisories: dict[id, (title, released)]`, `checks: dict(kev_loaded, screening_loaded)`, `order_number`, `version`, `field_ids: dict`.
 - The decisions D1–D6 get recorded in the `design.py` docstring.
 - **Acceptance:** the suite is unchanged and green, and nothing calls the stubs.
@@ -221,7 +221,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 ### Phase 1: foundations (all four in parallel; no shared files)
 
 **WP1 Tokens and base CSS.** Spec 2.1–2.3, 2.5, 2.6, 5.4 (contrast, focus, motion), 5.5.
-- **Files:** `D:\karthik\retrust\retrust\design.py`, new `D:\karthik\retrust\tests\test_design.py`.
+- **Files:** `retrust/design.py`, new `tests/test_design.py`.
 - **DARK** uses the exact spec 2.1 values.
 - **LIGHT** uses spec 5.5 plus proposals for the tokens the spec leaves undefined:
 
@@ -261,18 +261,18 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 
 **WP2 Fonts and static assets.** Spec 2.2.
 - **Files:**
-  - `D:\karthik\retrust\retrust\assets.py`
-  - `D:\karthik\retrust\retrust\static\fonts\*` (7 woff2 + `OFL.txt` + README with source URL, version and sha256)
-  - `D:\karthik\retrust\pyproject.toml`: `[tool.setuptools.package-data] retrust = ["static/fonts/*.woff2","static/fonts/OFL.txt"]`
-  - `D:\karthik\retrust\.gitattributes`: `*.woff2 binary`
-  - `D:\karthik\retrust\retrust\identity.py`: `build_fingerprint` also hashes `retrust/static/**`
-  - `D:\karthik\retrust\retrust\serve.py`, only these parts:
+  - `retrust/assets.py`
+  - `retrust/static/fonts/*` (7 woff2 + `OFL.txt` + README with source URL, version and sha256)
+  - `pyproject.toml`: `[tool.setuptools.package-data] retrust = ["static/fonts/*.woff2","static/fonts/OFL.txt"]`
+  - `.gitattributes`: `*.woff2 binary`
+  - `retrust/identity.py`: `build_fingerprint` also hashes `retrust/static/**`
+  - `retrust/serve.py`, only these parts:
     - the font routes in the dict;
     - `_send` handling for `assets.Asset(bytes)` (no encode, `font/woff2`, immutable cache);
     - `do_GET` bypassing the calculation semaphore for font routes, like `/healthz`;
     - `font-src 'self'` in the CSP;
     - SAFETY text changed to "No page or download is cached; only bundled font files are cacheable" (all tested phrases kept).
-  - New `D:\karthik\retrust\tests\test_assets.py`.
+  - New `tests/test_assets.py`.
 - Load fonts through `importlib.resources.files("retrust").joinpath(...)` (works on 3.10 and in wheels). Missing files mean a 404 and system-font fallback, never a crash.
 - Needs network access to fetch the fonts. Check that ● ◆ ■ ✓ ▲ ▼ ↑ – · ≥ × are covered; any missing glyph falls back to the system font.
 - **Tests:**
@@ -286,7 +286,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 - **Acceptance:** `python -m pip wheel . --no-deps -w <scratch>` produces a wheel containing the fonts.
 
 **WP3 Component primitives.** Spec 2.4, 4.4–4.7, 4.11–4.13 (shell), 4.17 (menu shell), 4.20–4.23, 5.1–5.3.
-- **Files:** `D:\karthik\retrust\retrust\components.py`, new `D:\karthik\retrust\tests\test_components.py`.
+- **Files:** `retrust/components.py`, new `tests/test_components.py`.
 - **Formatters (spec 5.2):**
   - `fmt_score` 1 decimal; `fmt_range` with en dash; `fmt_z` 3 decimals; `fmt_cvss` 1 decimal.
   - `fmt_prob` gives `.04`, never `.00`: values <0.005 render `<.01`, values ≥0.995 and <1 render `>.99`.
@@ -311,12 +311,12 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
   - Formatter edge cases.
 
 **WPQ Gap tags on supplier questions.** Spec 4.19.
-- **Files:** `D:\karthik\retrust\retrust\questions.py`, `D:\karthik\retrust\tests\test_questions.py`.
+- **Files:** `retrust/questions.py`, `tests/test_questions.py`.
 - Add `gap: str = ""` as the last field of `Question`. Set it per generator: `_kev`→E, `_unfixed`→P, `_mitigated`→P, `_undecided`→E, `_wormable`→E, `_certification`→C, `_feed`→V, unresolved product→ID, `_always`→"".
 - **Test:** `format_report` output is byte-identical before and after on a fixture.
 
 **WPC (optional, tiny) Terminal VERIFY in violet.**
-- **Files:** `D:\karthik\retrust\retrust\console.py`, `tests\test_console.py`.
+- **Files:** `retrust/console.py`, `tests/test_console.py`.
 - Add style `"verify": "38;5;141"`, map VERIFY to it, and pin it in the test.
 
 **Gate R1 (review):** tokens and contrast, CSP, packaging, font licence.
@@ -325,9 +325,9 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 
 **WP4 Shell and page chrome.** Spec 3, 4.1–4.3, 4.23 (error), 4.24, 5.4.
 - **Files:**
-  - `D:\karthik\retrust\retrust\webui.py`
-  - `D:\karthik\retrust\retrust\serve.py`, only `Handler.do_GET`/`_dispatch_get`: ContextVar set and reset, plus the 400/403/404/500 bodies
-  - `D:\karthik\retrust\tests\test_serve.py`
+  - `retrust/webui.py`
+  - `retrust/serve.py`, only `Handler.do_GET`/`_dispatch_get`: ContextVar set and reset, plus the 400/403/404/500 bodies
+  - `tests/test_serve.py`
 - **`page()` keeps its signature. Structure:**
   - Skip link.
   - `<header class="rt-header">` containing: logo SVG, wordmark, `RT8` tag from `score.SCORING_VERSION`, 4-item nav (D5), GET search form (`action="/"`, `name="q"`, maxlength 200, label), and snapshot status.
@@ -347,7 +347,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
   - New: exactly 4 nav links and the correct `aria-current` per route (parametrise all routes); search form attributes; three snapshot states; skip link first; error pages carry `role=alert` with codes unchanged; still no `<script`.
 
 **WP5a Result composites and export variant.** Spec 3 (grid and order), 4.7–4.9, 4.11, 4.13, 4.16, 4.23 (not identified), 5.1, 5.2, 5.5, 6.
-- **Files:** `D:\karthik\retrust\retrust\report.py`; `D:\karthik\retrust\retrust\supplychain.py` (only add `COVERED_LIST_GATE`/`SANCTIONS_GATE` constants used by `gates_for`, output unchanged); new `D:\karthik\retrust\tests\test_result_view.py`; listed test updates.
+- **Files:** `retrust/report.py`; `retrust/supplychain.py` (only add `COVERED_LIST_GATE`/`SANCTIONS_GATE` constants used by `gates_for`, output unchanged); new `tests/test_result_view.py`; listed test updates.
 - **Keep these names:** `CSS`, `VERDICT_COLOR` (keys unchanged; values become the new vars), `VERDICT_HELP`, `PILLAR_LABELS`, `PILLAR_KEYS`, `FEEDS_EXPOSURE`, `CONTEXT_ONLY`, `INERT`, `score_label`, `plural`, `verb`, `RANGE_DASH`, `_probability`, `_calculation_summary`, `_pillar_table` (diagnostics), `_summary_table` (until WP7).
 - **Signature changes:**
   - `_weight_share`: same signature, full-set normalisation (1.6 item 1).
@@ -388,7 +388,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
   - New tests for every state above, for alert roles and tags, and for the export having no controls and no https.
 
 **WP5b Exposure and evidence views.** Spec 4.10, 4.12, 4.14, 4.15, 4.21, 5.2.
-- **Files:** `D:\karthik\retrust\retrust\evidenceview.py`; new `D:\karthik\retrust\tests\test_evidence_view.py`; update `tests\test_webviews.py` (`_reviewed` hook moves to `id="evidence-table"`; probability-format test). If D4=Z, also `D:\karthik\retrust\retrust\batch.py` and `tests\test_batch.py::test_detail_ranks_and_truncates_findings`.
+- **Files:** `retrust/evidenceview.py`; new `tests/test_evidence_view.py`; update `tests/test_webviews.py` (`_reviewed` hook moves to `id="evidence-table"`; probability-format test). If D4=Z, also `retrust/batch.py` and `tests/test_batch.py::test_detail_ranks_and_truncates_findings`.
 - **Exposure card:**
   - Panel label `EXPOSURE · TOP 3 REVIEW UNITS`.
   - Readout `R = min(1, Z1 + 0.20·Z2 + 0.10·Z3) = 0.417 → E = 58.3`; ranges when provisional.
@@ -409,7 +409,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 - **Tests:** ranking; counts; sort and `aria-sort`; cap; formats (`.04`, `<.01`); chips; fix mapping; floored marker; readout equal to `exposure_min/max`; drawer count equal to shown rows; unique escaped ids.
 
 **WP10a Browser harness** (can start here; finalised in Phase 5).
-- **Files:** `D:\karthik\retrust\tools\capture_screenshots.py`, new `D:\karthik\retrust\tests\e2e\test_ui_browser.py`.
+- **Files:** `tools/capture_screenshots.py`, new `tests/e2e/test_ui_browser.py`.
 - **Capture tool:** `--set docs` keeps today's single published shot as the default. `--set review` captures the matrix in §5. Add `--out`.
 - **e2e tests:** `pytest.importorskip("playwright")`, and skip when `data/retrust.db` or the browsers are absent, so CI stays green.
 
@@ -418,7 +418,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 ### Phase 3: pages (three in parallel; disjoint `serve.py` functions; merge order WP6 → WP7 → WP8, each rebasing first)
 
 **WP6 Assess page.** Spec 3, 4.4–4.6, 4.16, 4.17, 4.19, 4.20, 4.23.
-- **Files:** `D:\karthik\retrust\retrust\serve.py`, limited to: `_score_page`, `_score_form`, `_owner_fields`, `_choice`, `_field`, `_edit_effects` (markup only), `_still_open` (using `report.GAP_RULES`; keep `OPEN_QUESTIONS` as an alias), `_export`, new `_export_csv` and `_export_vex`, and **all routes-dict edits**: `/export.csv`, `/export.vex.json`, and a `download` parameter passed through to `/annex.txt`. Plus `tests\test_serve.py`.
+- **Files:** `retrust/serve.py`, limited to: `_score_page`, `_score_form`, `_owner_fields`, `_choice`, `_field`, `_edit_effects` (markup only), `_still_open` (using `report.GAP_RULES`; keep `OPEN_QUESTIONS` as an alias), `_export`, new `_export_csv` and `_export_vex`, and **all routes-dict edits**: `/export.csv`, `/export.vex.json`, and a `download` parameter passed through to `/annex.txt`. Plus `tests/test_serve.py`.
 - **Empty state:**
   - Large Mono order-number field.
   - Vendor/model fields may stay inside `<details>`; network/interface/prereq selects must stay outside (`test_network_exposure`).
@@ -455,7 +455,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 - **Tests:** all existing compare tests unchanged; remove links; bolding; gated `■`.
 
 **WP8 Search, Methodology and secondary pages.** Spec 4.3, 4.19, 4.23, 5.3.
-- **Files:** `serve.py` (`_search_page`, `_demo_page`, `_about_page`, `_alternatives_page`, `_timeline_page`, `_annex_page`, `_annex_text(download=False)` returning a `Download` when true, `_ssvc_page`, `_lev_page`, `_vendor_page`, `_lookup_*`, `_product_next_steps`, `_select`); `D:\karthik\retrust\retrust\webviews.py`; tests.
+- **Files:** `serve.py` (`_search_page`, `_demo_page`, `_about_page`, `_alternatives_page`, `_timeline_page`, `_annex_page`, `_annex_text(download=False)` returning a `Download` when true, `_ssvc_page`, `_lev_page`, `_vendor_page`, `_lookup_*`, `_product_next_steps`, `_select`); `retrust/webviews.py`; tests.
 - **`/`:** voice-compliant (no hero); keep "`{n:,} product entries`" and "`{n:,} vendor spellings`"; result rows as `<a class="hit">`; spec no-results copy.
 - **`/about`:** fix the missing-pillar copy; add `id="sources"`; keep all tested strings.
 - **`/annex`:** the SupplierQuestions component; keep `<pre` and "RFQ SECURITY ANNEX".
@@ -463,7 +463,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 - **`/vendor`:** screening hits as RESTRICTION alerts.
 - **Others:** stat tiles and shared tables; keep `<h2 class="subject">`.
 
-**Gate R3:** run the `security-review` skill on the serve.py diff (new params, routes, escaping, CSP). Also check one primary per view, copy voice, and that the scoring modules have no diff.
+**Gate R3:** run a security review on the serve.py diff (new params, routes, escaping, CSP). Also check one primary per view, copy voice, and that the scoring modules have no diff.
 
 ### Phase 4 (only if D1 = allow script)
 **WP9 Same-origin enhancement.**
@@ -477,8 +477,8 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
 ### Phase 5: verification, docs and cleanup
 - **WP10b:** run the full matrix (§5) and file defects back to the owning work package.
 - **WP11 Docs:**
-  - Update `docs\manual.md` and `docs\demo-runbook.md` (labels: EDIT_PANEL, "Download report" → "Export evidence", "Explore" → "Search").
-  - `make screenshots` → `docs\assets\workspace-comparison.png`; `make guide` (PDFs).
+  - Update `docs/manual.md` and `docs/demo-runbook.md` (labels: EDIT_PANEL, "Download report" → "Export evidence", "Explore" → "Search").
+  - `make screenshots` → `docs/assets/workspace-comparison.png`; `make guide` (PDFs).
   - Optionally retheme the explainers; their figure text must not change (`test_documented_figures`).
 - **WP12 Cleanup:**
   - Delete the legacy token aliases and old `.block/.verdict/.gate` rules.
@@ -488,7 +488,7 @@ Each work package gets its own branch off `redesign` (git worktree), is rebased 
     - reserved hues only in whitelisted selectors;
     - no `url(data:`, `@import` or `http`.
   - `git diff --check`.
-- **R4:** final `code-review` (high).
+- **R4:** final code review.
 
 ### Conflict matrix (who edits what)
 - **`serve.py`:**
@@ -555,7 +555,7 @@ Every other test must pass unchanged.
 | 30 | One primary per view | "Update assessment" is also a submit | Secondary on the result page |
 | 31 | Export source links | Export test bans `https://` | Links on the web only; IDs in the export |
 
-### Decisions that need the user (short list)
+### Decisions that needed the project owner (short list)
 - **D1, needs an answer. JavaScript.**
   - Recommended: ship the no-JS baseline now and defer WP9.
   - Cost of no-JS: no live search popover, no toasts, no loading state, no clipboard copy, and no strict focus trap unless invoker commands pass on all engines.
@@ -572,7 +572,7 @@ Every other test must pass unchanged.
   - Vendor, Timeline, Alternatives, SSVC, LEV and Demo become contextual "Related evidence" links, plus the Methodology index and the footer.
   - Active mapping: product pages → Assess; vendor/timeline → Search.
 - **D6, recommended, confirm. Shortlist:** URL-only, no persistence, no nav count chip, no reorder.
-- **FYI:** fixing bug 1.6.1 (weight display and copy) is included unless the user objects.
+- **FYI:** fixing bug 1.6.1 (weight display and copy) is included unless the project owner objects.
 
 ---
 
@@ -612,7 +612,7 @@ Every other test must pass unchanged.
      - cleared firmware;
      - `/compare` (the manual's example);
      - `/about`, `/annex?vendor=Moxa&product=EDS-405A`, `/vendor?name=Siemens`, timeline, lev, ssvc, alternatives, 404.
-   - Export: `python -m retrust.cli score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6 --html <scratch>\s7.html`, then `python -m retrust.cli screenshot <scratch>\s7.html --both-themes --out-dir <scratch>`.
+   - Export: `python -m retrust.cli score --vendor Siemens --product "SIMATIC S7-1500" --version 3.1.6 --html <scratch>/s7.html`, then `python -m retrust.cli screenshot <scratch>/s7.html --both-themes --out-dir <scratch>`.
    - Published shot: `make screenshots`.
 6. **Spec 5.4 checks in e2e** (Playwright on Chromium, Firefox and WebKit; context `bypass_csp=True` for evaluation):
    - a visible focus ring (computed outline) while tabbing the header;
@@ -632,7 +632,7 @@ Every other test must pass unchanged.
 
 ---
 
-## 6. Risks and sub-agent breakdown
+## 6. Risks and critical files
 
 ### Risks
 - **`serve.py` contention in Phase 3.** Mitigated by function-level ownership, one owner for the routes dict (WP6), and rebase-then-merge in a fixed order.
@@ -641,76 +641,23 @@ Every other test must pass unchanged.
 - **Fonts missing from the Render wheel.** The fallback would hide the problem silently. Covered by the package-data test and the wheel check.
 - **Large pages** (1,227 CVEs). Server-side cap; drawers only for shown rows.
 - **Browser support** for popover anchoring, invoker commands and `:has`. Choose per e2e results; fallbacks are specified.
-- **Copy that misstates the model.** Every new sentence must match RT8 behaviour (the old "weights adjusted" copy is a live example) and spec 5.3 (no "secure/safe", never a probability). Opus review of WP5a, WP5b and WP8 copy.
+- **Copy that misstates the model.** Every new sentence must match RT8 behaviour (the old "weights adjusted" copy is a live example) and spec 5.3 (no "secure/safe", never a probability). Editorial review of WP5a, WP5b and WP8 copy.
 - **BUILD fingerprint changes.** `/formula-check.json` will read `current:false` and `make live` will differ until the next Render build. Expected; mention in the PR.
 - **Python 3.10 syntax and CRLF/trailing whitespace.** CI matrix plus `--check`.
-- **Visual defects that unit tests cannot see.** R2, R3 and R4 screenshot reviews.
-
-### Sub-agent breakdown (Sonnet 5.5 implementers; Opus lead for WP0, merges and reviews)
-
-| Agent | Work packages | Notes |
-|---|---|---|
-| S1 | WP1 | Mechanical and test-driven |
-| S2 | WP2 | Needs network access and a binary commit; R1 checks the licence and the hashes |
-| S3 | WP3 | Give it the exact signatures from WP0 |
-| S4 | WPQ (+ WPC) | Tiny |
-| S5 | WP4 | Must preserve the hosted/local strings and use no `role=alert` in the shell |
-| S6 | WP5a | Highest copy and semantic risk; Opus review required |
-| S7 | WP5b | Ranking and exposure maths must equal `exposure.*` output |
-| S8 | WP10a/b | Tools and e2e only |
-| S9 | WP6 | Security review required |
-| S10 | WP7 | |
-| S11 | WP8 | |
-| S12 | WP9 | Only if D1 is approved |
-| S13 | WP11 + WP12 | |
-
-### What every implementer brief must contain
-1. The spec sections for the package, plus §2 (A1–A8) and the WP0 contracts: token and class names, the `WebView`/`EvidenceView` fields, and the CSS assembly order.
-2. The exact file allow-list and test allow-list, taken from the conflict matrix and the test register.
-3. The constraint checklist:
-   - No JS (unless WP9).
-   - No external URLs or assets.
-   - No `url(data:)` in CSS; inline SVG and style attributes are fine.
-   - Escape everything through `components.esc`.
-   - Plain-string CSS, never f-strings.
-   - Python 3.10 syntax.
-   - Flat modules.
-   - No scoring changes.
-   - Keep the legacy hook classes and the tested strings and markup fragments (listed per package above).
-   - One primary per view.
-   - Never colour alone.
-   - LF endings, no trailing whitespace.
-4. The commands:
-   - `python -m pytest -q` and the package's targeted test files;
-   - `git diff --check`;
-   - running the server (`python -m retrust.cli serve --port 8765`);
-   - capturing screenshots (`python tools/capture_screenshots.py --set review --out <scratch>`).
-5. The definition of done:
-   - the acceptance criteria are met;
-   - new tests are added;
-   - the suite is green;
-   - UI packages attach desktop and mobile screenshots (CONTRIBUTING/PR template);
-   - a summary of every test change with its justification;
-   - no edits outside the allow-list.
-
-**Review passes:**
-- **R1 (after Phase 1):** contrast, CSP and packaging.
-- **R2 (after Phase 2 integration):** visual and a11y on the result page and the export.
-- **R3 (after Phase 3):** `security-review` on serve.py params, routes and escaping; one-primary rule; copy voice.
-- **R4 (final):** `code-review` at high effort.
+- **Visual defects that unit tests cannot see.** Screenshot reviews at gates R2, R3 and R4.
 
 ### Critical files for implementation
-- D:\karthik\retrust\retrust\serve.py
-- D:\karthik\retrust\retrust\report.py
-- D:\karthik\retrust\retrust\webui.py
-- D:\karthik\retrust\tests\test_serve.py
-- D:\karthik\retrust\Design-spec-document.md
+- retrust/serve.py
+- retrust/report.py
+- retrust/webui.py
+- tests/test_serve.py
+- docs/design/design-language.md
 
-New modules: D:\karthik\retrust\retrust\design.py, D:\karthik\retrust\retrust\components.py, D:\karthik\retrust\retrust\evidenceview.py, D:\karthik\retrust\retrust\assets.py.
+New modules: retrust/design.py, retrust/components.py, retrust/evidenceview.py, retrust/assets.py.
 
 ---
 
-## 7. Decisions (confirmed by the user)
+## 7. Decisions (confirmed by the project owner)
 
 - **D1 JavaScript: ADD IT (WP9 is in scope)** unless a genuine blocker appears. Constraints: one same-origin external script `/static/retrust.js`, CSP `script-src 'self'; connect-src 'self'`, no inline scripts, no `on*=` handlers, no external URLs, and every page must still work with JS disabled (the no-JS baseline in A5 stays). Update `test_no_page_ever_emits_a_script`, the SAFETY copy and the About copy accordingly. If an implementer finds a real blocker, stop and report it instead of working around it.
 - **D2 Fonts:** self-host IBM Plex (as in A4). Export uses `local()` + system fallback.
@@ -724,7 +671,7 @@ New modules: D:\karthik\retrust\retrust\design.py, D:\karthik\retrust\retrust\co
 
 ## 8. What was built
 
-Deviations from the spec and plan that a reader of `Design-spec-document.md` must know. The spec itself is unchanged.
+Deviations from the spec and plan that a reader of [design-language.md](design-language.md) must know. The spec itself is unchanged.
 
 - **Light `--prefer` is `#0C6F5C`, not the spec 5.5 value `#0F7A64`.** The spec value gives 4.09:1 against its own 14% tinted fill, under the 4.5:1 floor. `tests/test_design.py` pins the new value and the ratios.
 - **Plex glyph fallback.** The self-hosted IBM Plex files are Latin-1 subsets and lack `● ◆ ■ ✓ ▲ ▼ ↑ ≥`. Those glyphs render in the system font. They always sit next to a word, so meaning does not depend on the glyph.

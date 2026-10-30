@@ -1,4 +1,4 @@
-"""The script policy as tests state it (decision D1, Redesign-plan section 7).
+"""The script policy as tests state it (decision D1, docs/design/implementation-plan.md section 7).
 
 A web page may carry exactly one script element: the external, same-origin,
 deferred enhancement script. Tests that used to assert "no <script at all" now

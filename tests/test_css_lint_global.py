@@ -1,4 +1,6 @@
-"""Global CSS lint over the two assembled stylesheets (Redesign-plan WP12).
+"""Global CSS lint over the two assembled stylesheets.
+
+Introduced by docs/design/implementation-plan.md, WP12.
 
 `webui.STYLESHEET` is what every web page ships; `report.export_css()` is what
 the self-contained export ships. The per-module tests lint the pieces; this one

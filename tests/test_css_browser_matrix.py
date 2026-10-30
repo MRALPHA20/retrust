@@ -1,4 +1,4 @@
-"""CSS-level guards for defects the full browser matrix found (WP10b).
+"""CSS-level guards for defects the full cross-browser matrix found.
 
 The behaviour itself is proved in tests/e2e/test_ui_browser.py; these keep the
 rules from being edited away on machines without a browser.

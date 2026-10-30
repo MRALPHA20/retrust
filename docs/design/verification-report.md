@@ -1,4 +1,4 @@
-# Redesign verification (WP10b)
+# Control Room UI verification report
 
 Full verification matrix of the "Control Room" redesign, run on branch `redesign`.
 
@@ -35,7 +35,7 @@ asserts `::details-content` printing on Chromium only (by design; other engines 
 
 ## Defects found and fixed
 
-- Export menu opened at the top-left corner of the viewport (top-layer static position); now anchored under its button with CSS anchor positioning, centred fixed sheet where unsupported (e2e on 3 engines, `tests/test_wp10b_css.py`).
+- Export menu opened at the top-left corner of the viewport (top-layer static position); now anchored under its button with CSS anchor positioning, centred fixed sheet where unsupported (e2e on 3 engines, `tests/test_css_browser_matrix.py`).
 - Header search placeholder clipped to "Ct" at 1100px; tighter gap and wider field in 1100-1279, ellipsis otherwise (e2e at 1100/1180/1279/1440).
 - Print: action buttons were printed, tables kept their screen `min-width` and ran off the page, tooltip bubbles widened the page; print now hides them and lets tables wrap and shrink (web and export stylesheets; e2e at 640 and 794 on 3 engines).
 - WebKit: focus after closing a drawer with Esc landed on the table scroller instead of the opener; the script now returns focus to the opener after Esc (e2e).
@@ -51,7 +51,7 @@ asserts `::details-content` printing on Chromium only (by design; other engines 
 - Inline text links and the 18px checkbox boxes are under 44px on touch (24px links, 44px label hit area for checkboxes); spec 4 requires 44px for primary controls only.
 - The clear-shortlist confirm popover is not anchored; it appears near the page top rather than under its button.
 
-## Needs user decision
+## Open question
 
 - Add `img-src 'self'` plus a tiny `/favicon.ico` (or `data:` icon) to remove the Firefox favicon console line? It changes the CSP.
 

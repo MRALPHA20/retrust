@@ -4,7 +4,7 @@ The report is the deliverable a buyer attaches to a purchase decision, so every
 number shows the evidence behind it and every abstention is stated plainly. No
 external assets, so it can be emailed or opened offline.
 
-The look is the "Control Room" language (Design-spec-document.md): a low-chroma
+The look is the "Control Room" language (docs/design/design-language.md): a low-chroma
 field, saturated colour spent only on a verdict, a gate or a gap, and every
 status carried by a glyph and a word as well as a hue. Identifiers are set in
 monospace throughout -- they are part numbers, and should read like the plate

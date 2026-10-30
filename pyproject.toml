@@ -1,7 +1,7 @@
 [project]
 name = "retrust"
 version = "0.1.0"
-description = "Score OT hardware for cyber risk before you buy it"
+description = "Cybersecurity evidence for OT hardware procurement"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -24,6 +24,13 @@ dependencies = []
 # nothing: the content height is measured off the PNG scanlines in stdlib.
 dev = ["pytest>=7"]
 docs = ["reportlab>=4", "playwright>=1.40"]
+
+[project.urls]
+Homepage = "https://github.com/MRALPHA20/retrust"
+Documentation = "https://github.com/MRALPHA20/retrust/blob/main/docs/README.md"
+Demo = "https://retrust-q2tr.onrender.com/"
+Changelog = "https://github.com/MRALPHA20/retrust/blob/main/CHANGELOG.md"
+Issues = "https://github.com/MRALPHA20/retrust/issues"
 
 [project.scripts]
 retrust = "retrust.cli:main"

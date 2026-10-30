@@ -1,4 +1,4 @@
-"""Markup accessibility lint, no browser (Redesign-plan section 5, item 2).
+"""Markup accessibility lint, no browser (docs/design/implementation-plan.md section 5, item 2).
 
 A real `retrust serve` over the real index renders every route in the
 screenshot matrix plus the HTML exports; each response is parsed with

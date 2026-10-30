@@ -31,7 +31,7 @@ test:
 
 # Broad CLI checks against the downloaded local data.
 smoke:
-	bash smoke.sh
+	bash scripts/smoke.sh
 
 # Validate scoring across all indexed products without fetching new sources.
 formula-check:

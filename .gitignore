@@ -60,6 +60,11 @@ htmlcov/
 *.swp
 .DS_Store
 
+# Assistant worktrees and local build scratch.
+.claude/worktrees/
+.claude/settings.local.json
+.dist/
+
 # EPSS history snapshots (~107 MB), fetched by `retrust lev --update`.
 data/epss-history/
 

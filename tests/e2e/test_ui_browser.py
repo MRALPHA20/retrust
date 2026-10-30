@@ -1,4 +1,7 @@
-"""Browser checks for the web UI (Design-spec 5.4, Redesign-plan section 5 item 6).
+"""Browser checks for the web UI.
+
+See docs/design/design-language.md section 5.4 and
+docs/design/implementation-plan.md section 5, item 6.
 
 Optional: needs Playwright, an installed browser and a built index at
 data/retrust.db. Anything missing skips the module, so CI without a browser
@@ -259,7 +262,7 @@ def test_aria_sort_follows_sort_navigation(browser, base_url):
         context.close()
 
 
-# Gate R3: a legacy `main button:not(.rt-btn)` rule once out-specified .ev-open
+# Review regression: a legacy `main button:not(.rt-btn)` rule once out-specified .ev-open
 # and .ev-close, so every CVE-ID opener rendered as a primary button.
 _PRIMARY_PROBE = """() => {
     const probe = document.createElement('i');
@@ -307,7 +310,7 @@ def test_cve_openers_are_links_and_drawer_close_is_not_primary(browser, base_url
         context.close()
 
 
-# ---- WP10b regressions found in the full matrix ----
+# ---- Regressions found in the full cross-browser matrix ----
 
 @pytest.mark.parametrize("width", [1100, 1180, 1279, 1440])
 def test_header_search_placeholder_is_not_clipped(browser, base_url, width):

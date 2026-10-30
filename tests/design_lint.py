@@ -1,4 +1,4 @@
-"""Reusable CSS lint for the Control Room work packages.
+"""Reusable CSS lint for the Control Room stylesheets.
 
 Plain module in tests/ (no tests/__init__.py, pytest's default prepend import
 mode puts tests/ on sys.path), so any test does `from design_lint import css_lint`.

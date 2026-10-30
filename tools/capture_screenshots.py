@@ -41,7 +41,7 @@ ALL_WIDTHS = "375,640,1024,1100,1440"
 ALL_MODES = "default,reduced-motion,grayscale,print,coarse"
 
 # (slug, path) for the review set. Parameter examples come from the manual and
-# Redesign-plan section 5. "cleared-firmware" is a firmware version above every
+# docs/design/implementation-plan.md section 5. "cleared-firmware" is a firmware version above every
 # fixed-in version, so no advisory still applies to it.
 REVIEW_PAGES = [
     ("home", "/"),

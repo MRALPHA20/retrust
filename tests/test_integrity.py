@@ -178,7 +178,7 @@ def test_key_material_is_never_fetched_over_http():
 #
 # Mutation-tested gap: flipping BADSIG to "signed by a key you hold" passed all
 # 947 tests. The whole verdict tree was executed during the suite and never
-# inspected, and smoke.sh only greps for the string "signed by:", which that
+# inspected, and scripts/smoke.sh only greps for the string "signed by:", which that
 # mutation preserves. For a tool whose pitch is provenance, a forged signature
 # reading as valid is the worst thing the suite could miss.
 

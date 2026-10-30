@@ -1,7 +1,8 @@
 # ReTrust documentation
 
 Start with the [project quick start](../README.md#quick-start). For contributing
-code, use [CONTRIBUTING.md](../CONTRIBUTING.md).
+code, use [CONTRIBUTING.md](../CONTRIBUTING.md); to report a vulnerability, use
+[SECURITY.md](../SECURITY.md).
 
 ## Use ReTrust
 
@@ -37,6 +38,12 @@ loaded data; it does not validate the model's ability to predict compromise.
 
 - [Render deployment](render-deployment.md) — build, runtime, concurrency and release verification.
 - [Presentation submission](arsenal-submission.md) — project description and demo material.
+
+## Interface design
+
+- [Design language](design/design-language.md) — principles, tokens, components and page rules of the Control Room interface.
+- [Implementation plan](design/implementation-plan.md) — architecture decisions, work packages and the record of what was built.
+- [Verification report](design/verification-report.md) — cross-browser, accessibility and print matrix results.
 
 ## Documentation sources
 

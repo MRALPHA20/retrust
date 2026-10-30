@@ -2,6 +2,11 @@
 
 **Cybersecurity evidence for OT hardware procurement.**
 
+[![Tests](https://github.com/MRALPHA20/retrust/actions/workflows/tests.yml/badge.svg)](https://github.com/MRALPHA20/retrust/actions/workflows/tests.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776ab)](pyproject.toml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Runtime dependencies: none](https://img.shields.io/badge/runtime%20dependencies-none-success)](pyproject.toml)
+
 ReTrust assesses industrial controllers, switches and other operational
 technology (OT) products using public security advisories. Identify a product
 by manufacturer order number or vendor/model, add firmware and operating
@@ -10,7 +15,10 @@ conditions, then review its score, recommendation and supporting evidence.
 [Live demo](https://retrust-q2tr.onrender.com/) ·
 [Documentation](docs/README.md) ·
 [Scoring methodology](docs/explainers/scoring.html) ·
+[Demo runbook](docs/demo-runbook.md) ·
 [Contributing](CONTRIBUTING.md)
+
+![ReTrust browser workspace: a product assessment beside a shortlist comparison](docs/assets/workspace-comparison.png)
 
 ## What you can do
 
@@ -114,19 +122,43 @@ concurrency and build verification. Its
 [formula validation](https://retrust-q2tr.onrender.com/formula-check.json)
 reports checks against the deployed code and loaded data.
 
+## Documentation
+
+| Read | For |
+| --- | --- |
+| [User guide](docs/user-guide.html) | Browser and terminal workflows |
+| [Commands](docs/commands.md) | CLI reference, exports and the `retrust` command |
+| [Technical manual](docs/manual.md) | Matching, evidence handling, architecture and security |
+| [Scoring methodology](docs/explainers/scoring.html) | The RT8 model with worked examples |
+| [Benchmark report](docs/benchmark-report.md) | Measurements, dates and limits |
+| [Tool comparison](docs/tool-comparison.md) | Scope alongside other security tools |
+| [Demo runbook](docs/demo-runbook.md) | A five-minute presentation walkthrough |
+| [Design documents](docs/design/) | Interface design language, decisions and verification |
+| [Render deployment](docs/render-deployment.md) | Hosting, concurrency and release verification |
+
+## Security
+
+The server answers GET and HEAD only, writes nothing, runs no subprocess and
+serves every page under a strict content security policy. Fonts are bundled
+and nothing is fetched from the network at runtime. It is intended for a local
+workstation and has no authentication; do not expose it to an untrusted
+network. Report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md).
+
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `retrust/` | Application, scoring engine, CLI and web interface |
-| `tests/` | Automated regression tests and fixtures |
-| `docs/` | Guides, methodology, benchmarks and historical reviews |
-| `examples/` | Sample candidate lists, bill of materials and buyer queries |
-| `scripts/` | Deployment scripts |
-| `tools/` | Documentation builders and benchmark utilities |
+| `retrust/` | Application, scoring engine, CLI, web interface and bundled fonts |
+| `tests/` | Automated regression tests, lints and browser end-to-end tests |
+| `docs/` | Guides, methodology, benchmarks and design documents |
+| `examples/` | Sample candidate lists, bills of materials and buyer queries |
+| `scripts/` | Deployment build and real-data smoke checks |
+| `tools/` | Documentation builders, screenshot capture and benchmark utilities |
 | `.github/` | Test workflow and contribution templates |
 
 Downloaded sources, local databases, reports and caches are ignored by Git.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and file placement.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and file placement,
+and [CHANGELOG.md](CHANGELOG.md) for notable changes.
 
 Apache-2.0 — see [LICENSE](LICENSE).

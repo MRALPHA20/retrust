@@ -349,8 +349,9 @@ details::details-content{content-visibility:visible!important;display:block!impo
 }
 """
 
-# One stylesheet, one order (Redesign-plan A2): later layers win ties, and
-# RESULT_CSS must come before the shell, which overrides some of its rules.
+# One stylesheet, one order (docs/design/implementation-plan.md, decision A2):
+# later layers win ties, and RESULT_CSS must come before the shell, which
+# overrides some of its rules.
 STYLESHEET = (design.theme_css(design.DARK, ":root") + assets.font_face_css(served=True)
               + design.BASE_CSS + components.CSS + evidenceview.CSS + report.RESULT_CSS
               + SHELL_CSS + PAGE_CSS + webviews.CSS + design.PRINT_CSS)

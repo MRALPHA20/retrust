@@ -7,9 +7,11 @@
 # thirty thousand, an exit code that is right in-process and wrong through the
 # shell, output that only misaligns once a vendor name is long enough.
 #
-# Usage:  ./smoke.sh          expects an index at data/retrust.db
-#         PYTHON=python ./smoke.sh   where python3 is not the interpreter
-#                                    (Windows ships python3 as a Store stub)
+# Usage:  bash scripts/smoke.sh        run from the repository root; expects an
+#                                      index at data/retrust.db
+#         PYTHON=python bash scripts/smoke.sh
+#                                      where python3 is not the interpreter
+#                                      (Windows ships python3 as a Store stub)
 
 set -u
 PY="${PYTHON:-python3}"

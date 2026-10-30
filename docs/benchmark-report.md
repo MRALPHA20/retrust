@@ -64,7 +64,7 @@ python3 -m retrust.cli eval --sample 4000 --json evaluation.json
 python3 -m retrust.cli backtest --cutoff 2022-01-01 --permutations 1000 --json backtest.json
 python3 tools/benchmark_latency.py --output latency.json
 python3 -m pytest -q
-bash smoke.sh
+bash scripts/smoke.sh
 ```
 
 The latest functionality verification, 20 October 2026, recorded 961 passing automated tests and 94 passing real-data smoke checks, including regression guards against injection, SSRF and decompression-bomb inputs. Full benchmark evidence: [evaluation JSON](benchmarks/evaluation.json), [evaluation text](benchmarks/evaluation.txt), [backtest JSON](benchmarks/backtest.json), [backtest text](benchmarks/backtest.txt). The retained backtest files are the 20 October re-measurement — they carry exactly the 1,000-shuffle figures reported above — and re-running the command listed reproduces them.

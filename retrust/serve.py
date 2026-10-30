@@ -643,7 +643,7 @@ def _score_page(connection, assess, context, vendor, product, version, order_num
     base = {key: value for key, value in urllib.parse.parse_qsl(parameters) if value}
     evidence = _evidence_state(view, base)
     # A version that was submitted counts as confirmed unless its ranges could
-    # not be decided (Redesign-plan.md item 24).
+    # not be decided (docs/design/implementation-plan.md item 24).
     firmware_state = ('verified' if report.firmware_verified(assessment, resolution,
                                                              findings, version)
                       else 'unverified')
@@ -945,7 +945,7 @@ def _score_form(vendor, product, version, order_number='', network_exposure=None
         + ''.join(f'<input type="hidden" name="was_{key}" value="{_esc(value or "")}">'
                   for key, value in carried.items()))
     # Firmware is a material input: it is drawn as unverified until the page
-    # has something to confirm it against (Redesign-plan.md item 24).
+    # has something to confirm it against (docs/design/implementation-plan.md item 24).
     if firmware_state is None:
         firmware_state = '' if version else 'unverified'
     firmware_help = ('Firmware is the software running on the equipment. Leave blank if '
