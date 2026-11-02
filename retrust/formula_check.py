@@ -60,9 +60,22 @@ def composite(assessment, weights, exposures):
 
 
 def validate_evidence_free(assessment, weights):
-    """No risk evidence: VERIFY across exposure 1-100, low end as the headline."""
+    """No risk evidence: VERIFY across exposure 1-100, low end as the headline.
+
+    Two different products arrive here. One was identified and simply has no
+    affected vulnerability on record -- often a vendor's fixed release -- and
+    its range is real arithmetic to check. The other could not be identified at
+    all, and carries no number to check: the range it used to carry came from
+    the defaults alone, so it was the same figure for every unknown product and
+    said nothing about any of them.
+    """
     assert assessment.verdict == 'VERIFY' and assessment.provisional, ('verdict', assessment.verdict)
     assert assessment.evidence_free, 'evidence-free range not flagged'
+    if not assessment.resolved:
+        assert assessment.score is None and assessment.score_min is None \
+            and assessment.score_max is None, ('unidentified yet scored', assessment.score)
+        return
+    assert assessment.score is not None, 'identified product left unscored'
     raw = composite(assessment, weights, (score.FLOOR, 100.0))
     for got, want in zip((assessment.score_min, assessment.score_max), raw):
         assert math.isclose(got, round(want, 1), abs_tol=1e-8), ('score', got, want)
@@ -183,7 +196,7 @@ def run(db='data/retrust.db', data_dir='data'):
         return dict(passed=not counts['failures'], model_version=score.SCORING_VERSION,
                     source_build=identity.build_fingerprint(), data_fingerprint=identity.data_fingerprint(connection, data_dir),
                     checked_at=datetime.now(timezone.utc).isoformat(), counts=dict(counts), failures=failures,
-                    scope='Every indexed vendor/model; reachable, minor impact, verified blocked, unknown and unverified-fix scenarios, plus a late firmware that clears every published range. Unidentified and evidence-free products are checked as full-range VERIFY. Arithmetic consistency, not predictive accuracy.')
+                    scope='Every indexed vendor/model; reachable, minor impact, verified blocked, unknown and unverified-fix scenarios, plus a late firmware that clears every published range. Evidence-free products are checked as full-range VERIFY; unidentified ones are checked to carry no score at all. Arithmetic consistency, not predictive accuracy.')
     finally:
         connection.close()
         context['screening'].close()

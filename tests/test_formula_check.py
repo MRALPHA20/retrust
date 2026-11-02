@@ -80,3 +80,23 @@ def test_impact_changes_score_when_a_path_exists():
     # T = max(EPSS .12, LEV .6, wormable floor .5) = .6; I = 7.5 / 10.
     assert safety.exposure_min == pytest.approx(100 * (1 - .6 * .75 * 1.0))
     assert minor.exposure_min == pytest.approx(100 * (1 - .6 * .75 * .2))
+
+
+def test_an_unidentified_product_passes_the_deployment_gate():
+    """This check gates the deploy: render-build.sh runs it under `set -e`, so
+    an assertion here stops the site shipping rather than failing a test.
+
+    When unidentified products stopped carrying a score, this validator still
+    did arithmetic on their range and raised TypeError on None -- three
+    products in the corpus, enough to abort the build. Each kind of
+    evidence-free result is now checked against the contract it actually has.
+    """
+    from retrust import formula_check, score
+
+    unknown = score.not_assessed("Mystery PLC", "vendor not in corpus")
+    formula_check.validate_evidence_free(unknown, score.DEFAULT_WEIGHTS)   # must not raise
+
+    # The identified-but-no-findings case keeps its arithmetic check.
+    identified = score.assess("Ghost", [], {"A"})
+    formula_check.validate_evidence_free(identified, score.DEFAULT_WEIGHTS)
+    assert identified.score is not None and unknown.score is None
