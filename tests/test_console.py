@@ -528,3 +528,95 @@ def test_a_provisional_score_that_cannot_move_is_not_shown_as_a_range():
     # And a settled score is unchanged.
     settled = dict(score=73.9, score_min=73.9, score_max=73.9, provisional=False)
     assert report.score_label(settled, unit="/100") == "73.9/100"
+
+
+def test_nothing_promises_a_range_the_reader_cannot_see():
+    """Three places decided independently whether a result had a range, and
+    disagreed: the score collapsed to "55.8/100" while the caption beside it
+    still read "Provisional range" and the paragraph below still said the range
+    showed how the score could change. They share one predicate now."""
+    from retrust import report
+
+    point = dict(score=55.8, score_min=55.8, score_max=55.8, provisional=True)
+    spread = dict(score=5.9, score_min=5.9, score_max=92.8, provisional=True)
+    settled = dict(score=73.9, score_min=73.9, score_max=73.9, provisional=False)
+    unscored = dict(score=None, score_min=None, score_max=None, provisional=True)
+
+    assert not report.shows_a_range(point)
+    assert report.shows_a_range(spread)
+    assert not report.shows_a_range(settled)
+    assert not report.shows_a_range(unscored), "no score is not a range"
+
+    # Ends that differ only below the shown precision are one number on screen.
+    assert not report.shows_a_range(
+        dict(score=55.84, score_min=55.84, score_max=55.83, provisional=True), places=1)
+
+    # And the label agrees with the predicate, because it asks it.
+    assert report.score_label(point, unit="/100") == "55.8/100"
+    assert report.RANGE_DASH in report.score_label(spread, unit="/100")
+
+
+def test_the_caption_beside_a_single_number_does_not_say_range():
+    """The defect itself: the score collapsed correctly while the caption two
+    characters to its right still announced a range, and the paragraph under
+    it still explained one. Rendered output, not just the predicate."""
+    from retrust import report, score
+    from retrust.match import Resolution
+
+    # A real resolution too: one match, so the block renders its resolved path.
+    class _Match:
+        vendor, name, advisory_id = "Example", "Example PLC", "ICSA-26-001-01"
+    resolution = Resolution(query="Example PLC", matches=[_Match()],
+                            method="exact_name", confidence=0.9)
+
+    def block(low, high):
+        # The real dataclass, so this cannot drift from the shipped shape.
+        assessment = score.Assessment(
+            product="Example PLC", verdict="VERIFY", score=low, score_min=low,
+            score_max=high, provisional=True, resolved=True, findings_count=1)
+        return report._assessment_block(assessment, resolution, [], None,
+                                        score.DEFAULT_WEIGHTS)
+
+    collapsed = block(55.8, 55.8)
+    assert "Provisional range" not in collapsed
+    assert "Provisional" in collapsed
+    assert "The range shows how the score could change" not in collapsed
+
+    spread = block(5.9, 92.8)
+    assert "Provisional range" in spread
+    assert "The range shows how the score could change" in spread
+
+
+def test_verdict_stability_says_which_verdict_it_measured():
+    """A bare "52%" beside CONDITIONAL read as "CONDITIONAL held 52% of the
+    time". It is the share held by the most common verdict under reweighting,
+    which was PREFER -- a different verdict, and the interesting part."""
+    import re
+    from retrust import report, score
+
+    class _Stability:
+        gated, samples, agreement = False, 300, 0.52
+        score_min, score_max, robust = 70.1, 87.7, False
+        dominant = "PREFER"
+
+    class _Resolution:
+        resolved, reason, method = True, "", "exact_name"
+
+    class _Assessment:
+        verdict, score, product = "CONDITIONAL", 73.9, "ABB AC 800M"
+        gates, cautions, notes, verification, pillars = [], [], [], [], []
+        third_party_count, findings_count, provisional, resolved = 0, 10, False, True
+        score_min = score_max = 73.9
+
+    assessment = _Assessment()
+    markup = report._summary_table(
+        [(assessment, _Resolution(), [])], {assessment.product: _Stability()})
+    cell = re.search(r"52%[^<]*", markup).group(0)
+    assert cell.strip() == "52% PREFER", cell
+
+    # When the dominant verdict IS the one shown, the bare figure is unambiguous.
+    class _Agreeing(_Stability):
+        dominant = "CONDITIONAL"
+    markup = report._summary_table(
+        [(assessment, _Resolution(), [])], {assessment.product: _Agreeing()})
+    assert re.search(r"52%[^<]*", markup).group(0).strip() == "52%"

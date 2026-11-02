@@ -186,7 +186,7 @@ def _footer_sources(provenance, weights, config_source):
 VERDICT_COLOR = {"VERIFY": "var(--cond)", "PREFER": "var(--prefer)", "CONDITIONAL": "var(--cond)",
                  "AVOID": "var(--avoid)", "NOT ASSESSED": "var(--faint)"}
 VERDICT_HELP = {
-    "VERIFY": "More checks are needed before deciding. Ask your technical team to confirm the network access, operational consequences and firmware status listed below. The range shows how the score could change.",
+    "VERIFY": "More checks are needed before deciding. Ask your technical team to confirm the network access, operational consequences and firmware status listed below.",
     "PREFER": "A candidate for your shortlist. Complete the checks below before approving the purchase.",
     "CONDITIONAL": "Consider this product only after your technical team reviews the listed risks and missing evidence.",
     "AVOID": "This assessment advises against the purchase because of a purchase blocker or a low score. Review the reasons below.",
@@ -286,6 +286,32 @@ def _reading(subject, key):
             else getattr(subject, key, None))
 
 
+def shows_a_range(subject, places=None):
+    """Whether this result puts two different numbers in front of the reader.
+
+    A provisional result whose endpoints coincide is still provisional -- the
+    open questions are real and the verdict stays VERIFY -- but it displays one
+    number, so nothing beside it may promise a range. Three places used to
+    decide this independently and disagreed: the score read "55.8/100" while
+    the caption beside it said "Provisional range" and the paragraph under it
+    said the range showed how the score could change. They ask here now.
+
+    Compared as displayed, not as stored: ends that differ only below the shown
+    precision are one number to the reader, and the reader is who is being
+    promised a range.
+    """
+    if _reading(subject, 'score') is None or not _reading(subject, 'provisional'):
+        return False
+    low, high = _reading(subject, 'score_min'), _reading(subject, 'score_max')
+    if low is None or high is None:
+        return False
+
+    def shown(value):
+        return str(value) if places is None else f'{value:.{places}f}'
+
+    return shown(low) != shown(high)
+
+
 def score_label(subject, unit='', note=' (provisional)', missing='&mdash;', places=None):
     """Consistent score display across report, terminal and comparison views.
 
@@ -305,14 +331,9 @@ def score_label(subject, unit='', note=' (provisional)', missing='&mdash;', plac
 
     if _reading(subject, 'score') is None:
         return missing
-    low, high = _reading(subject, 'score_min'), _reading(subject, 'score_max')
-    # A provisional result whose endpoints coincide is still provisional -- the
-    # open questions are real -- but "55.8–55.8 (provisional range)" reads as a
-    # formatting fault, and invites the reader to distrust every other number
-    # on the page. Print the one value it actually is; the verdict stays VERIFY
-    # and the checks to answer are listed below it either way.
-    if _reading(subject, 'provisional') and shown(low) != shown(high):
-        return f"{shown(low)}{RANGE_DASH}{shown(high)}{unit}{note}"
+    if shows_a_range(subject, places):
+        return (f"{shown(_reading(subject, 'score_min'))}{RANGE_DASH}"
+                f"{shown(_reading(subject, 'score_max'))}{unit}{note}")
     return f"{shown(_reading(subject, 'score'))}{unit}"
 
 
@@ -408,7 +429,10 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             detail = (f'firmware outside the affected range of all'
                       f' {assessment.cleared_count} recorded CVE(s)')
         if assessment.provisional:
-            detail = "Provisional range · " + detail
+            # "Provisional" is true whenever questions remain open; "range" is
+            # only true when two numbers are actually shown.
+            detail = ("Provisional range · " if shows_a_range(assessment)
+                      else "Provisional · ") + detail
         summary = (f'<span class="s">{shown_score}/100</span>'
                    f'<span class="n">{detail}</span>')
 
@@ -418,6 +442,8 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
     parts.append(f'<div class="verdict"><span class="v">'
                  f'{_esc(assessment.verdict)}</span>{summary}</div>')
     explanation = VERDICT_HELP.get(assessment.verdict, "Review the evidence below.")
+    if shows_a_range(assessment):
+        explanation += " The range shows how the score could change."
     if getattr(assessment, "evidence_free", False) and resolution is not None:
         explanation = (
             "The product was identified, but no advisory records an affected vulnerability "
@@ -690,9 +716,16 @@ def _summary_table(blocks, stabilities, hint=True):
     for assessment, resolution, _ in blocks:
         colour = VERDICT_COLOR.get(assessment.verdict, INERT)
         st = stabilities.get(id(assessment), stabilities.get(assessment.product))
+        # A bare percentage in a column headed "Verdict stability", printed
+        # beside CONDITIONAL, reads as "CONDITIONAL held 52% of the time". It
+        # is the share held by the MOST COMMON verdict under reweighting, which
+        # can be a different one -- and when it is, that is the interesting
+        # fact, not a footnote. Name it whenever it is not the verdict shown.
         robust = "&mdash;" if st is None else (
             "Blocked" if st.gated else "Needs verification" if assessment.provisional else
-            "Not tested" if not st.samples else f"{st.agreement:.0%}")
+            "Not tested" if not st.samples else
+            f"{st.agreement:.0%}" if st.dominant == assessment.verdict
+            else f"{st.agreement:.0%} {_esc(st.dominant)}")
         note = (assessment.gates[0]["gate"] if assessment.gates
                 else 'Supplier verification required' if assessment.cautions or assessment.third_party_count
                 else (f"Needs verification: {len(assessment.verification)} open"
