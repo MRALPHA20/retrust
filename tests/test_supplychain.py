@@ -96,13 +96,20 @@ def test_not_assessed_gets_no_score():
     """The bug this guards: an unresolvable product scoring ~100 and ranking top.
 
     Every pillar reads "no CVEs" as good news, so an unresolved product must
-    never inherit that: nothing about it is measured, it is VERIFY across the
-    full range, and the headline is the conservative low end.
+    never inherit that. It carried the full range instead, until that range
+    turned out to be the same two digits for every unidentified product --
+    computed from defaults, so it described the formula and not the equipment.
+    Now nothing is measured and nothing is shown, which is what the name of
+    this test has claimed all along.
     """
     assessment = score.not_assessed("Unknown PLC", "vendor not in corpus")
     assert assessment.verdict == "VERIFY" and not assessment.resolved
-    assert assessment.score == assessment.score_min < 10
+    assert assessment.score is None and assessment.score_max is None
     assert assessment.pillars == []
+
+    # The guarantee underneath: it cannot outrank anything by being unknown.
+    other = score.not_assessed("Different Unknown", "also not in corpus")
+    assert other.score == assessment.score, "two unknowns must not be rankable"
 
 
 # --- certification ---------------------------------------------------------

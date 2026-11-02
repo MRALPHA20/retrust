@@ -95,7 +95,10 @@ def test_score_abstains_with_exit_two(workspace, capsys):
     """An unknown vendor must not be reported as a clean result."""
     assert run(["score", "--vendor", "Nobody", "--product", "Nothing"]) == 2
     out = " ".join(capsys.readouterr().out.split())
-    assert "VERIFY · 4.8–75.8/100 (provisional range)" in out
+    # No digits: the range printed here was identical for every unidentified
+    # product, so quoting it in a test was only ever quoting the default.
+    assert "VERIFY" in out and "no score" in out
+    assert "4.8" not in out and "75.8" not in out
     assert "Could not identify this product" in out
 
 
@@ -130,9 +133,10 @@ def test_json_keeps_owner_choices_even_without_a_score(workspace, vendor, versio
     assert f"FW:{version}" in result["vector"]
     assert "DS:unset" not in result["vector"]
     if vendor == "Nobody":
-        # No evidence: VERIFY across the full range, headlined by its low end.
+        # Unidentified: VERIFY, and no number -- the owner's answers are still
+        # recorded above, which is what this test is about.
         assert result["verdict"] == "VERIFY" and result["provisional"]
-        assert result["score"] == result["score_min"] < 10
+        assert result["score"] is None and result["score_max"] is None
     if version == "2.5" and vendor == "Testco":
         # Outside the published <2.0 range: the advisory says it is not
         # affected, so exposure is 100 and the result is scored, not floored.

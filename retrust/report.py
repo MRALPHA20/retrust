@@ -430,7 +430,7 @@ def _assessment_block(assessment, resolution=None, findings=(), stability=None,
             # the CLI output, where there is no form and no suggestion list. The
             # web page adds its own invitation where matches actually exist.
             "Your answers are recorded, but the product has not been identified in the advisory "
-            "data, so nothing about it is measured and the range spans everything that allows. "
+            "data, so nothing about it has been measured and no score is given. "
             "Check the manufacturer order number, vendor and model against the equipment "
             "nameplate, then assess it again.")
     parts.append(f'<p class="result-help">{_esc(explanation)}</p>')
@@ -667,6 +667,23 @@ def _cve_table(findings, hint=True):
     return "".join(parts)
 
 
+def _weakest_pillar(assessment):
+    """The part of the score holding a candidate back, named with its reading.
+
+    A candidate with nothing to flag -- no gate, no caution, every question
+    answered -- left the comparison's "Main reason" cell empty, which is the
+    one column a buyer reads to see why two products ranked apart. The lowest
+    scoring pillar is that answer: it is what the weighted product is being
+    dragged down by, and naming it turns "73.9 beats 25.7" into a reason.
+    """
+    scored = [pillar for pillar in assessment.pillars
+              if pillar.scored and pillar.coverage > 0]
+    if not scored:
+        return ""
+    weakest = min(scored, key=lambda pillar: pillar.score)
+    return f"{weakest.name} {weakest.score:.0f}/100"
+
+
 def _summary_table(blocks, stabilities, hint=True):
     """Side-by-side ranking, so the decision is visible without scrolling."""
     rows = []
@@ -679,7 +696,8 @@ def _summary_table(blocks, stabilities, hint=True):
         note = (assessment.gates[0]["gate"] if assessment.gates
                 else 'Supplier verification required' if assessment.cautions or assessment.third_party_count
                 else (f"Needs verification: {len(assessment.verification)} open"
-                      f" check(s)" if assessment.provisional and assessment.verification else "")
+                      f" check(s)" if assessment.provisional and assessment.verification
+                      else _weakest_pillar(assessment))
                 if resolution.resolved else resolution.reason)
         rows.append(
             f'<tr class="cand" style="--vc:{colour}">'

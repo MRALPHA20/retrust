@@ -1087,3 +1087,42 @@ def test_the_footer_points_at_the_public_repository():
         note = webui.source_note(hosted)
         assert webui.SOURCE_URL in note, hosted
         assert "not public" not in note, hosted
+
+
+def test_an_unidentified_product_is_given_no_number_to_misread(db, tmp_path):
+    """Every unidentified product returned the same two digits.
+
+    The range was computed from defaults alone, so "Siemmens" and a product
+    that does not exist scored identically: the figure described the formula,
+    not the equipment. Beside a verdict it read as a measurement of whatever
+    the buyer had typed. No two unknowns may differ, and none may carry a
+    number -- while the way forward, the suggestions, stays.
+    """
+    from retrust import score
+
+    unknowns = [score.not_assessed(name, "vendor not in corpus")
+                for name in ("Siemmens S7-1500", "Qqqqzzz Whatever", "ABB ZZZ")]
+    assert all(a.score is None and a.score_max is None for a in unknowns)
+    assert all(a.verdict == "VERIFY" and not a.resolved for a in unknowns)
+    # Still not a dead end: it says what to supply.
+    assert all(a.verification for a in unknowns)
+
+
+def test_the_comparison_says_why_a_candidate_ranks_where_it_does(db, tmp_path):
+    """"Main reason" was blank for any candidate with nothing to flag -- no
+    gate, no caution, every question answered -- which is precisely the
+    candidate a buyer is choosing between. The weakest pillar is the answer."""
+    from retrust import report, score
+
+    class _Pillar:
+        def __init__(self, name, value):
+            self.name, self.score, self.coverage, self.scored = name, value, 1.0, True
+
+    class _Assessment:
+        verdict, score, product = "CONDITIONAL", 73.9, "ABB AC 800M"
+        gates, cautions, notes, verification = [], [], [], []
+        third_party_count, findings_count, provisional, resolved = 0, 10, False, True
+        score_min = score_max = 73.9
+        pillars = [_Pillar("Exposure", 75.1), _Pillar("Patch availability", 52.0)]
+
+    assert report._weakest_pillar(_Assessment()) == "Patch availability 52/100"

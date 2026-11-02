@@ -696,7 +696,7 @@ def blocked(product_label, gates, unresolved_reason=""):
 
 
 def _evidence_free(product_label, measured=(), weights=None, verification=(),
-                   notes=(), resolved=True, **fields):
+                   notes=(), resolved=True, unscored=False, **fields):
     """A provisional VERIFY for a product with no risk evidence to weigh.
 
     Earlier versions called this NOT ASSESSED and printed no number, which left
@@ -717,6 +717,10 @@ def _evidence_free(product_label, measured=(), weights=None, verification=(),
                           weights)
 
     low, high = round(at(FLOOR), 1), round(at(100.0), 1)
+    if unscored:
+        # Nothing identified means nothing measured: the range would be the
+        # same digits for every unknown product, so no number is shown.
+        low = high = None
     return Assessment(
         product=product_label, verdict="VERIFY", score=low, score_min=low,
         score_max=high, exposure_min=0.0, exposure_max=100.0, provisional=True,
@@ -725,22 +729,30 @@ def _evidence_free(product_label, measured=(), weights=None, verification=(),
 
 
 def not_assessed(product_label, reason, weights=None):
-    """A product we could not identify: VERIFY across the whole possible range.
+    """A product we could not identify: VERIFY, and no number at all.
 
     A confident number here would be worse than useless -- every pillar treats
     "no CVEs found" as good news, so an unresolvable product would score near
-    100 and top a comparison. Nothing about it is measured, so the range spans
-    everything that allows and the headline is its conservative low end.
+    100 and top a comparison. Printing the full range instead avoided that, but
+    the range is computed entirely from defaults, so every unidentified product
+    returned the same two digits: a misspelt vendor and a product that does not
+    exist scored identically, because the figure describes the formula rather
+    than the equipment. A constant that cannot vary with its subject is not a
+    measurement of it, and shown beside a verdict it reads as one.
+
+    So the verdict stays VERIFY -- the thing to verify is which product this
+    is -- and the score is withheld. The way forward is not lost with it: the
+    verification step below says what to supply, and the page offers the
+    products the text was probably meant to name.
     """
     return _evidence_free(
-        product_label, weights=weights, resolved=False,
+        product_label, weights=weights, resolved=False, unscored=True,
         verification=["Identify the product: give the manufacturer order number"
                       " or the exact catalogue name, so its advisory history can"
                       " be looked up"],
         notes=[f"Could not identify this product: {reason}.",
-               "Nothing about it was measured, so the range spans everything the"
-               " missing evidence allows and the low end is the headline. This"
-               " is not a good result or a bad one. Try the manufacturer's order"
+               "Nothing about it was measured, so no score is given. This is not"
+               " a good result or a bad one. Try the manufacturer's order"
                " number."])
 
 
