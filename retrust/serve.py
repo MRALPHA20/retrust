@@ -1187,7 +1187,7 @@ A failed check blocks deployment; missing or outdated checks are identified in t
 small curated layer for IEC 62443 certificates issued outside those directories
 (each curated entry names its source and says to verify with the certifying body).
 Supplier screening uses the trade.gov Consolidated Screening List and the FCC
-Covered List. {webui.source_note()}.</p>
+Covered List. {webui.source_note()}</p>
 <h2>What this server does and does not do</h2>
 <p>The website displays assessments and downloads. It does not scan devices,
 apply patches or change equipment.</p>

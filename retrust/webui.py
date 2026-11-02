@@ -11,18 +11,18 @@ def esc(value):
     return html.escape(str(value or ""), quote=True)
 
 
-# The repository is private. Linking it from the hosted site advertised the
-# exact private path and handed every visitor a 404 -- which made the
-# keep-private decision read as a broken link rather than a choice. A hosted
-# deployment says where the source stands; a local one, where the operator
-# already has a clone, keeps the link.
 SOURCE_URL = "https://github.com/MRALPHA20/retrust"
 
 
 def source_note(hosted=None):
-    """Either a link to the source or an honest sentence about its absence."""
-    if os.environ.get("RETRUST_HOSTED") == "1" if hosted is None else hosted:
-        return "Source code is not public yet."
+    """Where to read the source.
+
+    While the repository was private the hosted site said so instead of
+    linking, because publishing the path handed every visitor a 404 and made a
+    deliberate choice look like a broken link. The repository is public now, so
+    both deployments point at the same place and the distinction is gone. The
+    `hosted` argument is kept so existing callers do not have to change.
+    """
     return f'<a href="{SOURCE_URL}">Source code on GitHub</a>'
 
 

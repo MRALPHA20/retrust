@@ -1074,3 +1074,16 @@ def test_an_unidentified_product_reads_as_unmeasured_not_saturated(scoring_handl
                                             context=context)
     # A count of 0 would read as a clean history; nothing was looked up.
     assert batch.to_record(assessment, resolution)['cves'] is None
+
+
+def test_the_footer_points_at_the_public_repository():
+    """The hosted site told every visitor "Source code is not public yet." long
+    after the repository went public -- on an open-source tool's own pages, and
+    on the page an Arsenal reviewer would open first. The sentence was correct
+    while the repository was private; nothing retired it when that changed."""
+    from retrust import webui
+
+    for hosted in (True, False, None):
+        note = webui.source_note(hosted)
+        assert webui.SOURCE_URL in note, hosted
+        assert "not public" not in note, hosted
