@@ -36,11 +36,40 @@ import sys
 from pathlib import Path
 
 from .index import normalize_vendor
-from . import (alternatives, appetites, backtest, batch, bootstrap,
-               certification, config, console, cvelookup, diff, doctor, dossier,
-               evaluate, exposure, identity, index, integrity, lev, match, questions,
-               report, score, screenshot, search, sensitivity, serve, shell,
-               snapshot, ssvc, supplychain, timeline, vex)
+from . import (certification, config, console, dossier, exposure, identity,
+               index, match, report, score, search, supplychain)
+
+
+class _Command:
+    """A command module nobody has asked for yet.
+
+    Scoring a product needed twelve modules and imported thirty, so two thirds
+    of a 195 ms run was spent importing commands that would not run: `serve`
+    brings a thread pool, `bootstrap` the whole TLS and email stack for a
+    download nobody requested. Each one below is only ever touched inside its
+    own command's function, so the import waits until something reads an
+    attribute off it -- and the real module then replaces this stand-in, so the
+    cost is paid once and every `bootstrap.fetch(...)` call site is unchanged.
+    """
+
+    def __init__(self, name):
+        self._name = name
+
+    def __getattr__(self, attribute):
+        import importlib
+        module = importlib.import_module(f".{self._name}", __package__)
+        globals()[self._name] = module
+        return getattr(module, attribute)
+
+
+alternatives, appetites, backtest, batch, bootstrap, cvelookup, diff, doctor, \
+    evaluate, integrity, lev, questions, screenshot, sensitivity, serve, shell, \
+    snapshot, ssvc, timeline, vex = (
+        _Command(name) for name in
+        ("alternatives", "appetites", "backtest", "batch", "bootstrap",
+         "cvelookup", "diff", "doctor", "evaluate", "integrity", "lev",
+         "questions", "screenshot", "sensitivity", "serve", "shell",
+         "snapshot", "ssvc", "timeline", "vex"))
 
 DEFAULT_DB = "data/retrust.db"
 
