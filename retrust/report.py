@@ -305,9 +305,14 @@ def score_label(subject, unit='', note=' (provisional)', missing='&mdash;', plac
 
     if _reading(subject, 'score') is None:
         return missing
-    if _reading(subject, 'provisional'):
-        return (f"{shown(_reading(subject, 'score_min'))}{RANGE_DASH}"
-                f"{shown(_reading(subject, 'score_max'))}{unit}{note}")
+    low, high = _reading(subject, 'score_min'), _reading(subject, 'score_max')
+    # A provisional result whose endpoints coincide is still provisional -- the
+    # open questions are real -- but "55.8–55.8 (provisional range)" reads as a
+    # formatting fault, and invites the reader to distrust every other number
+    # on the page. Print the one value it actually is; the verdict stays VERIFY
+    # and the checks to answer are listed below it either way.
+    if _reading(subject, 'provisional') and shown(low) != shown(high):
+        return f"{shown(low)}{RANGE_DASH}{shown(high)}{unit}{note}"
     return f"{shown(_reading(subject, 'score'))}{unit}"
 
 

@@ -497,3 +497,34 @@ def test_generated_scripts_pass_their_shell_syntax_check(tmp_path, shell, comman
     checked = subprocess.run([_shell(shell), "-n", script.as_posix()],
                              capture_output=True, text=True)
     assert checked.returncode == 0, checked.stderr
+
+
+# --- a range needs two different ends -----------------------------------------
+
+def test_a_provisional_score_that_cannot_move_is_not_shown_as_a_range():
+    """Found by a 20-product simulation: Schneider Modicon Quantum rendered as
+    "55.8-55.8/100 (provisional range)".
+
+    The state is legitimate -- 26 CVEs still need checking, so the verdict stays
+    VERIFY -- but a range whose ends coincide reads as a formatting fault, and a
+    reader who distrusts that number distrusts the rest of the page. One shared
+    formatter feeds the terminal, the report, the comparison table and the web
+    page, so the collapse belongs there and nowhere else.
+    """
+    from retrust import report
+
+    point = dict(score=55.8, score_min=55.8, score_max=55.8, provisional=True)
+    assert report.score_label(point, unit="/100") == "55.8/100"
+
+    # A real range still prints as one, with its note.
+    spread = dict(score=5.9, score_min=5.9, score_max=92.8, provisional=True)
+    assert report.score_label(spread, unit="/100") == f"5.9{report.RANGE_DASH}92.8/100 (provisional)"
+
+    # Ends that differ only below the shown precision are not a range either:
+    # the reader is told what they can see, not what rounding hides.
+    narrow = dict(score=55.84, score_min=55.84, score_max=55.83, provisional=True)
+    assert report.score_label(narrow, places=1) == "55.8"
+
+    # And a settled score is unchanged.
+    settled = dict(score=73.9, score_min=73.9, score_max=73.9, provisional=False)
+    assert report.score_label(settled, unit="/100") == "73.9/100"
