@@ -262,12 +262,16 @@ def overview(db_path):
 def _summarise(db_path):
     """The status strip for the index at db_path, or why it has no readings."""
     try:
-        # exists() is inside the try because it raises on a path we may not even
-        # look at, such as an index under somebody else's home directory.
+        # os.stat rather than Path.exists(): an index we are not allowed to read
+        # is a different answer from one that is not there, and since Python
+        # 3.13 exists() swallows the permission error and reports both as False
+        # -- which told the reader to build an index they already had.
         # The path is a reading of its own, never wrapped in a sentence: a strip
         # row leaves 62 columns, and prose in front of a --db path spends a
         # dozen of them shoving the rail off an 80-column terminal.
-        if not Path(db_path).exists():
+        try:
+            os.stat(db_path)
+        except FileNotFoundError:
             return [("index", db_path), ("", "No index yet.")], False
         # Read-only: index.connect() would add any table the schema lacks, and
         # ReTrust's tables have no business in a database that is not ours.
